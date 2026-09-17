@@ -1,16 +1,28 @@
 name: pages
 
-# Publishes web/ to GitHub Pages. Fires on:
-#   - direct pushes to main that touch web/
-#   - the hourly fetch workflow committing a fresh web/assets/latest.json
-#     (that push is a regular commit to main, so this workflow picks it up)
-#   - manual dispatch, for redeploys without a code change
+# Publishes web/ to GitHub Pages, generating web/assets/latest.json fresh
+# at deploy time rather than reading a committed copy.
+#
+# Why generate here instead of committing the file:
+#   - latest.json is a derived artifact. Committing it meant every local
+#     `pixi run transform` raced the hourly fetch cron for the same path,
+#     producing a merge conflict on nearly every push.
+#   - Generating at deploy time guarantees the published dashboard was
+#     built by current code against current data, with no stale-schema
+#     window after a transform change.
+#
+# The raw snapshots under data/ are still committed by fetch.yml — those
+# are the durable record and the input to this build.
 
 on:
   push:
     branches: [main]
     paths:
       - "web/**"
+      - "src/secchi/**"
+      - "data/raw/**"
+      - "pyproject.toml"
+      - "pixi.lock"
       - ".github/workflows/pages.yml"
   workflow_dispatch: {}
 
@@ -19,9 +31,6 @@ permissions:
   pages: write
   id-token: write
 
-# Only one deploy in flight at a time. Don't cancel a running deploy —
-# GitHub Pages doesn't like partial artifacts and cancellation mid-upload
-# can leave the site in a broken state.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -35,6 +44,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          manifest-path: pyproject.toml
+          environments: default
+          cache: true
+
+      - name: Pull a fresh TEON snapshot
+        # Non-fatal: if TEON is unreachable, fall back to the committed
+        # raw snapshots so a deploy still ships something current-ish
+        # rather than failing outright.
+        continue-on-error: true
+        run: pixi run ingest
+
+      - name: Build latest.json
+        run: pixi run transform
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

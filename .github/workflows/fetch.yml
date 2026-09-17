@@ -1,5 +1,13 @@
 name: fetch
 
+# Archives raw TEON snapshots into data/raw/ on a schedule. This is the
+# durable record — the append-only history that the transform layer and
+# future analysis build on.
+#
+# Note: this workflow deliberately does NOT commit web/assets/latest.json.
+# That file is generated at deploy time by pages.yml, which avoids merge
+# conflicts between the cron and local development runs.
+
 on:
   schedule:
     # Every hour on the hour.
@@ -31,23 +39,17 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.10.2
         with:
           manifest-path: pyproject.toml
-          # Only install what ingest needs — skip dev deps in CI.
           environments: default
-          # Cache is keyed on pixi.lock, so re-runs are near-instant
-          # until deps change.
           cache: true
 
       - name: Ingest
         run: pixi run ingest
 
-      - name: Transform
-        run: pixi run transform
-
-      - name: Commit new data
+      - name: Commit new snapshots
         run: |
           git config user.name "secchi-bot"
           git config user.email "secchi-bot@users.noreply.github.com"
-          git add data/ web/assets/latest.json || true
+          git add data/raw/ || true
           if git diff --cached --quiet; then
             echo "no new data"
           else

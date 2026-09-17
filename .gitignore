@@ -81,3 +81,7 @@ desktop.ini
 # by the ingest workflow; anything below is scratch.
 data/scratch/
 *.tmp
+
+# Generated at deploy time by .github/workflows/pages.yml
+web/assets/latest.json
+data/processed/*.parquet
