@@ -10,6 +10,8 @@ on:
     paths:
       - "src/secchi/**"
       - ".github/workflows/fetch.yml"
+      - "pyproject.toml"
+      - "pixi.lock"
 
 concurrency:
   group: fetch
@@ -25,22 +27,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
         with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
+          manifest-path: pyproject.toml
+          # Only install what ingest needs — skip dev deps in CI.
+          environments: default
+          # Cache is keyed on pixi.lock, so re-runs are near-instant
+          # until deps change.
+          cache: true
 
       - name: Ingest
-        run: python -m secchi.ingest
+        run: pixi run ingest
 
       - name: Transform
-        run: python -m secchi.transform
+        run: pixi run transform
 
       - name: Commit new data
         run: |

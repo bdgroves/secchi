@@ -37,6 +37,8 @@ secchi/
 ├── web/                 # Static dashboard (GitHub Pages target)
 ├── notebooks/           # Exploration and modeling notebooks
 ├── docs/                # Design notes, data dictionary, methodology
+├── pyproject.toml       # Pixi workspace + package metadata
+├── pixi.lock            # Pinned per-platform resolutions — commit this
 └── .github/workflows/   # Scheduled ingestion + deploy
 ```
 
@@ -44,17 +46,47 @@ secchi/
 
 ## Running locally
 
+`secchi` uses [pixi](https://pixi.sh) for environment management — conda-forge underneath, one lockfile per platform, clean binary deps for when GDAL and friends land.
+
+Install pixi once:
+
+```powershell
+# Windows
+iwr -useb https://pixi.sh/install.ps1 | iex
+```
+
 ```bash
-# Windows PowerShell
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+# macOS / Linux
+curl -fsSL https://pixi.sh/install.sh | bash
+```
 
-# Pull the latest snapshot
-python -m secchi.ingest
+Then from the repo root:
 
-# Serve the dashboard
-python -m http.server 8000 --directory web
+```bash
+pixi install              # solve and materialize the default env
+pixi run pipeline         # ingest + transform in one shot
+pixi run serve            # dashboard on http://localhost:8000
+```
+
+Everyday tasks — no shell activation needed:
+
+```bash
+pixi run ingest           # pull the latest snapshot
+pixi run transform        # rebuild processed/ + web/assets/latest.json
+```
+
+Development environment adds ruff, pytest, and JupyterLab:
+
+```bash
+pixi run -e dev test
+pixi run -e dev lint
+pixi run -e dev lab
+```
+
+Or drop into an activated shell if you prefer:
+
+```bash
+pixi shell -e dev
 ```
 
 ---

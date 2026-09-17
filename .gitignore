@@ -21,11 +21,16 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual envs
+# Virtual envs (kept even though pixi is primary — belt and suspenders)
 .venv/
 venv/
 env/
 ENV/
+
+# Pixi
+# Note: pixi.lock is intentionally NOT ignored — it pins per-platform
+# resolutions and is how pixi delivers "same env everywhere". Commit it.
+.pixi/
 
 # Jupyter
 .ipynb_checkpoints/
