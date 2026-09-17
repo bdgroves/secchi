@@ -26,7 +26,7 @@ from secchi.config import (
     LIVE_WINDOW_HOURS,
     RAW_DIR,
 )
-from secchi.sources.teon import TeonClient
+from secchi.sources.teon import TeonClient, slugify_site
 
 log = logging.getLogger("secchi.ingest")
 
@@ -46,6 +46,19 @@ def write_inventory(payload: dict, root: Path = RAW_DIR) -> Path:
     ts = datetime.now(timezone.utc)
     payload = {"fetched_at": ts.isoformat(), "source": "TEON", **payload}
     return _write_json(_snapshot_path(root / "inventory", ts), payload)
+
+
+def write_visibility(disabled_slugs: set[str], root: Path = RAW_DIR) -> Path:
+    """Persist the current visibility flags so transform can bake them into
+    ``latest.json`` — the dashboard should never call TEON directly, so
+    hosting from GitHub Pages has no cross-origin dependency."""
+    ts = datetime.now(timezone.utc)
+    payload = {
+        "fetched_at": ts.isoformat(),
+        "source": "TEON",
+        "disabled": sorted(disabled_slugs),
+    }
+    return _write_json(_snapshot_path(root / "visibility", ts), payload)
 
 
 def write_sensor_snapshot(snapshot: dict, root: Path = RAW_DIR) -> Path:
@@ -81,9 +94,24 @@ def run(mode: str = "live-exo") -> int:
         except Exception:
             log.exception("inventory pull failed")
 
-        # 2) Pull time series for the targeted sensors.
-        targets = build_targets(client, mode)
-        log.info("ingest mode=%s targets=%d", mode, len(targets))
+        # 2) Respect TEON's own visibility flags — the frontend hides some
+        #    sites (as of Sep 2026, "4H Camp" for lake/EXO), and so should we.
+        disabled = client.disabled_sites()
+        write_visibility(disabled)
+        if disabled:
+            log.info("visibility: %d site slug(s) disabled by TEON: %s",
+                     len(disabled), ", ".join(sorted(disabled)))
+
+        # 3) Pull time series for the targeted sensors, skipping any TEON
+        #    has asked us to hide.
+        raw_targets = build_targets(client, mode)
+        targets = [
+            (sensor_type, site) for (sensor_type, site) in raw_targets
+            if slugify_site(site) not in disabled
+        ]
+        skipped = len(raw_targets) - len(targets)
+        log.info("ingest mode=%s targets=%d (skipped %d disabled)",
+                 mode, len(targets), skipped)
 
         successes = 0
         for snapshot in client.fetch_many(targets):

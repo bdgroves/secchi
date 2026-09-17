@@ -88,6 +88,35 @@ class TeonClient:
         return live
 
     # ------------------------------------------------------------------
+    # Visibility
+    # ------------------------------------------------------------------
+
+    def disabled_sites(self) -> set[str]:
+        """Return the set of site slugs TEON asks the frontend to hide.
+
+        The upstream payload is a list of ``"{site_slug}|{category}|{display_type}"``
+        strings — for example ``"4hcamp|lake|EXO"``. We surface just the site
+        slugs here; the ingest layer matches those against its target sites
+        after slugifying (:func:`slugify_site`). If TEON later needs
+        per-sensor-type suppression at a shared site, refactor to expose
+        the full triples.
+        """
+        url = f"{self._base}{TEON_ENDPOINTS['site_visibility']}"
+        try:
+            resp = self._client.get(url)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            log.warning("could not fetch visibility list — assuming nothing hidden: %s", exc)
+            return set()
+        entries = resp.json().get("disabled", [])
+        slugs: set[str] = set()
+        for entry in entries:
+            parts = entry.split("|", 2)
+            if parts:
+                slugs.add(parts[0])
+        return slugs
+
+    # ------------------------------------------------------------------
     # Time series
     # ------------------------------------------------------------------
 
@@ -175,3 +204,12 @@ def _parse_teon_ts(value: Any) -> datetime | None:
         return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+def slugify_site(site: str) -> str:
+    """Match TEON's site-slug convention: lowercase, spaces removed.
+
+    Derived from the ``/site-visibility/disabled`` payload which shipped
+    ``"4hcamp|lake|EXO"`` for the site whose display name is ``"4H Camp"``.
+    """
+    return site.lower().replace(" ", "")
