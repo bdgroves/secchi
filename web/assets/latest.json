@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-09-17T22:05:51.232907+00:00",
+  "source": "TEON",
+  "sites": {
+    "Sunnyside": {
+      "sensor_type": "EXO",
+      "shore": "west",
+      "coordinates": {
+        "lat": 39.134643,
+        "lng": -120.151085
+      },
+      "observed_at": "2026-09-17T13:00:00",
+      "readings": {
+        "Temp": {
+          "value": 16.43,
+          "label": "Water temp",
+          "units": "°C"
+        },
+        "Do_mgL": {
+          "value": 7.98,
+          "label": "DO",
+          "units": "mg/L"
+        },
+        "Do_percent": {
+          "value": 81.6,
+          "label": "DO sat",
+          "units": "%"
+        },
+        "Chl_a": {
+          "value": -0.15,
+          "label": "Chlorophyll",
+          "units": "µg/L"
+        },
+        "phycocyanin": {
+          "value": 0.26,
+          "label": "Phycocyanin",
+          "units": "µg/L"
+        },
+        "Turbidity": {
+          "value": 0.0,
+          "label": "Turbidity",
+          "units": "FNU"
+        },
+        "specific_conductivity": {
+          "value": 93.7,
+          "label": "Conductivity",
+          "units": "µS/cm"
+        },
+        "Salinity": {
+          "value": 0.04,
+          "label": "Salinity",
+          "units": "ppt"
+        },
+        "TDS": {
+          "value": 60.88,
+          "label": "TDS",
+          "units": "mg/L"
+        },
+        "depth": {
+          "value": 3.007,
+          "label": "Depth",
+          "units": "m"
+        }
+      }
+    },
+    "Glenbrook": {
+      "sensor_type": "EXO",
+      "shore": "east",
+      "coordinates": {
+        "lat": 39.088329,
+        "lng": -119.941133
+      },
+      "observed_at": "2026-09-17T15:00:00",
+      "readings": {
+        "Temp": {
+          "value": 16.76,
+          "label": "Water temp",
+          "units": "°C"
+        },
+        "Do_mgL": {
+          "value": 7.95,
+          "label": "DO",
+          "units": "mg/L"
+        },
+        "Do_percent": {
+          "value": 81.9,
+          "label": "DO sat",
+          "units": "%"
+        },
+        "Chl_a": {
+          "value": 1.53,
+          "label": "Chlorophyll",
+          "units": "µg/L"
+        },
+        "phycocyanin": {
+          "value": 0.14,
+          "label": "Phycocyanin",
+          "units": "µg/L"
+        },
+        "Turbidity": {
+          "value": 0.7,
+          "label": "Turbidity",
+          "units": "FNU"
+        },
+        "specific_conductivity": {
+          "value": 95.0,
+          "label": "Conductivity",
+          "units": "µS/cm"
+        },
+        "Salinity": {
+          "value": 0.04,
+          "label": "Salinity",
+          "units": "ppt"
+        },
+        "TDS": {
+          "value": 61.73,
+          "label": "TDS",
+          "units": "mg/L"
+        },
+        "depth": {
+          "value": 2.775,
+          "label": "Depth",
+          "units": "m"
+        }
+      }
+    }
+  }
+}

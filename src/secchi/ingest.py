@@ -1,101 +1,121 @@
-"""Fetch a snapshot of TEON sensor readings and archive it to ``data/raw``.
+"""Ingest TEON snapshots to ``data/raw``.
 
-Designed to run on a schedule (GitHub Actions cron) or on demand. Each run
-writes a timestamped JSON file so the raw record is preserved even as the
-processed layer is regenerated.
+Two artifacts per run:
 
-Usage
------
-    python -m secchi.ingest
-    secchi-ingest             # after `pip install -e .`
+- ``data/raw/inventory/YYYY/MM/DD/HHMMSS.json`` — the full
+  ``/sensors/locations`` payload, captured verbatim.
+- ``data/raw/teon/{sensor_slug}/{site}/YYYY/MM/DD/HHMMSS.json`` — a
+  paginated pull of recent observations for each targeted sensor.
+
+Targets default to the three live-EXO sites configured in
+:data:`secchi.config.LIVE_EXO_SITES`; passing ``--all-live`` widens to
+every sensor whose inventory ``last_update`` is within the live window.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
-
 from secchi.config import (
-    HTTP_TIMEOUT_SECONDS,
+    LIVE_EXO_SITES,
+    LIVE_WINDOW_HOURS,
     RAW_DIR,
-    STATIONS,
-    TEON_API_BASE,
-    USER_AGENT,
-    VARIABLES,
 )
+from secchi.sources.teon import TeonClient
 
 log = logging.getLogger("secchi.ingest")
 
 
-def fetch_station(client: httpx.Client, station_id: str) -> dict:
-    """Fetch the current readings for a single station.
-
-    TODO: adjust the URL template once TEON's endpoint shape is confirmed.
-    The current guess is ``/stations/{id}/latest`` returning JSON with a
-    ``variables`` field keyed by sensor name.
-    """
-    url = f"{TEON_API_BASE}/stations/{station_id}/latest"
-    log.info("GET %s", url)
-    resp = client.get(url)
-    resp.raise_for_status()
-    return resp.json()
+def _snapshot_path(root: Path, ts: datetime) -> Path:
+    return root / f"{ts.year:04d}" / f"{ts.month:02d}" / f"{ts.day:02d}" / f"{ts.strftime('%H%M%S')}.json"
 
 
-def fetch_all() -> dict:
-    """Fetch every station in :data:`STATIONS` and package a snapshot."""
-    ts = datetime.now(timezone.utc)
-    snapshot: dict = {
-        "fetched_at": ts.isoformat(),
-        "source": "TEON",
-        "variables_requested": list(VARIABLES),
-        "stations": {},
-    }
-
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-    with httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, headers=headers) as client:
-        for station_id, meta in STATIONS.items():
-            try:
-                snapshot["stations"][station_id] = {
-                    "meta": meta,
-                    "readings": fetch_station(client, station_id),
-                }
-            except httpx.HTTPError as exc:
-                log.warning("station %s failed: %s", station_id, exc)
-                snapshot["stations"][station_id] = {
-                    "meta": meta,
-                    "error": str(exc),
-                }
-    return snapshot
-
-
-def write_snapshot(snapshot: dict, out_dir: Path = RAW_DIR) -> Path:
-    """Persist a snapshot to ``data/raw/YYYY/MM/DD/HHMMSS.json``."""
-    ts = datetime.fromisoformat(snapshot["fetched_at"])
-    subdir = out_dir / f"{ts.year:04d}" / f"{ts.month:02d}" / f"{ts.day:02d}"
-    subdir.mkdir(parents=True, exist_ok=True)
-    path = subdir / f"{ts.strftime('%H%M%S')}.json"
-    path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
-    log.info("wrote %s", path)
+def _write_json(path: Path, payload: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    log.info("wrote %s (%s bytes)", path, path.stat().st_size)
     return path
 
 
-def main() -> int:
+def write_inventory(payload: dict, root: Path = RAW_DIR) -> Path:
+    ts = datetime.now(timezone.utc)
+    payload = {"fetched_at": ts.isoformat(), "source": "TEON", **payload}
+    return _write_json(_snapshot_path(root / "inventory", ts), payload)
+
+
+def write_sensor_snapshot(snapshot: dict, root: Path = RAW_DIR) -> Path:
+    fetched_at = datetime.fromisoformat(snapshot["fetched_at"])
+    slug = snapshot["sensor_slug"]
+    # Filesystem-safe site name.
+    site = snapshot["site"].replace("/", "_").replace(" ", "_")
+    root_dir = root / "teon" / slug / site
+    return _write_json(_snapshot_path(root_dir, fetched_at), snapshot)
+
+
+def build_targets(client: TeonClient, mode: str) -> list[tuple[str, str]]:
+    """Decide which (sensor_type, site) pairs to pull this run."""
+    if mode == "live-exo":
+        return [("ExoSensor", site) for site in LIVE_EXO_SITES]
+
+    if mode == "all-live":
+        pairs: list[tuple[str, str]] = []
+        for sensor in client.live_sensors(window_hours=LIVE_WINDOW_HOURS):
+            pairs.append((sensor["_sensor_type"], sensor["site"]))
+        return pairs
+
+    raise ValueError(f"unknown mode {mode!r}")
+
+
+def run(mode: str = "live-exo") -> int:
+    with TeonClient() as client:
+        # 1) Snapshot the full inventory every run — cheap, and it's the
+        #    source of truth for what sensors even exist.
+        try:
+            inventory = client.list_sensors()
+            write_inventory(inventory)
+        except Exception:
+            log.exception("inventory pull failed")
+
+        # 2) Pull time series for the targeted sensors.
+        targets = build_targets(client, mode)
+        log.info("ingest mode=%s targets=%d", mode, len(targets))
+
+        successes = 0
+        for snapshot in client.fetch_many(targets):
+            if snapshot["record_count"] == 0:
+                log.warning("empty snapshot for %s @ %s", snapshot["sensor_type"], snapshot["site"])
+                continue
+            write_sensor_snapshot(snapshot)
+            successes += 1
+
+        log.info("ingest complete: %d/%d snapshots", successes, len(targets))
+        return 0 if successes > 0 else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Pull a TEON snapshot into data/raw.")
+    parser.add_argument(
+        "--mode",
+        choices=("live-exo", "all-live"),
+        default="live-exo",
+        help="live-exo: only the three curated EXO sites. all-live: every sensor with recent data.",
+    )
+    args = parser.parse_args(argv)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
     )
     try:
-        snapshot = fetch_all()
-        write_snapshot(snapshot)
+        return run(mode=args.mode)
     except Exception:
         log.exception("ingest failed")
         return 1
-    return 0
 
 
 if __name__ == "__main__":
