@@ -1,0 +1,55 @@
+name: fetch
+
+on:
+  schedule:
+    # Every hour on the hour.
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "src/secchi/**"
+      - ".github/workflows/fetch.yml"
+
+concurrency:
+  group: fetch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Ingest
+        run: python -m secchi.ingest
+
+      - name: Transform
+        run: python -m secchi.transform
+
+      - name: Commit new data
+        run: |
+          git config user.name "secchi-bot"
+          git config user.email "secchi-bot@users.noreply.github.com"
+          git add data/ web/assets/latest.json || true
+          if git diff --cached --quiet; then
+            echo "no new data"
+          else
+            git commit -m "data: hourly snapshot $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            git push
+          fi

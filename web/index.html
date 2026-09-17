@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>secchi — a modern Secchi disk for Lake Tahoe</title>
+<meta name="description" content="Real-time clarity, watershed, and wildfire-coupling analytics on TEON data.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    /* Alpine water palette — deep to clear, granite, warmth for wildfire signal. */
+    --ink:    #0B2E3D;   /* deep water at depth */
+    --slate:  #3A4A52;   /* wet granite */
+    --ice:    #C7DFEA;   /* light shoal */
+    --paper:  #F5F6F4;   /* off-white, matte */
+    --line:   #D8DDDF;   /* hairlines */
+    --ember:  #B8532A;   /* smoke / fire signal — not the D97757 default */
+    --muted:  #6B7A82;   /* secondary text */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink:   #E8EEF1;
+      --slate: #B5C1C7;
+      --ice:   #163847;
+      --paper: #0A1C24;
+      --line:  #22323B;
+      --ember: #E07A48;
+      --muted: #8A9AA2;
+    }
+  }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 "Inter", "Helvetica Neue", Arial, sans-serif;
+    /* Intended production type: Söhne / Inter for UI, Tiempos / Source Serif
+       for editorial passages. System stack while scaffolding. */
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { color: var(--ember); }
+
+  .page { max-width: 780px; margin: 0 auto; padding: 5rem 1.5rem 6rem; }
+
+  header { display: flex; align-items: center; gap: 1rem; margin-bottom: 3rem; }
+  .mark { flex: 0 0 auto; }
+  .wordmark {
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .tag {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-top: 0.15rem;
+  }
+
+  h1 {
+    font-size: clamp(2.1rem, 5vw, 3.2rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    margin: 0 0 1.25rem;
+    max-width: 22ch;
+  }
+  .lede {
+    font-size: 1.15rem;
+    color: var(--slate);
+    max-width: 62ch;
+    margin: 0 0 2.75rem;
+  }
+
+  h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 3rem 0 0.75rem;
+    letter-spacing: -0.005em;
+  }
+  p { max-width: 62ch; margin: 0 0 1rem; }
+
+  .rule {
+    height: 1px;
+    background: var(--line);
+    border: 0;
+    margin: 3rem 0;
+  }
+
+  .status {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--line);
+    background: transparent;
+  }
+  .dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--ember);
+    display: inline-block;
+    flex: 0 0 auto;
+    transform: translateY(-1px);
+  }
+  .status-text { color: var(--slate); font-size: 0.95rem; }
+
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-top: 1.25rem;
+  }
+  @media (max-width: 640px) { .split { grid-template-columns: 1fr; } }
+  .watershed {
+    padding: 1.25rem 1.25rem 1.5rem;
+    border: 1px solid var(--line);
+  }
+  .watershed h3 {
+    margin: 0 0 0.25rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .watershed .meta {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 0.85rem;
+  }
+  .watershed .placeholder {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-style: italic;
+  }
+
+  footer {
+    margin-top: 5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header>
+    <!-- Signature: the Secchi disk itself. Alternating B/W quadrants, thin ring. -->
+    <svg class="mark" width="52" height="52" viewBox="0 0 52 52" aria-hidden="true">
+      <defs>
+        <clipPath id="disk"><circle cx="26" cy="26" r="24"/></clipPath>
+      </defs>
+      <g clip-path="url(#disk)">
+        <rect x="0"  y="0"  width="26" height="26" fill="var(--ink)"/>
+        <rect x="26" y="0"  width="26" height="26" fill="var(--paper)"/>
+        <rect x="0"  y="26" width="26" height="26" fill="var(--paper)"/>
+        <rect x="26" y="26" width="26" height="26" fill="var(--ink)"/>
+      </g>
+      <circle cx="26" cy="26" r="24" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+    </svg>
+    <div>
+      <div class="wordmark">secchi</div>
+      <div class="tag">a modern Secchi disk for Lake Tahoe</div>
+    </div>
+  </header>
+
+  <h1>Watching clarity emerge from its drivers, in real time.</h1>
+  <p class="lede">
+    For over 150 years, limnologists have measured lake clarity by lowering a
+    black-and-white disk into the water. <em>secchi</em> builds on that
+    tradition with the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a> —
+    around thirty-five sensors in the air, land, and water across the Lake
+    Tahoe basin, streaming temperature, chlorophyll, dissolved oxygen,
+    conductivity, and wave height in real time.
+  </p>
+
+  <div class="status" role="status" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <span class="status-text">
+      Pipeline scaffolding in place; TEON endpoint pending. No live data yet.
+    </span>
+  </div>
+
+  <h2>Same storm, two watersheds</h2>
+  <p>
+    TEON's sentinel sites — Blackwood Creek on the wet west side and Glenbrook
+    Creek in the east-side rain shadow — are a deliberately contrasting pair.
+    When a single atmospheric river or smoke plume hits the basin, both
+    experience the same forcing but respond in wildly different ways.
+  </p>
+
+  <section class="split" aria-label="Sentinel watersheds">
+    <article class="watershed">
+      <h3>Blackwood</h3>
+      <p class="meta">West side · forested granite · 11.4 sq mi</p>
+      <p class="placeholder">Live readings will appear here once ingestion is wired up.</p>
+    </article>
+    <article class="watershed">
+      <h3>Glenbrook</h3>
+      <p class="meta">East side · rain shadow · 4.1 sq mi</p>
+      <p class="placeholder">Live readings will appear here once ingestion is wired up.</p>
+    </article>
+  </section>
+
+  <h2>Wildfire in the water</h2>
+  <p>
+    Smoke deposition delivers nutrients to the lake; nutrients feed algae;
+    algae erode clarity. Overlaying NASA FIRMS active-fire detections and
+    HRRR-Smoke plume forecasts on TEON's chlorophyll, dissolved-oxygen, and
+    temperature signals lets us watch a fire's fingerprint arrive in the lake.
+  </p>
+
+  <h2>Clarity nowcast</h2>
+  <p>
+    A live estimate of Secchi depth predicted from real-time sensor
+    readings — chlorophyll, turbidity proxies, wave stirring — with the
+    historical Secchi record as ground truth.
+  </p>
+
+  <hr class="rule">
+
+  <footer>
+    Data from the Tahoe Environmental Observatory Network (TEON).
+    Provisional and subject to revision.
+    Source on <a href="https://github.com/bdgroves/secchi">GitHub</a>.
+    Part of <a href="https://github.com/bdgroves">Brooks Labs</a>.
+  </footer>
+
+</main>
+
+<script>
+  // Placeholder: once data/processed/latest.json exists, wire up the two
+  // watershed cards. The endpoint is same-origin under /assets/.
+  async function loadLatest() {
+    try {
+      const res = await fetch("assets/latest.json", { cache: "no-store" });
+      if (!res.ok) return;
+      const snapshot = await res.json();
+      // TODO: render into the .watershed placeholders.
+      console.log("secchi snapshot loaded:", snapshot);
+    } catch (_) {
+      // Silent: pre-ingest state is a valid state.
+    }
+  }
+  loadLatest();
+</script>
+</body>
+</html>
