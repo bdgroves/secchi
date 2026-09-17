@@ -1,0 +1,49 @@
+name: pages
+
+# Publishes web/ to GitHub Pages. Fires on:
+#   - direct pushes to main that touch web/
+#   - the hourly fetch workflow committing a fresh web/assets/latest.json
+#     (that push is a regular commit to main, so this workflow picks it up)
+#   - manual dispatch, for redeploys without a code change
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deploy in flight at a time. Don't cancel a running deploy —
+# GitHub Pages doesn't like partial artifacts and cancellation mid-upload
+# can leave the site in a broken state.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
