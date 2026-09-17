@@ -71,9 +71,14 @@ def write_sensor_snapshot(snapshot: dict, root: Path = RAW_DIR) -> Path:
 
 
 def build_targets(client: TeonClient, mode: str) -> list[tuple[str, str]]:
-    """Decide which (sensor_type, site) pairs to pull this run."""
+    """Decide which (sensor_type, site) pairs to pull this run.
+
+    ``sensor_type`` here is the DISPLAY name as it appears in the
+    /sensors/locations payload — "EXO", "Stream Level", etc. — because
+    that's what TeonClient.resolve_slug keys on.
+    """
     if mode == "live-exo":
-        return [("ExoSensor", site) for site in LIVE_EXO_SITES]
+        return [("EXO", site) for site in LIVE_EXO_SITES]
 
     if mode == "all-live":
         pairs: list[tuple[str, str]] = []
@@ -84,8 +89,55 @@ def build_targets(client: TeonClient, mode: str) -> list[tuple[str, str]]:
     raise ValueError(f"unknown mode {mode!r}")
 
 
+def probe_slugs(client: TeonClient) -> int:
+    """Diagnostic: resolve a URL slug for every live sensor type, no data pull.
+
+    Prints a table of sensor type → resolved slug (or MISSING), so we can
+    see at a glance how much of the network is reachable. Useful after
+    TEON ships backend changes.
+    """
+    # Sites TEON hides return 404 on the time-series endpoint even when the
+    # slug is correct, so they must not be used as probe representatives.
+    # (4H Camp is hidden and sorts first among EXO sites, which previously
+    # made the confirmed-good exo-sensor slug look broken.)
+    disabled = client.disabled_sites()
+
+    # One representative site per sensor type, preferring the freshest
+    # non-disabled site.
+    by_type: dict[str, str] = {}
+    for sensor in client.live_sensors(window_hours=LIVE_WINDOW_HOURS):
+        site = sensor["site"]
+        if slugify_site(site) in disabled:
+            continue
+        by_type.setdefault(sensor["_sensor_type"], site)
+
+    if not by_type:
+        log.warning("no live, visible sensors found to probe")
+        return 1
+
+    log.info("probing %d sensor types (skipping %d disabled site slug(s))",
+             len(by_type), len(disabled))
+    resolved: dict[str, str | None] = {}
+    for sensor_type, site in sorted(by_type.items()):
+        resolved[sensor_type] = client.resolve_slug(sensor_type, site)
+
+    width = max(len(t) for t in resolved) + 2
+    print("\n  Sensor type".ljust(width + 4) + "Resolved slug")
+    print("  " + "-" * (width + 30))
+    for sensor_type, slug in sorted(resolved.items()):
+        status = f"/sensors/{slug}" if slug else "— MISSING —"
+        print(f"  {sensor_type.ljust(width)}{status}")
+    hits = sum(1 for s in resolved.values() if s)
+    print(f"\n  {hits}/{len(resolved)} sensor types reachable\n")
+    return 0
+
+
 def run(mode: str = "live-exo") -> int:
     with TeonClient() as client:
+        # Probe mode is diagnostic only: no snapshots written.
+        if mode == "probe":
+            return probe_slugs(client)
+
         # 1) Snapshot the full inventory every run — cheap, and it's the
         #    source of truth for what sensors even exist.
         try:
@@ -129,9 +181,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Pull a TEON snapshot into data/raw.")
     parser.add_argument(
         "--mode",
-        choices=("live-exo", "all-live"),
+        choices=("live-exo", "all-live", "probe"),
         default="live-exo",
-        help="live-exo: only the three curated EXO sites. all-live: every sensor with recent data.",
+        help=(
+            "live-exo: only the curated EXO sites (default, used by CI). "
+            "all-live: every sensor with recent data. "
+            "probe: resolve URL slugs for every live sensor type and print a "
+            "report, without writing any snapshots."
+        ),
     )
     args = parser.parse_args(argv)
 

@@ -4,6 +4,11 @@ name: fetch
 # durable record — the append-only history that the transform layer and
 # future analysis build on.
 #
+# Pulls every live, visible sensor across all six confirmed TEON sensor
+# types (lake EXO sondes, soil, air temperature, tree dendrometers, stream
+# level, field cameras), skipping any site TEON flags as non-public via
+# /api/site-visibility/disabled.
+#
 # Note: this workflow deliberately does NOT commit web/assets/latest.json.
 # That file is generated at deploy time by pages.yml, which avoids merge
 # conflicts between the cron and local development runs.
@@ -43,7 +48,7 @@ jobs:
           cache: true
 
       - name: Ingest
-        run: pixi run ingest
+        run: pixi run ingest-all
 
       - name: Commit new snapshots
         run: |

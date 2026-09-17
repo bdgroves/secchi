@@ -11,23 +11,25 @@
   :root {
     --ink:    #0B2E3D;
     --slate:  #3A4A52;
-    --ice:    #C7DFEA;
     --paper:  #F5F6F4;
     --line:   #D8DDDF;
     --ember:  #B8532A;
     --live:   #3E7D5A;
     --muted:  #6B7A82;
+    --wet:    #2E6B8A;
+    --dry:    #A8763C;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --ink:   #E8EEF1;
       --slate: #B5C1C7;
-      --ice:   #163847;
       --paper: #0A1C24;
       --line:  #22323B;
       --ember: #E07A48;
       --live:  #5FAE83;
       --muted: #8A9AA2;
+      --wet:   #6FA8C7;
+      --dry:   #D4A368;
     }
   }
   html, body { margin: 0; padding: 0; }
@@ -50,108 +52,87 @@
   .tag { color: var(--muted); font-size: 0.95rem; margin-top: 0.15rem; }
 
   h1 {
-    font-size: clamp(2.1rem, 5vw, 3.2rem);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-    font-weight: 600;
-    margin: 0 0 1.25rem;
-    max-width: 22ch;
+    font-size: clamp(2.1rem, 5vw, 3.2rem); line-height: 1.1;
+    letter-spacing: -0.02em; font-weight: 600; margin: 0 0 1.25rem; max-width: 22ch;
   }
   .lede { font-size: 1.15rem; color: var(--slate); max-width: 62ch; margin: 0 0 2.75rem; }
 
-  h2 { font-size: 1.1rem; font-weight: 600; margin: 3rem 0 0.75rem; letter-spacing: -0.005em; }
-  h3.section-sub { font-size: 0.85rem; font-weight: 600; margin: 1.5rem 0 0.5rem;
-                   letter-spacing: 0.02em; color: var(--slate); }
-  h4.sensor-type { font-size: 0.85rem; font-weight: 500; margin: 0.75rem 0 0.35rem;
-                   color: var(--muted); }
+  h2 { font-size: 1.1rem; font-weight: 600; margin: 3.5rem 0 0.75rem; letter-spacing: -0.005em; }
+  h3.sub { font-size: 0.85rem; font-weight: 600; margin: 1.5rem 0 0.5rem; color: var(--slate); }
+  h4.stype { font-size: 0.85rem; font-weight: 500; margin: 0.75rem 0 0.35rem; color: var(--muted); }
   p { max-width: 62ch; margin: 0 0 1rem; }
 
   .rule { height: 1px; background: var(--line); border: 0; margin: 3rem 0; }
 
-  .status {
-    display: flex; align-items: baseline; gap: 0.75rem;
-    padding: 1rem 1.25rem; border: 1px solid var(--line);
-  }
-  .dot {
-    width: 0.55rem; height: 0.55rem; border-radius: 50%;
-    background: var(--live); display: inline-block; flex: 0 0 auto;
-    transform: translateY(-1px);
-  }
+  .status { display: flex; align-items: baseline; gap: 0.75rem;
+            padding: 1rem 1.25rem; border: 1px solid var(--line); }
+  .dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--live);
+         display: inline-block; flex: 0 0 auto; transform: translateY(-1px); }
   .dot[data-state="stale"] { background: var(--ember); }
   .dot[data-state="dead"]  { background: var(--muted); }
   .status-text { color: var(--slate); font-size: 0.95rem; }
 
-  .cards {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;
-    margin-top: 1.25rem;
-  }
-  @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1.25rem; }
+  .cards.two { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 720px) { .cards, .cards.two { grid-template-columns: 1fr; } }
 
-  .card {
-    padding: 1.25rem 1.25rem 1.5rem;
-    border: 1px solid var(--line);
-    display: flex; flex-direction: column; gap: 0.9rem;
-  }
-  .card-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .card { padding: 1.25rem 1.25rem 1.5rem; border: 1px solid var(--line);
+          display: flex; flex-direction: column; gap: 0.9rem; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
   .card-title { margin: 0; font-size: 1.05rem; font-weight: 600; }
-  .shore {
-    font-size: 0.75rem; letter-spacing: 0.04em; text-transform: lowercase;
-    color: var(--muted);
-  }
+  .shore { font-size: 0.75rem; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; }
   .observed { color: var(--muted); font-size: 0.85rem; margin: -0.4rem 0 0; }
 
-  .readings {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem 1rem;
-    margin: 0.25rem 0 0;
-  }
+  .readings { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem 1rem; margin: 0.25rem 0 0; }
   .reading { display: flex; flex-direction: column; }
-  .reading-value {
-    font-variant-numeric: tabular-nums;
-    font-size: 1.35rem; font-weight: 500; letter-spacing: -0.01em;
-    line-height: 1.1;
-  }
-  .reading-value .units {
-    font-size: 0.75rem; color: var(--muted); font-weight: 400; margin-left: 0.15rem;
-  }
+  .reading-value { font-variant-numeric: tabular-nums; font-size: 1.35rem;
+                   font-weight: 500; letter-spacing: -0.01em; line-height: 1.1; }
+  .reading-value .units { font-size: 0.75rem; color: var(--muted);
+                          font-weight: 400; margin-left: 0.15rem; }
   .reading-label { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+  .reading-note { font-size: 0.7rem; color: var(--ember); margin-top: 0.15rem; }
 
-  .placeholder-card {
-    padding: 1.25rem 1.25rem 1.5rem;
-    border: 1px solid var(--line);
-    color: var(--muted);
-    font-size: 0.9rem;
-  }
+  /* Transect comparison */
+  .transect { border: 1px solid var(--line); margin-top: 1.25rem; }
+  .transect-row { display: grid; grid-template-columns: 1fr auto 1fr;
+                  align-items: center; border-bottom: 1px solid var(--line); }
+  .transect-row:last-child { border-bottom: 0; }
+  .transect-head { background: transparent; }
+  .transect-head .tside { font-weight: 600; font-size: 0.95rem; padding: 0.85rem 1.25rem; }
+  .transect-head .tside.w { color: var(--wet); }
+  .transect-head .tside.e { color: var(--dry); text-align: right; }
+  .transect-head .tmid { font-size: 0.7rem; color: var(--muted);
+                         letter-spacing: 0.05em; padding: 0 0.5rem; white-space: nowrap; }
+  .tval { font-variant-numeric: tabular-nums; font-size: 1.15rem;
+          font-weight: 500; padding: 0.7rem 1.25rem; }
+  .tval.e { text-align: right; }
+  .tval .units { font-size: 0.7rem; color: var(--muted); font-weight: 400; margin-left: 0.15rem; }
+  .tlabel { font-size: 0.75rem; color: var(--muted); padding: 0 0.5rem;
+            text-align: center; white-space: nowrap; }
+
+  .placeholder-card { padding: 1.25rem; border: 1px solid var(--line);
+                      color: var(--muted); font-size: 0.9rem; }
   .placeholder-card strong { color: var(--slate); font-weight: 600; }
-
   .offline { margin-top: 1rem; color: var(--muted); font-size: 0.9rem; }
 
-  /* Inventory table */
+  /* Inventory */
   .inv-group { margin-bottom: 1.5rem; }
   .inv-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-  .inv-table td {
-    padding: 0.45rem 0.75rem 0.45rem 0;
-    border-bottom: 1px solid var(--line);
-    vertical-align: middle;
-  }
+  .inv-table td { padding: 0.45rem 0.75rem 0.45rem 0;
+                  border-bottom: 1px solid var(--line); vertical-align: middle; }
   .inv-table tr:last-child td { border-bottom: 0; }
-  .inv-dot {
-    display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
-    background: var(--live); vertical-align: middle; margin-right: 0.5rem;
-  }
+  .inv-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+             background: var(--live); vertical-align: middle; margin-right: 0.5rem; }
   .inv-dot[data-state="stale"] { background: var(--ember); }
   .inv-dot[data-state="dead"]  { background: var(--muted); }
   .inv-site { font-weight: 500; }
   .inv-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
-  .inv-flag {
-    display: inline-block; font-size: 0.7rem; letter-spacing: 0.03em;
-    padding: 0.1rem 0.4rem; margin-left: 0.4rem; border: 1px solid var(--line);
-    color: var(--muted); vertical-align: middle;
-  }
+  .inv-flag { display: inline-block; font-size: 0.7rem; letter-spacing: 0.03em;
+              padding: 0.1rem 0.4rem; margin-left: 0.4rem;
+              border: 1px solid var(--line); color: var(--muted); vertical-align: middle; }
 
-  footer {
-    margin-top: 5rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
-    color: var(--muted); font-size: 0.9rem;
-  }
+  footer { margin-top: 5rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 0.9rem; }
   footer a { color: var(--muted); }
 </style>
 </head>
@@ -177,8 +158,10 @@
 
   <h1>Watching clarity emerge from its drivers, in real time.</h1>
   <p class="lede">
-    Live water-quality readings from the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a>,
-    sampled every fifteen minutes by YSI EXO sondes at three anchor sites — one on each side of the lake.
+    Live readings from the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a> —
+    lake sondes sampling water quality every fifteen minutes, and forest
+    stations tracking the soil, air and trees of the watersheds that feed
+    the lake.
   </p>
 
   <div class="status" role="status" aria-live="polite">
@@ -186,20 +169,35 @@
     <span class="status-text" id="status-text">Loading latest observations…</span>
   </div>
 
+  <h2>Same weather, two watersheds</h2>
+  <p>
+    Homewood and Glenbrook 2 sit within about a kilometre of the same
+    latitude on opposite shores — close enough to share every storm and
+    sun angle, far enough apart to sit on opposite sides of the Sierra
+    rain shadow. The west side collects the precipitation; the east side
+    stays dry. Watch the two columns diverge.
+  </p>
+  <section id="transect" aria-label="East-west transect comparison"></section>
+
   <h2>Three anchors on the lake</h2>
-  <section class="cards" id="cards" aria-label="Live sensor readings"></section>
+  <section class="cards" id="cards" aria-label="Lake sonde readings"></section>
   <p class="offline" id="offline"></p>
 
-  <h2>Observatory inventory</h2>
+  <h2>Forest stations</h2>
   <p>
-    TEON launched publicly on Sept 15, 2026 and is still building out —
-    calibration, sensor deployment, backend routing. Below is every sensor
-    in the current inventory, grouped by where it lives. Green dots are
-    reporting within the last day; amber have been quiet longer; grey have
-    been dormant a while (often seasonal — many lake sondes get pulled
-    over the summer for maintenance).
+    Each station is a Campbell logger reading soil moisture and temperature
+    at two depths, air temperature and humidity, and at three Glenbrook
+    sites a set of eight band dendrometers measuring stem diameter — which
+    both grows through the season and swells and shrinks daily with the
+    tree's water content.
   </p>
-  <section id="inventory" aria-label="Observatory inventory"></section>
+  <section class="cards" id="stations" aria-label="Terrestrial station readings"></section>
+
+  <h2>Field cameras</h2>
+  <p id="camera-intro">
+    Five stations carry cameras logging into TEON's LoggerNet bucket.
+  </p>
+  <section id="cameras" aria-label="Field camera status"></section>
 
   <h2>Wildfire in the water</h2>
   <p>
@@ -209,16 +207,19 @@
     above lets us watch a fire's fingerprint arrive in the lake.
   </p>
   <div class="placeholder-card">
-    <strong>Coming soon.</strong> Fire overlay and Chl_a event-detection are
-    the next feature landing on this page.
+    <strong>Coming soon.</strong> Fire overlay and chlorophyll
+    event-detection are the next feature landing on this page.
   </div>
 
-  <h2>Clarity nowcast</h2>
+  <h2>Observatory inventory</h2>
   <p>
-    A live estimate of Secchi depth predicted from real-time sensor
-    readings — chlorophyll, turbidity, wave stirring — with the historical
-    Secchi record as ground truth. Modelling work in progress.
+    TEON launched publicly on Sept 15, 2026 and is still building out.
+    Below is every sensor in the current inventory. Green dots are
+    reporting within the last day; amber have been quiet longer; grey have
+    been dormant a while — often seasonal, since many lake sondes get
+    pulled over the summer for maintenance.
   </p>
+  <section id="inventory" aria-label="Observatory inventory"></section>
 
   <hr class="rule">
 
@@ -231,15 +232,18 @@
 </main>
 
 <script>
-  const CARD_VARIABLES = ["Temp", "Chl_a", "Do_percent", "Turbidity"];
-  const CARD_ORDER = ["Sunnyside", "Glenbrook", "4H Camp"];
-  const SHORE_FOR = { Sunnyside: "west", Glenbrook: "east", "4H Camp": "south" };
+  const LAKE_ORDER = ["Sunnyside", "Glenbrook", "4H Camp"];
+  const LAKE_VARS  = ["Temp", "Chl_a", "Do_percent", "Turbidity"];
+  const SHORE_FOR  = { Sunnyside: "west", Glenbrook: "east", "4H Camp": "south" };
+  const STATION_VARS = ["Air_Temp", "RH", "Soil_VWC", "Soil_T"];
+  const TRANSECT_VARS = ["Air_Temp", "RH", "Soil_VWC", "Soil_T"];
   const CATEGORY_LABELS = { lake: "Lake", stream: "Stream", terrestrial: "Terrestrial" };
 
   const fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
   const fmtInt = new Intl.NumberFormat();
-
   const slugify = (s) => (s || "").toLowerCase().replace(/\s+/g, "");
+  const esc = (s) => String(s).replace(/[&<>"']/g,
+    c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 
   function timeAgo(iso) {
     const then = new Date(iso);
@@ -252,109 +256,140 @@
     if (hours < 36) return `${hours} h ago`;
     const days = Math.round(hours / 24);
     if (days < 60) return `${days} d ago`;
-    const months = Math.round(days / 30);
-    return `${months} mo ago`;
+    return `${Math.round(days / 30)} mo ago`;
   }
 
   function ageState(iso) {
     if (!iso) return "dead";
-    const ageMs = Date.now() - new Date(iso).getTime();
-    if (isNaN(ageMs)) return "dead";
-    const hours = ageMs / 3600000;
+    const ms = Date.now() - new Date(iso).getTime();
+    if (isNaN(ms)) return "dead";
+    const hours = ms / 3600000;
     if (hours < 24)  return "live";
-    if (hours < 720) return "stale";  // <30 days
+    if (hours < 720) return "stale";
     return "dead";
   }
 
-  function renderSiteCard(name, site) {
-    const readings = site.readings || {};
-    const cells = CARD_VARIABLES
+  function readingCells(readings, order) {
+    return order
       .filter(v => readings[v] !== undefined)
       .map(v => {
-        const { value, label, units } = readings[v];
+        const r = readings[v];
+        const note = r.note ? `<div class="reading-note">calibration suspect</div>` : "";
         return `
           <div class="reading">
-            <div class="reading-value">${fmt.format(value)}<span class="units">${units || ""}</span></div>
-            <div class="reading-label">${label}</div>
+            <div class="reading-value">${fmt.format(r.value)}<span class="units">${esc(r.units || "")}</span></div>
+            <div class="reading-label">${esc(r.label)}</div>
+            ${note}
           </div>`;
-      })
-      .join("");
+      }).join("");
+  }
+
+  function renderCard(name, meta, readings, order, extra) {
     return `
       <article class="card">
         <div class="card-head">
-          <h3 class="card-title">${name}</h3>
-          <span class="shore">${site.shore || ""} shore</span>
+          <h3 class="card-title">${esc(name)}</h3>
+          <span class="shore">${esc(meta.shore || "")}${meta.shore ? " shore" : ""}</span>
         </div>
-        <p class="observed">Observed ${timeAgo(site.observed_at)}</p>
-        <div class="readings">${cells}</div>
+        <p class="observed">Observed ${timeAgo(meta.observed_at)}</p>
+        <div class="readings">${readingCells(readings, order)}</div>
+        ${extra || ""}
       </article>`;
   }
 
-  function renderEmptyCard(name, note) {
+  function renderEmptyCard(name, note, tag) {
     return `
       <article class="card">
         <div class="card-head">
-          <h3 class="card-title">${name}</h3>
-          <span class="shore">offline</span>
+          <h3 class="card-title">${esc(name)}</h3>
+          <span class="shore">${esc(tag || "offline")}</span>
         </div>
-        <p class="observed">${note}</p>
+        <p class="observed">${esc(note)}</p>
       </article>`;
   }
 
-  function renderDisabledCard(name, shore) {
+  function renderTransect(t) {
+    if (!t) {
+      return `<div class="placeholder-card">Both halves of the transect need
+        current data. Waiting on one or both stations.</div>`;
+    }
+    const w = t.west, e = t.east;
+    const rows = TRANSECT_VARS
+      .filter(v => w.readings[v] !== undefined || e.readings[v] !== undefined)
+      .map(v => {
+        const wr = w.readings[v], er = e.readings[v];
+        const label = (wr || er).label;
+        const wv = wr ? `${fmt.format(wr.value)}<span class="units">${esc(wr.units||"")}</span>` : "—";
+        const ev = er ? `${fmt.format(er.value)}<span class="units">${esc(er.units||"")}</span>` : "—";
+        return `
+          <div class="transect-row">
+            <div class="tval">${wv}</div>
+            <div class="tlabel">${esc(label)}</div>
+            <div class="tval e">${ev}</div>
+          </div>`;
+      }).join("");
     return `
-      <article class="card">
-        <div class="card-head">
-          <h3 class="card-title">${name}</h3>
-          <span class="shore">${shore || ""} shore · disabled</span>
+      <div class="transect">
+        <div class="transect-row transect-head">
+          <div class="tside w">${esc(w.site)}</div>
+          <div class="tmid">WEST · EAST</div>
+          <div class="tside e">${esc(e.site)}</div>
         </div>
-        <p class="observed">Hidden by TEON at source. The sensor is deployed
-          and reporting, but the observatory has flagged the site as
-          non-public — likely calibration or data-quality review. secchi
-          respects the flag.</p>
-      </article>`;
+        ${rows}
+      </div>`;
+  }
+
+  function renderCameras(cameras) {
+    if (!cameras || !cameras.length) {
+      return `<div class="placeholder-card">No camera records ingested yet.</div>`;
+    }
+    const total = cameras.reduce((n, c) => n + c.count, 0);
+    const rows = cameras.map(c => `
+      <tr>
+        <td style="width:1rem"><span class="inv-dot" data-state="${ageState(c.latest_at)}"></span></td>
+        <td class="inv-site">${esc(c.site)}</td>
+        <td class="inv-meta" style="text-align:right; white-space:nowrap">${timeAgo(c.latest_at)}</td>
+        <td class="inv-meta" style="text-align:right; white-space:nowrap">${fmtInt.format(c.count)} frames</td>
+      </tr>`).join("");
+    return `
+      <table class="inv-table"><tbody>${rows}</tbody></table>
+      <div class="placeholder-card" style="margin-top:1rem">
+        <strong>${fmtInt.format(total)} frames indexed, none displayable yet.</strong>
+        TEON stores each capture as an <code>s3://</code> object reference,
+        which a browser can't load directly. A time-lapse needs either a
+        public HTTPS form of these URLs or a small proxy. Until then secchi
+        tracks that the imagery exists and when it was taken.
+      </div>`;
   }
 
   function renderInventory(inventory, disabledSet) {
-    // Group: category → sensor_type → [entries]
     const groups = new Map();
-    for (const entry of inventory) {
-      const cat = entry.category || "other";
+    for (const e of inventory) {
+      const cat = e.category || "other";
       if (!groups.has(cat)) groups.set(cat, new Map());
+      const t = e.sensor_type_display || e.sensor_type;
       const types = groups.get(cat);
-      const t = entry.sensor_type_display || entry.sensor_type;
       if (!types.has(t)) types.set(t, []);
-      types.get(t).push(entry);
+      types.get(t).push(e);
     }
-
     const parts = [];
-    const catOrder = ["lake", "stream", "terrestrial"];
-    for (const cat of catOrder) {
+    for (const cat of ["lake", "stream", "terrestrial"]) {
       if (!groups.has(cat)) continue;
-      parts.push(`<h3 class="section-sub">${CATEGORY_LABELS[cat] || cat}</h3>`);
+      parts.push(`<h3 class="sub">${CATEGORY_LABELS[cat] || esc(cat)}</h3>`);
       const types = groups.get(cat);
-      const typeNames = Array.from(types.keys()).sort();
-      for (const typeName of typeNames) {
-        const rows = types.get(typeName);
-        parts.push(`<div class="inv-group"><h4 class="sensor-type">${typeName}</h4>`);
-        parts.push(`<table class="inv-table"><tbody>`);
-        for (const r of rows) {
-          const state = ageState(r.last_update);
+      for (const typeName of Array.from(types.keys()).sort()) {
+        parts.push(`<div class="inv-group"><h4 class="stype">${esc(typeName)}</h4><table class="inv-table"><tbody>`);
+        for (const r of types.get(typeName)) {
           const isDisabled = disabledSet.has(slugify(r.site));
-          const dotState = isDisabled ? "dead" : state;
           const flags = [];
           if (isDisabled) flags.push(`<span class="inv-flag">hidden by TEON</span>`);
           if (r.is_manual) flags.push(`<span class="inv-flag">manual</span>`);
-          const when = isDisabled
-            ? "hidden"
-            : (r.last_update ? timeAgo(r.last_update) : "no data");
-          const count = r.data_count ? `${fmtInt.format(r.data_count)} obs` : "";
           parts.push(`
             <tr>
-              <td style="width:1rem"><span class="inv-dot" data-state="${dotState}"></span></td>
-              <td class="inv-site">${r.site}${flags.join("")}</td>
-              <td class="inv-meta" style="text-align:right; white-space:nowrap">${when}</td>
-              <td class="inv-meta" style="text-align:right; white-space:nowrap">${count}</td>
+              <td style="width:1rem"><span class="inv-dot" data-state="${isDisabled ? "dead" : ageState(r.last_update)}"></span></td>
+              <td class="inv-site">${esc(r.site)}${flags.join("")}</td>
+              <td class="inv-meta" style="text-align:right; white-space:nowrap">${isDisabled ? "hidden" : (r.last_update ? timeAgo(r.last_update) : "no data")}</td>
+              <td class="inv-meta" style="text-align:right; white-space:nowrap">${r.data_count ? fmtInt.format(r.data_count) + " obs" : ""}</td>
             </tr>`);
         }
         parts.push(`</tbody></table></div>`);
@@ -364,54 +399,86 @@
   }
 
   async function load() {
-    const cards = document.getElementById("cards");
-    const dot = document.getElementById("status-dot");
-    const text = document.getElementById("status-text");
-    const offline = document.getElementById("offline");
-    const inventory = document.getElementById("inventory");
+    const $ = (id) => document.getElementById(id);
+    const dot = $("status-dot"), text = $("status-text");
 
     try {
       const res = await fetch("assets/latest.json", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const snapshot = await res.json();
+      const snap = await res.json();
+      const disabled = new Set(snap.disabled || []);
 
-      const disabledSet = new Set(snapshot.disabled || []);
-      const sites = snapshot.sites || {};
-
-      cards.innerHTML = CARD_ORDER.map(name => {
-        if (disabledSet.has(slugify(name))) {
-          return renderDisabledCard(name, SHORE_FOR[name]);
+      // Lake cards
+      const sites = snap.sites || {};
+      $("cards").innerHTML = LAKE_ORDER.map(name => {
+        if (disabled.has(slugify(name))) {
+          return renderEmptyCard(name,
+            "Hidden by TEON at source — the sonde reports, but the observatory "
+            + "has flagged this site as non-public. secchi respects the flag.",
+            `${SHORE_FOR[name]} shore · disabled`);
         }
-        return sites[name]
-          ? renderSiteCard(name, sites[name])
-          : renderEmptyCard(name, "No recent data.");
+        if (!sites[name]) return renderEmptyCard(name, "No recent data.");
+        return renderCard(name,
+          { shore: sites[name].shore, observed_at: sites[name].observed_at },
+          sites[name].readings, LAKE_VARS);
       }).join("");
 
-      const timestamps = Object.values(sites)
-        .map(s => new Date(s.observed_at).getTime())
-        .filter(t => !isNaN(t));
-      if (timestamps.length) {
-        const newest = new Date(Math.max(...timestamps)).toISOString();
-        const ageMinutes = (Date.now() - new Date(newest).getTime()) / 60000;
-        dot.dataset.state = ageMinutes < 120 ? "live" : "stale";
-        text.textContent = `Live from TEON. Freshest reading ${timeAgo(newest)}.`;
+      // Transect
+      $("transect").innerHTML = renderTransect(snap.transect);
+
+      // Station cards
+      const stations = snap.stations || {};
+      const stationNames = Object.keys(stations);
+      $("stations").innerHTML = stationNames.length
+        ? stationNames.map(name => {
+            const s = stations[name];
+            const dendro = s.dendrometers
+              ? `<p class="observed">${s.dendrometers.count} dendrometers ·
+                 mean stem Δ ${fmtInt.format(s.dendrometers.mean_change)} ${esc(s.dendrometers.units)}</p>`
+              : "";
+            return renderCard(name, { shore: s.shore, observed_at: s.observed_at },
+                              s.readings, STATION_VARS, dendro);
+          }).join("")
+        : `<div class="placeholder-card">No station data ingested yet. Run an
+           <code>all-live</code> ingest to populate this section.</div>`;
+
+      // Cameras
+      $("cameras").innerHTML = renderCameras(snap.cameras);
+
+      // Inventory
+      $("inventory").innerHTML = renderInventory(snap.inventory || [], disabled);
+
+      // Status line — freshest reading anywhere.
+      const stamps = [
+        ...Object.values(sites).map(s => s.observed_at),
+        ...Object.values(stations).map(s => s.observed_at),
+      ].map(t => new Date(t).getTime()).filter(t => !isNaN(t));
+
+      if (stamps.length) {
+        const newest = new Date(Math.max(...stamps)).toISOString();
+        const liveCount = Object.keys(sites).length + stationNames.length;
+        dot.dataset.state = ageState(newest);
+        text.textContent =
+          `Live from TEON — ${liveCount} station${liveCount === 1 ? "" : "s"} reporting. `
+          + `Freshest reading ${timeAgo(newest)}.`;
       } else {
         dot.dataset.state = "stale";
         text.textContent = "No live observations available.";
       }
 
-      offline.innerHTML =
-        `Two more EXO sites — <em>Blackwood 3</em> and <em>Meeks</em>, both west-shore — ` +
-        `are manual sondes and stopped reporting on 2026-07-09 pending physical retrieval.`;
+      $("offline").innerHTML =
+        `Two more EXO sites — <em>Blackwood 3</em> and <em>Meeks</em>, both west-shore — `
+        + `are manual sondes and stopped reporting on 2026-07-09 pending physical retrieval.`;
 
-      inventory.innerHTML = renderInventory(snapshot.inventory || [], disabledSet);
     } catch (err) {
       dot.dataset.state = "stale";
       text.textContent = `Couldn't load the latest snapshot (${err.message}).`;
-      cards.innerHTML = CARD_ORDER
-        .map(name => renderEmptyCard(name, "Waiting on ingest."))
-        .join("");
-      inventory.innerHTML = "";
+      $("cards").innerHTML = LAKE_ORDER
+        .map(n => renderEmptyCard(n, "Waiting on ingest.")).join("");
+      $("transect").innerHTML = "";
+      $("stations").innerHTML = "";
+      $("cameras").innerHTML = "";
+      $("inventory").innerHTML = "";
     }
   }
   load();

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Iterator
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -24,9 +25,11 @@ from secchi.config import (
     DEFAULT_INGEST_PAGE_SIZE,
     HTTP_TIMEOUT_SECONDS,
     LIVE_WINDOW_HOURS,
+    SENSOR_TYPE_CANONICAL,
     SENSOR_TYPE_SLUGS,
     TEON_API_BASE,
     TEON_ENDPOINTS,
+    TEON_TIMEZONE,
     USER_AGENT,
 )
 
@@ -43,6 +46,9 @@ class TeonClient:
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
             follow_redirects=True,
         )
+        # sensor_type display name → confirmed working slug, populated by
+        # resolve_slug so we probe each type at most once per session.
+        self._slug_cache: dict[str, str] = {}
 
     def __enter__(self) -> "TeonClient":
         return self
@@ -120,6 +126,44 @@ class TeonClient:
     # Time series
     # ------------------------------------------------------------------
 
+    def resolve_slug(self, sensor_type: str, site: str) -> str | None:
+        """Find the working URL slug for a sensor type, trying candidates.
+
+        :data:`SENSOR_TYPE_SLUGS` maps each display name to a tuple of
+        candidate slugs. We try them in order against ``site`` and cache
+        the first that returns 200, so subsequent sites of the same type
+        cost no extra probes. Returns ``None`` if every candidate 404s.
+
+        Note a 404 here is ambiguous: it can mean "wrong slug" or "right
+        slug, no data for this site" (TEON returns 404 rather than an empty
+        list for hidden sites). We therefore only cache *successes*, never
+        negative results, so a later site of the same type gets a fresh try.
+        """
+        if sensor_type in self._slug_cache:
+            return self._slug_cache[sensor_type]
+
+        candidates = SENSOR_TYPE_SLUGS.get(sensor_type)
+        if not candidates:
+            log.warning("no slug candidates configured for sensor type %r", sensor_type)
+            return None
+
+        for slug in candidates:
+            url = f"{self._base}/sensors/{slug}"
+            try:
+                resp = self._client.get(url, params={"site": site, "page": 1, "page_size": 1})
+            except httpx.HTTPError as exc:
+                log.warning("probe %s failed: %s", slug, exc)
+                continue
+            if resp.status_code == 200:
+                log.info("resolved %r → /sensors/%s", sensor_type, slug)
+                self._slug_cache[sensor_type] = slug
+                return slug
+            log.debug("probe %s → %s", slug, resp.status_code)
+
+        log.warning("no candidate slug worked for %r (tried: %s)",
+                    sensor_type, ", ".join(candidates))
+        return None
+
     def fetch_sensor(
         self,
         sensor_type: str,
@@ -129,16 +173,14 @@ class TeonClient:
     ) -> dict[str, Any]:
         """Fetch recent observations for one (sensor_type, site) pair.
 
-        ``sensor_type`` is the payload key from :func:`list_sensors` (e.g.
-        ``"ExoSensor"``); it gets translated to a URL slug via
-        :data:`SENSOR_TYPE_SLUGS`. Records come back newest-first; we walk
+        ``sensor_type`` is the display name from :func:`list_sensors` (e.g.
+        ``"Soil Environmental Conditions"``); the URL slug is resolved via
+        :func:`resolve_slug`. Records come back newest-first; we walk
         pagination until we've collected ``max_records`` or run out.
-
-        Returns a snapshot dict with metadata and the flattened records.
         """
-        slug = SENSOR_TYPE_SLUGS.get(sensor_type)
+        slug = self.resolve_slug(sensor_type, site)
         if slug is None:
-            raise KeyError(f"no URL slug configured for sensor type {sensor_type!r}")
+            raise KeyError(f"could not resolve a URL slug for sensor type {sensor_type!r}")
 
         url = f"{self._base}/sensors/{slug}"
         records: list[dict[str, Any]] = []
@@ -151,7 +193,7 @@ class TeonClient:
                 url, params={"site": site, "page": page, "page_size": page_size}
             )
             if resp.status_code == 404:
-                log.warning("slug %s returned 404 — sensor type may not be a valid endpoint", slug)
+                log.warning("%s @ %s → 404 (site may be hidden or have no data)", slug, site)
                 break
             resp.raise_for_status()
             payload = resp.json()
@@ -171,7 +213,8 @@ class TeonClient:
         return {
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "source": "TEON",
-            "sensor_type": sensor_type,
+            "sensor_type": SENSOR_TYPE_CANONICAL.get(sensor_type, sensor_type),
+            "sensor_type_display": sensor_type,
             "sensor_slug": slug,
             "site": site,
             "record_count": len(records),
@@ -193,17 +236,26 @@ class TeonClient:
 
 
 def _parse_teon_ts(value: Any) -> datetime | None:
-    """TEON emits naive ISO 8601 in what looks like local time; treat as UTC.
+    """Parse a naive TEON timestamp as :data:`TEON_TIMEZONE`-local.
 
-    (We can't verify the timezone without documentation, so UTC is the safe
-    default for freshness comparisons and it stays consistent across sites.)
+    TEON returns wall-clock times with no offset. See the reasoning beside
+    ``TEON_TIMEZONE`` in config for why Pacific local rather than UTC.
+    Falls back to UTC if the zone database is unavailable, which keeps
+    freshness comparisons working (just offset) rather than crashing.
     """
     if not value or not isinstance(value, str):
         return None
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        naive = datetime.fromisoformat(value)
     except ValueError:
         return None
+    if naive.tzinfo is not None:
+        return naive
+    try:
+        return naive.replace(tzinfo=ZoneInfo(TEON_TIMEZONE))
+    except Exception:
+        log.debug("zone %s unavailable; treating timestamps as UTC", TEON_TIMEZONE)
+        return naive.replace(tzinfo=timezone.utc)
 
 
 def slugify_site(site: str) -> str:

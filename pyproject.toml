@@ -60,13 +60,27 @@ pandas = ">=2.2"
 pyarrow = ">=16.0"
 python-dateutil = ">=2.9"
 pydantic = ">=2.7"
+# TEON returns naive local timestamps; we localize them to
+# America/Los_Angeles (see TEON_TIMEZONE in config.py), which needs a zone
+# database present. Without it the code falls back to UTC and every
+# "X ago" is off by the offset.
+tzdata = "*"
 
 # Everyday commands. `pixi run <name>` from anywhere in the repo.
 [tool.pixi.tasks]
-ingest    = "python -m secchi.ingest"
-transform = "python -m secchi.transform"
-pipeline  = { depends-on = ["ingest", "transform"] }
-serve     = "python -m http.server 8000 --directory web"
+# Pull every live, visible sensor — all six confirmed TEON sensor types
+# across the lake sondes, forest stations, stream gauge and cameras.
+ingest-all = "python -m secchi.ingest --mode all-live"
+# Lake EXO sondes only. Faster; useful when iterating on the water-quality
+# side without waiting on ~90 requests.
+ingest     = "python -m secchi.ingest --mode live-exo"
+# Diagnostic: resolve a URL slug for every live sensor type and print a
+# report, writing nothing. Re-run after TEON ships backend changes, or when
+# a dormant sensor type comes back online.
+probe      = "python -m secchi.ingest --mode probe"
+transform  = "python -m secchi.transform"
+pipeline   = { depends-on = ["ingest-all", "transform"] }
+serve      = "python -m http.server 8000 --directory web"
 
 # ---------------------------------------------------------------------------
 # Features — additive dependency sets, composed into environments below.

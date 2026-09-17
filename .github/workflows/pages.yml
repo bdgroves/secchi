@@ -57,7 +57,7 @@ jobs:
         # raw snapshots so a deploy still ships something current-ish
         # rather than failing outright.
         continue-on-error: true
-        run: pixi run ingest
+        run: pixi run ingest-all
 
       - name: Build latest.json
         run: pixi run transform
