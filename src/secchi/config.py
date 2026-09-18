@@ -663,6 +663,118 @@ SPARKLINE_MIN_POINTS = 8
 # steady. Keeps instrument noise from reading as a trend.
 TREND_SIGNIFICANCE = 0.15
 
+
+# ===========================================================================
+# Ground truth: the TERC Secchi record
+# ===========================================================================
+# UC Davis TERC has measured Lake Tahoe clarity with a Secchi disk since
+# 1968 — the record this project is named after. Individual readings are
+# published in the Environmental Data Initiative repository, which is a
+# proper versioned scientific archive with a REST API (PASTA+), not a PDF.
+#
+# Browse: https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340
+#
+# Why this matters: it is the ONLY dependency the clarity nowcast actually
+# has. Every sensor stream we ingest is a predictor; this is the thing
+# being predicted. Without it there is nothing to calibrate or validate
+# against, and adding more sensors does not substitute.
+
+EDI_API_BASE = "https://pasta.lternet.edu/package"
+EDI_SCOPE = "edi"
+EDI_SECCHI_IDENTIFIER = 1340
+
+# Known reference points from TERC's published reports, for sanity-checking
+# whatever the API returns. If a parsed annual mean disagrees with these by
+# more than a foot or so, the parse is wrong, not the report.
+TERC_ANNUAL_MEANS_FT: dict[int, float] = {
+    2025: 69.2,
+    2024: 62.3,
+    2023: 68.2,
+}
+
+# The regulatory target: annual average Secchi depth, being the mean of
+# readings recorded 1967–1971. TRPA threshold standard WQ1 states the
+# annual average shall not fall below this.
+TERC_CLARITY_TARGET_FT = 97.4
+TERC_CLARITY_TARGET_M = 29.7
+
+# Measurement precision, from Jassby et al. (1999): ±0.027 m between two
+# observers. Useful when deciding how much precision a model can claim.
+TERC_SECCHI_PRECISION_M = 0.027
+
+# TERC reports winter and summer separately because they behave
+# differently — winter clarity is stable, summer clarity is degrading over
+# the long term. An annual mean averages that structure away, so any model
+# built on this record should be seasonal.
+TERC_SEASONS = {
+    "winter": (12, 1, 2, 3),
+    "summer": (6, 7, 8, 9),
+}
+
+# Where cached reference data lives. These are static or slow-changing
+# datasets fetched deliberately, never on the hourly cron.
+REFERENCE_DIR = Path(__file__).resolve().parents[2] / "data" / "reference"
+
+# ---------------------------------------------------------------------------
+# The watershed characteristics layer
+# ---------------------------------------------------------------------------
+# Catchment polygons plus ~168 climate and landscape attributes per
+# catchment. Endpoints found by network inspection 2026-09-18; the
+# polygons are a static file on TEON's own domain, the attributes and the
+# data dictionary come from the API.
+#
+# Fetched once and cached — boundaries do not change, so this is not cron
+# work. See docs/watershed-layer.md.
+WATERSHED_POLYGON_URL = (
+    "https://tahoeenvironmentalobservatorynetwork.org/data/TahoeWatersheds.json"
+)
+WATERSHED_ATTRIBUTES_URL = f"{TEON_API_BASE}/watersheds/attributes"
+WATERSHED_VARIABLES_URL = f"{TEON_API_BASE}/watersheds/variables"
+
+# Attributes worth carrying into the station join and the map. 168 columns
+# is too much payload for a web map, and several are unusable — see the
+# data-quality section of docs/watershed-layer.md.
+WATERSHED_DISPLAY_VARIABLES: tuple[str, ...] = (
+    # Climate forcing — the variable the transect has been missing
+    "PrecipAvg", "PrecipStDe", "TempAvg", "CWDAvg", "Runoff",
+    # Why a site is wet or dry beyond its climate
+    "TWID8Avg", "DWaterAvg", "Meadow", "ValleyBott", "TotalFlood", "KsatAvg",
+    # Sediment supply — the clarity chain
+    "SlopeAvg", "ElevAvg", "ImpervAvg", "TreeAvg", "TreeChngAv", "BareAvg",
+    # Fire history
+    "TotalFire", "Fire2001", "Fire2002", "Fire2003", "Fire2006",
+    "Fire2007", "Fire2014", "Fire2016", "Fire2021",
+    # Identity and scale
+    "Area_Km", "Drndn", "Total_M",
+)
+
+# Variables NOT to display, with the reason. Recorded so nobody wires them
+# in later without knowing.
+WATERSHED_UNUSABLE_VARIABLES: dict[str, str] = {
+    "pHAvg": "Reads 1.79 at Cave Rock, 2.61 at Glenbrook Creek — impossible "
+             "for soil. Huge companion std devs indicate nodata averaged in "
+             "as zeros.",
+    "pHStDev": "See pHAvg.",
+    "CECAvg": "Reads 0.0 in several catchments; same nodata problem.",
+    "ECECAvg": "Reads 0.0 in several catchments; same nodata problem.",
+    "AETAvg": "Values ~1.3-2.0 with units given as mm. Annual actual ET here "
+              "is several hundred mm, so the unit is wrong or these are "
+              "daily means. Relative pattern may hold; absolutes do not.",
+    "PETavg": "See AETAvg.",
+}
+
+# Catchments to exclude from any station join, with the reason.
+WATERSHED_EXCLUDE: dict[str, str] = {
+    # TEON labelled this one themselves.
+    "Tahoe State Park (drains into Truckee River not Tahoe)":
+        "Does not drain to the lake — named as such in TEON's own data.",
+    "Marlette Creek":
+        "TWID8Avg reads 833.9 against a 5-55 range elsewhere. The catchment "
+        "contains Marlette Lake and the wetness index diverges over standing "
+        "water. Exclude from TWI analysis specifically, not necessarily from "
+        "everything.",
+}
+
 # ---------------------------------------------------------------------------
 # Local paths
 # ---------------------------------------------------------------------------

@@ -1,0 +1,644 @@
+{
+  "variables": {
+    "Latitude": {
+      "label": "Latitude",
+      "units": "\u00b0"
+    },
+    "Longitude": {
+      "label": "Longitude",
+      "units": "\u00b0"
+    },
+    "Area_Mi": {
+      "label": "Area in miles",
+      "units": "mi3"
+    },
+    "Area_Ft": {
+      "label": "Area in feet",
+      "units": "ft2"
+    },
+    "Area_Ac": {
+      "label": "Area in acres",
+      "units": "ac"
+    },
+    "Area_M": {
+      "label": "Area in meters",
+      "units": "m3"
+    },
+    "Area_Ha": {
+      "label": "Area in hectares",
+      "units": "ha"
+    },
+    "Area_Km": {
+      "label": "Area in kilometers",
+      "units": "km2"
+    },
+    "Perim_M": {
+      "label": "Perimter in meters",
+      "units": "m"
+    },
+    "PAR": {
+      "label": "Perimeter to area ratio",
+      "units": "ratio"
+    },
+    "ShapeIndex": {
+      "label": "Shape Index",
+      "units": "ratio"
+    },
+    "PourLat": {
+      "label": "Latitude of the pour point",
+      "units": "\u00b0"
+    },
+    "PourLong": {
+      "label": "Longitude of the pour point",
+      "units": "\u00b0"
+    },
+    "Total_M": {
+      "label": "Total stream length",
+      "units": "m"
+    },
+    "Drndn": {
+      "label": "Drainage density",
+      "units": "km\u00a0km\u22122"
+    },
+    "Relief": {
+      "label": "Relief",
+      "units": "m"
+    },
+    "Rugged": {
+      "label": "Ruggedness",
+      "units": "ratio"
+    },
+    "RlfRatio": {
+      "label": "Relief ratio",
+      "units": "ratio"
+    },
+    "StrmPow": {
+      "label": "Stream Power Index",
+      "units": "km2"
+    },
+    "HypsInt": {
+      "label": "Hypsometric integral",
+      "units": "index"
+    },
+    "Meadow": {
+      "label": "Percent meadows",
+      "units": "%"
+    },
+    "L1st": {
+      "label": "Length of first order streams",
+      "units": "m"
+    },
+    "L2nd": {
+      "label": "Length of second order streams",
+      "units": "m"
+    },
+    "L3rd": {
+      "label": "Length of third order streams",
+      "units": "m"
+    },
+    "L4th": {
+      "label": "Length of fourth order streams",
+      "units": "m"
+    },
+    "L5th": {
+      "label": "Length of fifth order streams",
+      "units": "m"
+    },
+    "L6th": {
+      "label": "Length of sixth order streams",
+      "units": "m"
+    },
+    "P1st": {
+      "label": "Percent  first order streams",
+      "units": "%"
+    },
+    "P2nd": {
+      "label": "Percent  second order streams",
+      "units": "%"
+    },
+    "P3rd": {
+      "label": "Percent  third order streams",
+      "units": "%"
+    },
+    "P4th": {
+      "label": "Percent  fourth order streams",
+      "units": "%"
+    },
+    "P5th": {
+      "label": "Percent  fifth order streams",
+      "units": "%"
+    },
+    "P6th": {
+      "label": "Percent  sixth order streams",
+      "units": "%"
+    },
+    "Velocity": {
+      "label": "Modeled velocity",
+      "units": "feet / second"
+    },
+    "BuildingAv": {
+      "label": "Building area",
+      "units": "m2\u00a0km\u22122"
+    },
+    "BuildingSt": {
+      "label": "Building area standard deviation",
+      "units": "m2\u00a0km\u22122"
+    },
+    "PavedAvg": {
+      "label": "Percent paved road",
+      "units": "%"
+    },
+    "PavedStDev": {
+      "label": "Paved road standard deviation",
+      "units": "%"
+    },
+    "UnpavedAvg": {
+      "label": "Percent unpaved road",
+      "units": "%"
+    },
+    "UnpavedStD": {
+      "label": "Unpaved road standard deviation",
+      "units": "%"
+    },
+    "TrailAvg": {
+      "label": "Percent trail",
+      "units": "%"
+    },
+    "TrailStDev": {
+      "label": "Trail standard deviation",
+      "units": "%"
+    },
+    "TempAvg": {
+      "label": "Mean annual temperature",
+      "units": "\u00b0C"
+    },
+    "TempStDev": {
+      "label": "Mean annual temperature standard deviation",
+      "units": "\u00b0C"
+    },
+    "PrecipAvg": {
+      "label": "Annual precipitation",
+      "units": "mm"
+    },
+    "PrecipStDe": {
+      "label": "Annual precipitation standard deviation",
+      "units": "mm"
+    },
+    "PETAvg": {
+      "label": "Potential evapotranspiration",
+      "units": "mm"
+    },
+    "PETStDev": {
+      "label": "Potential evapotranspiration standard deviation",
+      "units": "mm"
+    },
+    "AETAvg": {
+      "label": "Actual evapotranspiration",
+      "units": "mm"
+    },
+    "AETStDev": {
+      "label": "Actual evapotranspiration standard deviation",
+      "units": "mm"
+    },
+    "CWDAvg": {
+      "label": "Climatic water deficit",
+      "units": "mm"
+    },
+    "CWDStDev": {
+      "label": "Climatic water deficit standard deviation",
+      "units": "mm"
+    },
+    "GraniteAvg": {
+      "label": "Percent granitic",
+      "units": "%"
+    },
+    "Volcanic": {
+      "label": "Percent volcanic",
+      "units": "%"
+    },
+    "OtherAvg": {
+      "label": "Percent other parent material",
+      "units": "%"
+    },
+    "BedrockAvg": {
+      "label": "Percent bedrock",
+      "units": "%"
+    },
+    "CoarseAvg": {
+      "label": "Percent coarse fragements",
+      "units": "%"
+    },
+    "ClayAvg": {
+      "label": "Percent clay",
+      "units": "%"
+    },
+    "ClayStDev": {
+      "label": "Clay standard deviation",
+      "units": "%"
+    },
+    "SandAvg": {
+      "label": "Percent sand",
+      "units": "%"
+    },
+    "SandStDev": {
+      "label": "Sand standard deviation",
+      "units": "%"
+    },
+    "SiltAvg": {
+      "label": "Percent silt",
+      "units": "%"
+    },
+    "SiltStDev": {
+      "label": "Silt standard deviation",
+      "units": "%"
+    },
+    "BDAvg": {
+      "label": "Bulk density",
+      "units": "g cm-3"
+    },
+    "BDStDev": {
+      "label": "Bulk density standard deviation",
+      "units": "g cm-3"
+    },
+    "OMAvg": {
+      "label": "Percent organic matter",
+      "units": "g C m-2"
+    },
+    "OMStDev": {
+      "label": "Percent organic matter standard deviation",
+      "units": "g C m-2"
+    },
+    "DBedAvg": {
+      "label": "Depth to bedrock",
+      "units": "cm"
+    },
+    "DBedStDev": {
+      "label": "Depth to bedrock standard deviation",
+      "units": "cm"
+    },
+    "DResAvg": {
+      "label": "Depth to restrictive layer",
+      "units": "cm"
+    },
+    "DResStDev": {
+      "label": "Depth to restrictive layer standard deviation",
+      "units": "cm"
+    },
+    "DWaterAvg": {
+      "label": "Depth to water table",
+      "units": "cm"
+    },
+    "DWaterStDe": {
+      "label": "Depth to water table standard deviation",
+      "units": "cm"
+    },
+    "AWCAvg": {
+      "label": "Available water capacity",
+      "units": "cm"
+    },
+    "AWCStDev": {
+      "label": "Available water capacity standard deviation",
+      "units": "cm"
+    },
+    "AWSAvg": {
+      "label": "Available water supply",
+      "units": "cm"
+    },
+    "AWSStDev": {
+      "label": "Available water supply standard deviation",
+      "units": "cm"
+    },
+    "KsatAvg": {
+      "label": "Saturated hydraulic conductivity of soil",
+      "units": "cm hr-1"
+    },
+    "KsatStDev": {
+      "label": "Saturated hydraulic conductivity of soil standard deviation",
+      "units": "cm hr-2"
+    },
+    "pHAvg": {
+      "label": "pH",
+      "units": null
+    },
+    "pHStDev": {
+      "label": "pH standard deviation",
+      "units": null
+    },
+    "CECAvg": {
+      "label": "Cation exchange capacity",
+      "units": "mEq 100g-1"
+    },
+    "CECStDev": {
+      "label": "Cation exchange capacity standard deviation",
+      "units": "mEq 100g-2"
+    },
+    "ECECAvg": {
+      "label": "Excess cation exchange capacity",
+      "units": "mEq 100g-3"
+    },
+    "ECECStDev": {
+      "label": "Excess cation exchange capacity standard deviation",
+      "units": "mEq 100g-4"
+    },
+    "TotalFire": {
+      "label": "Percent burned",
+      "units": "%"
+    },
+    "Fire2001": {
+      "label": "Percent burned in 2001",
+      "units": "%"
+    },
+    "Fire2002": {
+      "label": "Percent burned in 2002",
+      "units": "%"
+    },
+    "Fire2003": {
+      "label": "Percent burned in 2003",
+      "units": "%"
+    },
+    "Fire2006": {
+      "label": "Percent burned in 2006",
+      "units": "%"
+    },
+    "Fire2007": {
+      "label": "Percent burned in 2007",
+      "units": "%"
+    },
+    "Fire2014": {
+      "label": "Percent burned in 2014",
+      "units": "%"
+    },
+    "Fire2016": {
+      "label": "Percent burned in 2016",
+      "units": "%"
+    },
+    "Fire2021": {
+      "label": "Percent burned in 2021",
+      "units": "%"
+    },
+    "AFGAvg": {
+      "label": "Percent annual forb and grass",
+      "units": "%"
+    },
+    "AFGStDev": {
+      "label": "Annual forb and grass standard deviation",
+      "units": "%"
+    },
+    "AFGChngAvg": {
+      "label": "Annual forb and grass change from 1986 to 2020",
+      "units": "%"
+    },
+    "BareAvg": {
+      "label": "Percent bare ground",
+      "units": "%"
+    },
+    "BareStDev": {
+      "label": "Bare ground standard deviation",
+      "units": "%"
+    },
+    "BareChngAv": {
+      "label": "Bare ground change from 1986 to 2020",
+      "units": "%"
+    },
+    "LitterAvg": {
+      "label": "Percent litter",
+      "units": "%"
+    },
+    "LitterStDe": {
+      "label": "Litter  standard deviation",
+      "units": "%"
+    },
+    "LitterChng": {
+      "label": "Litter change from 1986 to 2020",
+      "units": "%"
+    },
+    "PFGAvg": {
+      "label": "Percent perennial forb and grass",
+      "units": "%"
+    },
+    "PFGStDev": {
+      "label": "Perennial forb and grass standard deviation",
+      "units": "%"
+    },
+    "PFGChngAvg": {
+      "label": "Perennial forb and grass change from 1986 to 2020",
+      "units": "%"
+    },
+    "ShrubAvg": {
+      "label": "Percent percent shrub",
+      "units": "%"
+    },
+    "ShrubStDev": {
+      "label": "Shrub cover standard deviation",
+      "units": "%"
+    },
+    "ShrubChngA": {
+      "label": "Shrub cover change from 1986 to 2020",
+      "units": "%"
+    },
+    "TreeAvg": {
+      "label": "Percent tree cover",
+      "units": "%"
+    },
+    "TreeStDev": {
+      "label": "Tree cover standard deviation",
+      "units": "%"
+    },
+    "TreeChngAv": {
+      "label": "Tree cover change from 1986 to 2020",
+      "units": "%"
+    },
+    "ImpervAvg": {
+      "label": "Percent impervious surface",
+      "units": "%"
+    },
+    "ImpervStDe": {
+      "label": "Impervious surface standard deviation",
+      "units": "%"
+    },
+    "ImpervChng": {
+      "label": "Impervious surface change from 1986 to 2020",
+      "units": "%"
+    },
+    "BarrenAvg": {
+      "label": "Percent barren",
+      "units": "%"
+    },
+    "DevOpenAvg": {
+      "label": "Percent developed open",
+      "units": "%"
+    },
+    "DevLowAvg": {
+      "label": "Percent developed low-density",
+      "units": "%"
+    },
+    "DevMedAvg": {
+      "label": "Percent developed medium-density",
+      "units": "%"
+    },
+    "DevHighAvg": {
+      "label": "Percent developed high-density",
+      "units": "%"
+    },
+    "EmergHerbA": {
+      "label": "Percent emergent herbaceous",
+      "units": "%"
+    },
+    "EvergreenA": {
+      "label": "Percent evergreen",
+      "units": "%"
+    },
+    "OpenWaterA": {
+      "label": "Percent open water",
+      "units": "%"
+    },
+    "Shrub2Avg": {
+      "label": "Percent shrub (NLCD)",
+      "units": "%"
+    },
+    "ElevFt": {
+      "label": "Elevation in feet",
+      "units": "ft"
+    },
+    "ElevAvg": {
+      "label": "Average elevation",
+      "units": "m"
+    },
+    "ElevMed": {
+      "label": "Median elevation",
+      "units": "m"
+    },
+    "ElevMax": {
+      "label": "Maximum elevation",
+      "units": "m"
+    },
+    "ElevMin": {
+      "label": "Minimum elevation",
+      "units": "m"
+    },
+    "ElevRng": {
+      "label": "Elevation range",
+      "units": "m"
+    },
+    "SlopePercA": {
+      "label": "Slope in percent",
+      "units": "%"
+    },
+    "SlopeAvg": {
+      "label": "Average slope",
+      "units": "\u00b0"
+    },
+    "SlopeStDev": {
+      "label": "Slope standard deviation",
+      "units": "\u00b0"
+    },
+    "CurvAvg": {
+      "label": "Average curvature",
+      "units": null
+    },
+    "CurvStDev": {
+      "label": "Curvature standard deviation",
+      "units": null
+    },
+    "HeatLoadAv": {
+      "label": "Average Heat Load Index",
+      "units": "index"
+    },
+    "HeatLoadSt": {
+      "label": "Heat Load Index standard deviation",
+      "units": "index"
+    },
+    "TPILavg": {
+      "label": "Average Topographic Position Index large radius",
+      "units": "m"
+    },
+    "TPISavg": {
+      "label": "Average Topographic Position Index small radius",
+      "units": "m"
+    },
+    "TWID8Avg": {
+      "label": "Average Topographic Wetness Index",
+      "units": "index"
+    },
+    "VRMavg": {
+      "label": "Average Vector Ruggedness Measure",
+      "units": "index"
+    },
+    "VRMLavg": {
+      "label": "Average Local Vector Ruggedness Measure",
+      "units": "index"
+    },
+    "TotalFlood": {
+      "label": "Percent total floodplain",
+      "units": "%"
+    },
+    "ActiveFloo": {
+      "label": "Percent active floodplain",
+      "units": "%"
+    },
+    "InactiveFl": {
+      "label": "Percent inactive floodplain",
+      "units": "%"
+    },
+    "North": {
+      "label": "Percent north aspect",
+      "units": "%"
+    },
+    "Northeast": {
+      "label": "Percent northeast aspect",
+      "units": "%"
+    },
+    "East": {
+      "label": "Percent east aspect",
+      "units": "%"
+    },
+    "Southeast": {
+      "label": "Percent southeast aspect",
+      "units": "%"
+    },
+    "South": {
+      "label": "Percent south aspect",
+      "units": "%"
+    },
+    "Southwest": {
+      "label": "Percent southwest aspect",
+      "units": "%"
+    },
+    "West": {
+      "label": "Percent west aspect",
+      "units": "%"
+    },
+    "Northwest": {
+      "label": "Percent northwest aspect",
+      "units": "%"
+    },
+    "Ridge": {
+      "label": "Percent ridge",
+      "units": "%"
+    },
+    "UpperSlope": {
+      "label": "Percent upper slope",
+      "units": "%"
+    },
+    "MiddleSlop": {
+      "label": "Percent middle slope",
+      "units": "%"
+    },
+    "LowerSlope": {
+      "label": "Percent lower slope",
+      "units": "%"
+    },
+    "ValleyBott": {
+      "label": "Percent valley bottoms",
+      "units": "%"
+    },
+    "Flats": {
+      "label": "Percent flats",
+      "units": "%"
+    },
+    "WindExposu": {
+      "label": "Wind Exposure Index",
+      "units": "index"
+    }
+  }
+}

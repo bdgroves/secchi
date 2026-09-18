@@ -101,6 +101,25 @@ usgs-discover = "python -m secchi.ingest --mode usgs-discover"
 usgs-params = "python -m secchi.ingest --mode usgs-params"
 # Test whether the field-camera s3:// references resolve over public HTTPS.
 camera-probe = "python -m secchi.ingest --mode camera-probe"
+# ---- Reference data and ground truth --------------------------------------
+# Cache the watershed catchment polygons, their ~168 attributes, and the
+# variable dictionary. Static datasets: fetched once, never on the cron.
+# Add --force to refetch.
+reference = "python -m secchi.ingest --mode reference"
+# Report what the cached polygon file actually contains: detected CRS,
+# coordinate extent, geometry types, property keys, and whether polygon
+# names line up with the attribute records. Written after the first
+# catchment-join matched 0 of 28 stations.
+reference-inspect = "python -m secchi.ingest --mode reference-inspect"
+# Assign every station and gauge to its containing catchment and report the
+# attributes that would attach. The join that turns an outlier into an
+# explanation. Requires `reference` and `transform` to have run.
+catchment-join = "python -m secchi.ingest --mode catchment-join"
+# Report what UC Davis TERC's Secchi data package (edi.1340) contains —
+# revisions, entities, real column headers. This is the ground truth for
+# any clarity model, and this command is how we replace guessed column
+# names with actual ones.
+terc-discover = "python -m secchi.ingest --mode terc-discover"
 transform  = "python -m secchi.transform"
 # Delete raw snapshots past RAW_RETENTION_DAYS. Safe only because
 # transform accumulates into data/processed/*.parquet, which is the

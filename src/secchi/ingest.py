@@ -23,6 +23,7 @@ from pathlib import Path
 
 from secchi.config import (
     LIVE_EXO_SITES,
+    WEB_DIR,
     LIVE_WINDOW_HOURS,
     PROCESSED_DIR,
     RAW_DIR,
@@ -370,6 +371,50 @@ def discover_usgs(client: UsgsClient) -> int:
     return 0
 
 
+def fetch_reference_data(force: bool = False) -> int:
+    """Cache the watershed polygons, attributes and dictionary."""
+    from secchi.sources.reference import fetch_reference
+    return fetch_reference(force=force)
+
+
+def report_catchment_join() -> int:
+    """Join stations to catchments and print the result. Writes nothing.
+
+    Reads station coordinates from the dashboard snapshot, which already
+    has one entry per physical location with its lat/lng — no need to
+    re-derive them here.
+    """
+    from secchi.sources.reference import load_reference, report_join
+
+    reference = load_reference()
+    if not reference.get("polygons"):
+        log.error("no catchment polygons cached — run `pixi run reference` first")
+        return 1
+
+    snapshot_path = WEB_DIR / "assets" / "latest.json"
+    if not snapshot_path.exists():
+        log.error("no %s — run `pixi run transform` first", snapshot_path.name)
+        return 1
+    try:
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        log.error("could not read %s: %s", snapshot_path.name, exc)
+        return 1
+
+    points = (snapshot.get("map") or {}).get("points") or []
+    if not points:
+        log.error("snapshot has no map points")
+        return 1
+    return report_join(points, reference)
+
+
+def discover_terc() -> int:
+    """Report what the TERC Secchi data package contains."""
+    from secchi.sources.terc import TercClient
+    with TercClient() as client:
+        return client.discover()
+
+
 def probe_camera_assets() -> int:
     """Test whether the field-camera images are reachable over HTTPS.
 
@@ -493,12 +538,22 @@ def run_usgs(mode: str, codes: list[str] | None = None) -> int:
         return 0 if successes else 1
 
 
-def run(mode: str = "live-exo", codes: list[str] | None = None) -> int:
+def run(mode: str = "live-exo", codes: list[str] | None = None,
+        force: bool = False) -> int:
     if mode == "prune":
         prune_raw()
         return 0
     if mode == "camera-probe":
         return probe_camera_assets()
+    if mode == "reference":
+        return fetch_reference_data(force=force)
+    if mode == "reference-inspect":
+        from secchi.sources.reference import inspect_reference
+        return inspect_reference()
+    if mode == "catchment-join":
+        return report_catchment_join()
+    if mode == "terc-discover":
+        return discover_terc()
     if mode.startswith("usgs"):
         return run_usgs(mode, codes=codes)
 
@@ -557,7 +612,9 @@ def main(argv: list[str] | None = None) -> int:
         "--mode",
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
                  "usgs", "usgs-probe", "usgs-discover", "usgs-params",
-                 "camera-probe", "prune"),
+                 "camera-probe", "reference", "reference-inspect",
+                 "catchment-join",
+                 "terc-discover", "prune"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -573,8 +630,19 @@ def main(argv: list[str] | None = None) -> int:
             "(--codes 70369), defaulting to everything in USGS_PARAMETERS. "
             "camera-probe: test whether the field-camera s3:// refs resolve "
             "over public HTTPS. "
+            "reference: cache the watershed polygons and attributes. "
+            "reference-inspect: report the cached polygon file's CRS, extent "
+            "and property keys. "
+            "catchment-join: assign each station to its catchment and report "
+            "the attributes that would attach. "
+            "terc-discover: report what the TERC Secchi data package holds. "
             "prune: delete raw snapshots past the retention window."
         ),
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="For `reference`: refetch even if already cached.",
     )
     parser.add_argument(
         "--codes",
@@ -589,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
     )
     try:
-        return run(mode=args.mode, codes=args.codes)
+        return run(mode=args.mode, codes=args.codes, force=args.force)
     except Exception:
         log.exception("ingest failed")
         return 1
