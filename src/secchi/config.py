@@ -325,20 +325,26 @@ USGS_STATISTICS: dict[str, str] = {
 # variable — see the statistic_id handling in sources/usgs.py.
 USGS_STATISTIC_INSTANTANEOUS = "00011"
 
-# Parameters that only exist as a non-instantaneous statistic, and so are
-# invisible to a request pinned to 00011.
+# Parameters published under a statistic other than instantaneous.
 #
-# Found 2026-09-18: `70372` (fine sediment particle load) is published as
-# statistic 00006 (Sum), because a load is a daily total rather than a
-# spot reading. Pinning statistic_id=00011 meant the single most
-# regulation-relevant series at the lake's largest tributary would never
-# have been fetched — a silent omission, not an error.
+# `70372` (fine sediment particle load) uses statistic 00006 (Sum),
+# because a load is a daily total rather than a spot reading. A request
+# pinned to 00011 alone would silently omit it — and it is the most
+# regulation-relevant series at the lake's largest tributary.
 #
-# These statistics are added to the request alongside 00011. The
-# transform layer already keys on (parameter, statistic), so they cannot
-# collide with instantaneous values, and the card builder labels anything
-# non-instantaneous.
-USGS_EXTRA_STATISTICS: tuple[str, ...] = ("00006",)
+# IMPORTANT, learned the hard way on 2026-09-18: USGS does **not** accept
+# a comma-separated `statistic_id` as an OR filter, even though it does
+# accept one for `parameter_code`. Sending `statistic_id=00011,00006`
+# returns HTTP 200 with **zero features** — no error, just nothing. That
+# silently broke every gauge's ingest until the empty responses were
+# noticed in a CI log.
+#
+# So parameters are grouped by their statistic and fetched in separate
+# requests (see UsgsClient.fetch_continuous). Only gauges carrying a
+# non-default parameter pay the extra request.
+USGS_PARAMETER_STATISTIC: dict[str, str] = {
+    "70372": "00006",     # fine sediment particle load, daily sum
+}
 
 # Bounding box for discovery: the Lake Tahoe basin, generously drawn.
 # (minLon, minLat, maxLon, maxLat) — the order OGC API - Features expects.

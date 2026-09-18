@@ -47,12 +47,45 @@ jobs:
         run: pixi run ingest-all
 
       - name: Ingest USGS
-        # Non-fatal: a USGS outage shouldn't cost us the TEON snapshot,
-        # which is the time-sensitive half.
+        id: usgs
+        # Still non-fatal: a USGS outage shouldn't cost us the TEON
+        # snapshot, which is the time-sensitive half. But see the step
+        # below — on 2026-09-18 a code change made every gauge return zero
+        # features, the step exited 1 every run, and continue-on-error
+        # swallowed it silently for hours. Failing softly is right;
+        # failing *invisibly* is not.
         continue-on-error: true
         env:
           USGS_API_KEY: ${{ secrets.USGS_API_KEY }}
         run: pixi run usgs
+
+      - name: Surface a USGS failure
+        if: always()
+        # Writes to the run summary so a failure is visible on the Actions
+        # page without opening the log, and annotates the run so it shows
+        # in the list. The job still succeeds — this is a notice, not a
+        # gate.
+        run: |
+          if [ "${{ steps.usgs.outcome }}" = "failure" ]; then
+            echo "::warning title=USGS ingest failed::pixi run usgs exited non-zero. TEON data still collected. Check whether gauges are returning zero features."
+            {
+              echo "### USGS ingest failed"
+              echo ""
+              echo "\`pixi run usgs\` exited non-zero. TEON ingest was unaffected."
+              echo ""
+              echo "Most likely causes:"
+              echo "- Every gauge returning **0 features** with HTTP 200 —"
+              echo "  a query-parameter problem rather than an outage."
+              echo "  \`statistic_id\` does not accept a comma-separated list."
+              echo "- Rate limit exhausted (check \`USGS_API_KEY\` is set)."
+              echo "- USGS API outage."
+              echo ""
+              echo "Run \`pixi run usgs-probe\` locally to see what the gauges"
+              echo "actually serve."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "USGS ingest ok"
+          fi
 
       - name: Take the remote's parquet before regenerating
         # The parquet is binary and unmergeable, so we never try. Instead:

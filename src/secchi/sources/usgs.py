@@ -42,8 +42,8 @@ from secchi.config import (
     USGS_COLLECTIONS,
     USGS_GAUGES,
     USGS_BBOX,
-    USGS_EXTRA_STATISTICS,
     USGS_PAGE_LIMIT,
+    USGS_PARAMETER_STATISTIC,
     USGS_STATISTIC_INSTANTANEOUS,
 )
 
@@ -281,14 +281,16 @@ class UsgsClient:
         temperature under five statistics — and the transform would have no
         way to tell them apart from the parameter code alone.
         """
-        params: dict[str, Any] = {"monitoring_location_id": _loc_id(site_number)}
-        if parameter_codes:
-            # The API accepts repeated/comma values for parameter_code.
-            params["parameter_code"] = ",".join(parameter_codes)
-        if statistic_id:
-            params["statistic_id"] = _statistic_filter(statistic_id)
+        features: list[dict] = []
+        for stat, codes in group_by_statistic(parameter_codes, statistic_id):
+            params: dict[str, Any] = {"monitoring_location_id": _loc_id(site_number)}
+            if codes:
+                # parameter_code DOES accept a comma list; statistic_id does not.
+                params["parameter_code"] = ",".join(codes)
+            if stat:
+                params["statistic_id"] = stat
+            features.extend(self._items(USGS_COLLECTIONS["latest_continuous"], params))
 
-        features = self._items(USGS_COLLECTIONS["latest_continuous"], params)
         return _snapshot(site_number, "latest-continuous", features,
                          parameter_codes=parameter_codes, statistic_id=statistic_id)
 
@@ -309,40 +311,71 @@ class UsgsClient:
         Note ``/continuous`` serves at most three years per query, so a
         full backfill of a long record has to be chunked by year.
         """
-        params: dict[str, Any] = {
-            "monitoring_location_id": _loc_id(site_number),
-            "time": period,
-        }
-        if parameter_codes:
-            params["parameter_code"] = ",".join(parameter_codes)
-        if statistic_id:
-            params["statistic_id"] = _statistic_filter(statistic_id)
+        features: list[dict] = []
+        statistics_fetched: list[str] = []
 
-        features = self._items(USGS_COLLECTIONS["continuous"], params,
-                               max_features=max_features)
+        for stat, codes in group_by_statistic(parameter_codes, statistic_id):
+            params: dict[str, Any] = {
+                "monitoring_location_id": _loc_id(site_number),
+                "time": period,
+            }
+            if codes:
+                params["parameter_code"] = ",".join(codes)
+            if stat:
+                params["statistic_id"] = stat
+
+            batch = self._items(USGS_COLLECTIONS["continuous"], params,
+                                max_features=max_features)
+            if not batch and codes:
+                # Worth saying out loud: a 200 with no features is how the
+                # comma-separated statistic bug hid for hours.
+                log.warning("no features for %s statistic %s parameters %s",
+                            site_number, stat, ",".join(codes))
+            features.extend(batch)
+            if stat:
+                statistics_fetched.append(stat)
+            if len(features) >= max_features:
+                features = features[:max_features]
+                break
+
         return _snapshot(site_number, "continuous", features,
                          parameter_codes=parameter_codes, period=period,
-                         statistic_id=statistic_id)
+                         statistic_id=",".join(statistics_fetched) or statistic_id)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _statistic_filter(statistic_id: str) -> str:
-    """The statistic filter for a data request.
+def group_by_statistic(
+    parameter_codes: list[str] | None,
+    default_statistic: str | None,
+) -> list[tuple[str | None, list[str] | None]]:
+    """Split parameters into the separate requests they need.
 
-    Returns the instantaneous statistic plus any in
-    :data:`USGS_EXTRA_STATISTICS`. Some parameters only exist as a
-    non-instantaneous statistic — fine sediment particle *load* (70372) is
-    published as a daily Sum (00006) because a load is a total, not a spot
-    reading — and a request pinned to 00011 alone silently omits them.
+    USGS accepts a comma-separated ``parameter_code`` but **not** a
+    comma-separated ``statistic_id`` — sending ``00011,00006`` returns
+    HTTP 200 with zero features rather than an error, which silently
+    broke every gauge's ingest on 2026-09-18.
 
-    Mixing statistics is safe here because the transform keys on
-    (parameter, statistic) rather than parameter alone.
+    So one request per distinct statistic. Returns a list of
+    ``(statistic_id, parameter_codes)`` pairs. A gauge whose parameters
+    all use the default statistic yields a single pair, i.e. no extra
+    cost — only Upper Truckee currently pays for a second request.
     """
-    wanted = [statistic_id, *(s for s in USGS_EXTRA_STATISTICS if s != statistic_id)]
-    return ",".join(wanted)
+    if not parameter_codes:
+        return [(default_statistic, None)]
+
+    groups: dict[str | None, list[str]] = {}
+    for code in parameter_codes:
+        stat = USGS_PARAMETER_STATISTIC.get(code, default_statistic)
+        groups.setdefault(stat, []).append(code)
+
+    # Default statistic first, so the bulk of the data arrives on request
+    # one and a failure on a secondary statistic costs less.
+    ordered = sorted(groups.items(),
+                     key=lambda kv: (kv[0] != default_statistic, str(kv[0])))
+    return [(stat, codes) for stat, codes in ordered]
 
 
 def _loc_id(site_number: str) -> str:
