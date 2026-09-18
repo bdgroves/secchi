@@ -77,7 +77,14 @@ ingest     = "python -m secchi.ingest --mode live-exo"
 # Diagnostic: resolve a URL slug for every live sensor type and print a
 # report, writing nothing. Re-run after TEON ships backend changes, or when
 # a dormant sensor type comes back online.
+# Resolve slugs for EVERY sensor type, dormant included, with a coverage
+# report. The live-only variant is kept because it's faster when you only
+# care about what's currently streaming.
 probe      = "python -m secchi.ingest --mode probe"
+probe-live = "python -m secchi.ingest --mode probe-live"
+# Every sensor in the inventory regardless of freshness. Dormant
+# instruments still hold their history — see docs/dormant-data.md.
+ingest-history = "python -m secchi.ingest --mode all-sensors"
 # USGS stream gauges, via the modernized Water Data OGC APIs. Reads
 # USGS_API_KEY from the environment; without it USGS caps you at 50
 # requests/hour per IP instead of 1000.

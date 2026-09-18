@@ -87,10 +87,10 @@ Every record carries `uuid`, `site`, `latitude`, `longitude`, `TIMESTAMP`. Field
 | Field | Units | Notes |
 |---|---|---|
 | `Temp` | °C | Water temperature. |
-| `Chl_a` | µg/L | Chlorophyll-a — the primary clarity driver. Reads slightly negative near the detection floor; clipped to 0 for display. |
+| `Chl_a` | µg/L | Chlorophyll-a — the primary clarity driver. **Sunnyside also reads persistently negative here** (around −0.12), which means both of its optical channels are offset, not just turbidity. Clipped to 0 for display. |
 | `Do_mgL` | mg/L | Dissolved oxygen. |
 | `Do_percent` | % sat | DO saturation. |
-| `Turbidity` | FNU | **Sunnyside reads as low as −1.98 raw.** That's too large for noise — likely a calibration offset. Clipped for display; worth checking `/calibration/events`. |
+| `Turbidity` | FNU | **Sunnyside has a hard zero-offset fault.** Across 48 consecutive records it read −2.109 FNU with a standard deviation of 0.042 (range −2.17 to −1.93). A spread that tight around a strongly negative mean is a mis-set zero point, not noise: add +2.11 and the site reads ~0.0 FNU, which is correct for clear Tahoe water. Independently corroborated — the USGS gauge on Blackwood Creek reads +0.3 FNU on the same measure with the same units from a separate instrument. Clipped to 0 for display and flagged on the card. `/calibration/events` is empty, so there is no documented explanation via the API. |
 | `phycocyanin` | µg/L | Cyanobacteria proxy. |
 | `specific_conductivity` | µS/cm | |
 | `Salinity` | ppt | Very low at Tahoe (~0.04). |
@@ -145,6 +145,58 @@ The bucket path confirms the backend stack: Campbell LoggerNet writing to S3. Th
 Frame counts are reported two ways, because they differ: `upstream_total` is what TEON says exists (from the pagination envelope's `total`), while `held` is what we have locally, capped by `DEFAULT_INGEST_PAGE_SIZE` per run. As of 2026-09-17 there are 3,378 frames upstream across five stations, oldest dating to November 2025.
 
 ---
+
+## Manual vs. telemetered sondes
+
+Two of the five lake EXO sondes carry `Manual` in their inventory `id`
+(`ExoSensorManual_Blackwood 3_…`, `ExoSensorManual_Meeks_…`). The reading
+here is that these are **self-logging instruments whose data arrives only
+when someone dives and downloads them**, as opposed to the three sondes on
+live telemetry. Four independent lines of evidence:
+
+**1. TEON documents the retrieval workflow.** In the University of Nevada,
+Reno launch coverage, researcher Emily Carlson describes going out on the
+lake to collect the underwater sondes, bringing them back to the lab,
+cleaning off accumulated algae, downloading and backing up the data, then
+recalibrating against third-party certified standards.
+
+**2. Record completeness has the signature of internal logging.** A
+self-logging instrument has no radio link to drop packets, so its record
+should be near-perfect; a telemetered one loses transmissions.
+
+| Sonde | Telemetry | Records | Expected at 15-min | Complete |
+|---|---|---|---|---|
+| Blackwood 3 | manual | 15,451 | 15,642 | **98.8 %** |
+| Meeks | manual | 15,441 | 15,632 | **98.8 %** |
+| 4H Camp | live | 52,443 | 54,344 | 96.5 % |
+| Glenbrook | live | 46,271 | 47,811 | 96.8 % |
+| Sunnyside | live | 38,562 | 52,422 | 73.6 % |
+
+**3. Both manual units are short by exactly 191 records.** 15,642 − 15,451
+and 15,632 − 15,441 both equal 191, which is 47.8 hours. An identical
+two-day gap on two separate instruments is not random packet loss; it is
+one shared service event when both were out of the water at once.
+
+**4. The record ends abruptly rather than degrading.** Both stop on
+2026-07-09 within 30 minutes of each other, having been deployed on
+2026-01-27 within three hours of each other. Coordinated deployment,
+coordinated retrieval.
+
+**Why manual at these sites.** Not documented. Telemetry needs power, a
+radio or cellular path and a shore receiver; Meeks Bay and Blackwood are
+less developed stretches of the west shore. A self-logging sonde is the
+cheaper deployment where infrastructure is thin.
+
+**What remains genuinely uncertain.** Whether 2026-07-09 means *removed
+from the lake* or *last download, still logging*. If the latter, roughly
+two months of 15-minute data is sitting in those sondes' memory waiting for
+the next dive — not lost, just not yet uploaded. The API cannot distinguish
+these cases; only TEON can say.
+
+**The connection to data quality.** Biofouling is the reason sondes need
+retrieval at all — algae grows over optical windows. That is very likely
+related to the calibration problems catalogued below, since optical
+channels drift as their windows foul and pH probes drift fastest of all.
 
 ## Sites
 

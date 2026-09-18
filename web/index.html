@@ -7,6 +7,12 @@
 <meta name="description" content="Real-time clarity, watershed, and wildfire-coupling analytics on TEON data.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
 <style>
   :root {
     --ink:    #0B2E3D;
@@ -131,6 +137,80 @@
               padding: 0.1rem 0.4rem; margin-left: 0.4rem;
               border: 1px solid var(--line); color: var(--muted); vertical-align: middle; }
 
+  /* ---- Map ---------------------------------------------------------- */
+  .map-wrap { position: relative; margin-top: 1.25rem; border: 1px solid var(--line); }
+  #map { height: 520px; width: 100%; background: var(--paper); }
+  @media (max-width: 720px) { #map { height: 420px; } }
+
+  /* Leaflet ships its own chrome; tone it down to match the page. */
+  .leaflet-container { font: inherit; background: var(--paper); }
+  .leaflet-control-attribution {
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    color: var(--muted); font-size: 0.68rem;
+  }
+  .leaflet-control-attribution a { color: var(--muted); }
+  .leaflet-bar,
+  .leaflet-control-layers {
+    border: 1px solid var(--line) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: var(--paper);
+  }
+  .leaflet-bar a {
+    background: var(--paper); color: var(--ink);
+    border-bottom: 1px solid var(--line);
+  }
+  .leaflet-bar a:hover { background: var(--paper); color: var(--ember); }
+  .leaflet-control-layers-expanded {
+    padding: 0.6rem 0.8rem; color: var(--ink); font-size: 0.85rem;
+  }
+  .leaflet-control-layers-selector { margin-right: 0.35rem; }
+
+  .leaflet-popup-content-wrapper {
+    border-radius: 0; background: var(--paper); color: var(--ink);
+    border: 1px solid var(--line); box-shadow: none;
+  }
+  .leaflet-popup-tip { background: var(--paper); border: 1px solid var(--line); box-shadow: none; }
+  .leaflet-popup-content { margin: 0.8rem 0.95rem; font-size: 0.88rem; line-height: 1.45; }
+  .leaflet-popup-close-button { color: var(--muted) !important; }
+
+  .pop-title { font-weight: 600; font-size: 0.98rem; margin-bottom: 0.1rem; }
+  .pop-meta { color: var(--muted); font-size: 0.78rem; margin-bottom: 0.55rem; }
+  .pop-types { color: var(--slate); font-size: 0.78rem; margin-bottom: 0.5rem; }
+  .pop-read { display: grid; grid-template-columns: auto auto; gap: 0.15rem 0.7rem;
+              font-variant-numeric: tabular-nums; }
+  .pop-read dt { color: var(--muted); font-size: 0.78rem; }
+  .pop-read dd { margin: 0; font-weight: 500; text-align: right; }
+  .pop-flag { display: inline-block; font-size: 0.66rem; letter-spacing: 0.03em;
+              padding: 0.05rem 0.35rem; border: 1px solid var(--line);
+              color: var(--muted); margin-top: 0.5rem; }
+
+  /* Markers are divIcons so they can be themed with CSS variables. */
+  .pin { border-radius: 50%; border: 2px solid var(--paper);
+         box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+  .pin-live    { background: var(--live); }
+  .pin-stale   { background: var(--ember); }
+  .pin-dormant { background: var(--muted); }
+  .pin-hidden  { background: transparent; border: 2px dashed var(--muted); }
+  .pin-gauge   { background: var(--wet); border-radius: 2px; transform: rotate(45deg); }
+
+  .map-legend {
+    display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem;
+    margin-top: 0.75rem; font-size: 0.8rem; color: var(--muted);
+  }
+  .map-legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .map-legend i {
+    width: 0.6rem; height: 0.6rem; border-radius: 50%;
+    display: inline-block; flex: 0 0 auto;
+  }
+  .lg-live { background: var(--live); }
+  .lg-stale { background: var(--ember); }
+  .lg-dormant { background: var(--muted); }
+  .lg-hidden { border: 1px dashed var(--muted); }
+  .lg-gauge { background: var(--wet); border-radius: 1px; }
+  .lg-transect { width: 1.4rem; height: 0; border-top: 2px dashed var(--ember);
+                 border-radius: 0; }
+
   footer { margin-top: 5rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 0.9rem; }
   footer a { color: var(--muted); }
@@ -167,6 +247,25 @@
   <div class="status" role="status" aria-live="polite">
     <span class="dot" id="status-dot" aria-hidden="true"></span>
     <span class="status-text" id="status-text">Loading latest observations…</span>
+  </div>
+
+  <h2>The network</h2>
+  <p>
+    Every instrument in the basin with a coordinate — TEON's lake sondes,
+    forest loggers, stream gauge and cameras, plus the USGS creek gauges.
+    One marker per physical location rather than per endpoint, because a
+    single forest tripod reports under three or four different sensor
+    names. The dashed line is the transect: two stations 64 metres apart in
+    latitude on opposite shores.
+  </p>
+  <div class="map-wrap"><div id="map"></div></div>
+  <div class="map-legend" id="map-legend">
+    <span><i class="lg-live"></i>reporting today</span>
+    <span><i class="lg-stale"></i>quiet &lt; 30 days</span>
+    <span><i class="lg-dormant"></i>dormant</span>
+    <span><i class="lg-hidden"></i>hidden by TEON</span>
+    <span><i class="lg-gauge"></i>USGS gauge</span>
+    <span><i class="lg-transect"></i>transect</span>
   </div>
 
   <h2>Same weather, two watersheds</h2>
@@ -476,6 +575,145 @@
     return parts.join("");
   }
 
+  // ---- Map ----------------------------------------------------------
+  // Basemaps: a muted light default that matches the page, plus terrain
+  // (which makes the rain-shadow geography legible — the whole point of
+  // the transect) and imagery.
+  const BASEMAPS = () => ({
+    "Muted": L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      { maxZoom: 19, attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>' }),
+    "Terrain": L.tileLayer(
+      "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+      { maxZoom: 17, attribution:
+        'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)' }),
+    "Imagery": L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 19, attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" }),
+  });
+
+  function pinClass(p) {
+    if (p.source === "USGS") return "pin-gauge";
+    if (p.disabled) return "pin-hidden";
+    const st = ageState(p.last_update);
+    return st === "live" ? "pin-live" : st === "stale" ? "pin-stale" : "pin-dormant";
+  }
+
+  // Marker size scales with record count — a station with 600k
+  // observations should read as more substantial than one with 700.
+  function pinSize(records) {
+    if (!records) return 11;
+    const r = Math.log10(Math.max(records, 10));   // 1..~5.8
+    return Math.round(8 + (r - 1) * 3.2);          // ~8..23 px
+  }
+
+  function popupHtml(p) {
+    const when = p.last_update
+      ? `${timeAgo(p.last_update)}` : "no data";
+    const meta = [
+      p.shore ? `${p.shore} shore` : null,
+      p.source === "USGS" ? `USGS ${p.site_number}` : p.category,
+      p.records ? `${fmtInt.format(p.records)} obs` : null,
+    ].filter(Boolean).join(" · ");
+
+    const readings = p.readings || {};
+    const keys = Object.keys(readings).slice(0, 6);
+    const dl = keys.length
+      ? `<dl class="pop-read">` + keys.map(k => {
+          const r = readings[k];
+          return `<dt>${esc(r.label)}</dt><dd>${fmt.format(r.value)} ${esc(r.units || "")}</dd>`;
+        }).join("") + `</dl>`
+      : "";
+
+    const flags = [];
+    if (p.disabled) flags.push("hidden by TEON");
+    if (p.is_manual) flags.push("manual retrieval");
+    const flagHtml = flags.map(f => `<span class="pop-flag">${esc(f)}</span>`).join(" ");
+
+    return `
+      <div class="pop-title">${esc(p.site)}</div>
+      <div class="pop-meta">${esc(meta)} · ${esc(when)}</div>
+      <div class="pop-types">${(p.sensor_types || []).map(esc).join(" · ")}</div>
+      ${dl}${flagHtml}`;
+  }
+
+  function renderMap(snap) {
+    const el = document.getElementById("map");
+    if (!el || typeof L === "undefined") return;
+
+    const pts = (snap.map && snap.map.points) || [];
+    if (!pts.length) {
+      el.innerHTML = `<div class="placeholder-card" style="border:0">
+        No plotted locations yet — run an ingest.</div>`;
+      return;
+    }
+
+    const bases = BASEMAPS();
+    const map = L.map(el, {
+      scrollWheelZoom: false,     // don't hijack page scrolling
+      layers: [bases.Muted],
+    });
+    // Click to enable wheel zoom, so the map is usable without trapping
+    // someone who is just scrolling past it.
+    map.on("click", () => map.scrollWheelZoom.enable());
+    map.on("mouseout", () => map.scrollWheelZoom.disable());
+
+    // Group markers by category so they can be toggled.
+    const groups = {
+      "Lake": L.layerGroup(),
+      "Stream": L.layerGroup(),
+      "Terrestrial": L.layerGroup(),
+      "USGS gauges": L.layerGroup(),
+    };
+    const groupFor = (p) => p.source === "USGS" ? groups["USGS gauges"]
+      : p.category === "lake" ? groups["Lake"]
+      : p.category === "stream" ? groups["Stream"]
+      : groups["Terrestrial"];
+
+    const bounds = [];
+    for (const p of pts) {
+      if (p.lat == null || p.lng == null) continue;
+      const size = pinSize(p.records);
+      const marker = L.marker([p.lat, p.lng], {
+        title: p.site,
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="pin ${pinClass(p)}" style="width:${size}px;height:${size}px"></div>`,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        }),
+      }).bindPopup(popupHtml(p), { maxWidth: 280 });
+      marker.addTo(groupFor(p));
+      bounds.push([p.lat, p.lng]);
+    }
+    Object.values(groups).forEach(g => g.addTo(map));
+
+    // The transect, drawn so the same-latitude claim is checkable by eye.
+    const overlays = { ...groups };
+    const tl = snap.transect_line;
+    if (tl) {
+      const line = L.polyline(
+        [[tl.west.lat, tl.west.lng], [tl.east.lat, tl.east.lng]],
+        { color: "#B8532A", weight: 2, dashArray: "6 5", opacity: 0.9 }
+      ).bindPopup(
+        `<div class="pop-title">Transect</div>
+         <div class="pop-meta">${esc(tl.west.site)} &harr; ${esc(tl.east.site)}</div>
+         <div class="pop-types">${tl.latitude_offset_m != null
+            ? fmtInt.format(tl.latitude_offset_m) + " m apart in latitude" : ""}</div>`);
+      const lg = L.layerGroup([line]).addTo(map);
+      overlays["Transect"] = lg;
+    }
+
+    L.control.layers(bases, overlays, { collapsed: true, position: "topright" }).addTo(map);
+    L.control.scale({ imperial: true, metric: true, position: "bottomleft" }).addTo(map);
+
+    if (bounds.length) map.fitBounds(bounds, { padding: [34, 34] });
+    // Leaflet mis-measures a container that was hidden or resized during
+    // load; nudge it once layout settles.
+    setTimeout(() => map.invalidateSize(), 160);
+  }
+
   async function load() {
     const $ = (id) => document.getElementById(id);
     const dot = $("status-dot"), text = $("status-text");
@@ -528,6 +766,9 @@
 
       // Inventory
       $("inventory").innerHTML = renderInventory(snap.inventory || [], disabled);
+
+      // Map
+      renderMap(snap);
 
       // Status line — freshest reading anywhere.
       const stamps = [

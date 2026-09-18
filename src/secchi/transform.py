@@ -670,6 +670,132 @@ def _parse_iso(value: str | None) -> datetime | None:
         return parsed.replace(tzinfo=timezone.utc)
 
 
+def _slugify_site(site: str) -> str:
+    """Match TEON's site-slug convention in /site-visibility/disabled:
+    lowercase with spaces removed ("4H Camp" -> "4hcamp")."""
+    return (site or "").lower().replace(" ", "")
+
+
+def build_map_points(inventory: list[dict],
+                     lake: dict,
+                     stations: dict,
+                     gauges: dict,
+                     disabled: list[str]) -> dict:
+    """Everything with a coordinate, shaped for the map layer.
+
+    One entry per physical location rather than per sensor, because the
+    inventory lists three-to-four endpoints for a single terrestrial logger
+    (see the shared-logger note at the top of this module) and plotting
+    those as separate markers would triple-stack pins on one tripod.
+
+    Each point carries the sensor types present there, the freshest
+    last_update across them, total record count, and — where we have it —
+    the latest readings already formatted for display.
+    """
+    disabled_set = set(disabled)
+    points: dict[tuple, dict] = {}
+
+    for row in inventory:
+        lat, lng = row.get("lat"), row.get("lng")
+        if lat is None or lng is None:
+            continue
+        site = row.get("site") or "?"
+        # Key on rounded coordinates: one marker per physical location.
+        key = (round(float(lat), 5), round(float(lng), 5))
+        pt = points.setdefault(key, {
+            "site": site,
+            "lat": float(lat),
+            "lng": float(lng),
+            "category": row.get("category"),
+            "source": "TEON",
+            "sensor_types": [],
+            "records": 0,
+            "last_update": None,
+            "is_live": False,
+            "is_manual": False,
+            "disabled": _slugify_site(site) in disabled_set,
+        })
+        stype = row.get("sensor_type_display") or row.get("sensor_type")
+        if stype and stype not in pt["sensor_types"]:
+            pt["sensor_types"].append(stype)
+        # MAX, not sum. At a terrestrial station the soil, air, tree and
+        # stream endpoints are projections of one logger table and report
+        # overlapping counts — summing them triples the total (Glenbrook 5
+        # would read 188,868 instead of 62,956). Max is the honest figure
+        # for "observations recorded at this location".
+        pt["records"] = max(pt["records"], row.get("data_count") or 0)
+        pt["is_live"] = pt["is_live"] or bool(row.get("is_live"))
+        pt["is_manual"] = pt["is_manual"] or bool(row.get("is_manual"))
+        last = row.get("last_update")
+        if last and (pt["last_update"] is None or last > pt["last_update"]):
+            pt["last_update"] = last
+        # A location carrying both lake and terrestrial gear is labelled by
+        # whichever category sorts first, for consistent marker styling.
+        if row.get("category") and (
+            _CATEGORY_ORDER.get(row["category"], 99)
+            < _CATEGORY_ORDER.get(pt["category"], 99)
+        ):
+            pt["category"] = row["category"]
+
+    # Attach formatted readings from the card builders where the site matches.
+    for name, card in {**lake, **stations}.items():
+        for pt in points.values():
+            if pt["site"] == name:
+                pt["readings"] = card.get("readings", {})
+                if card.get("shore"):
+                    pt["shore"] = card["shore"]
+                if card.get("dendrometers"):
+                    pt["dendrometers"] = card["dendrometers"]
+                break
+
+    out = list(points.values())
+
+    # USGS gauges are a separate source and get their own marker styling.
+    for num, g in (gauges or {}).items():
+        coords = g.get("coordinates") or {}
+        if coords.get("lat") is None or coords.get("lng") is None:
+            continue
+        out.append({
+            "site": g.get("name") or f"USGS {num}",
+            "lat": coords["lat"],
+            "lng": coords["lng"],
+            "category": "gauge",
+            "source": "USGS",
+            "site_number": num,
+            "sensor_types": ["USGS gauge"],
+            "records": 0,
+            "last_update": g.get("observed_at"),
+            "is_live": True,
+            "is_manual": False,
+            "disabled": False,
+            "shore": g.get("shore"),
+            "readings": g.get("readings", {}),
+        })
+
+    out.sort(key=lambda r: (_CATEGORY_ORDER.get(r["category"], 99), r["site"]))
+    return {"points": out}
+
+
+def build_transect_line(transect: dict | None) -> dict | None:
+    """The transect as a drawable line, so the map can show the pairing.
+
+    The claim is that these two stations sit on the same line of latitude
+    across the lake. Drawing it is the most direct way to let someone
+    check that by eye.
+    """
+    if not transect:
+        return None
+    w, e = transect.get("west") or {}, transect.get("east") or {}
+    wc, ec = w.get("coordinates") or {}, e.get("coordinates") or {}
+    if None in (wc.get("lat"), wc.get("lng"), ec.get("lat"), ec.get("lng")):
+        return None
+    return {
+        "west": {"site": w.get("site"), "lat": wc["lat"], "lng": wc["lng"]},
+        "east": {"site": e.get("site"), "lat": ec["lat"], "lng": ec["lng"]},
+        "latitude_offset_m": transect.get("latitude_offset_m"),
+    }
+
+
 def build_dashboard_snapshot(df_wide: pd.DataFrame,
                              df_long: pd.DataFrame,
                              df_assets: pd.DataFrame,
@@ -677,16 +803,23 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
                              inventory: dict | None,
                              disabled: list[str]) -> dict:
     """Compose the payload the dashboard reads."""
+    lake = build_lake_cards(df_wide)
+    stations = build_station_cards(df_wide)
+    gauges = build_usgs_cards(df_usgs)
+    transect = build_transect(df_long)
+    inv = build_inventory_summary(inventory)
     return {
         "generated_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "sources": ["TEON"] + (["USGS"] if not df_usgs.empty else []),
-        "sites": build_lake_cards(df_wide),
-        "stations": build_station_cards(df_wide),
-        "transect": build_transect(df_long),
+        "sites": lake,
+        "stations": stations,
+        "transect": transect,
         "cameras": build_asset_summary(df_assets),
-        "gauges": build_usgs_cards(df_usgs),
+        "gauges": gauges,
         "disabled": sorted(disabled),
-        "inventory": build_inventory_summary(inventory),
+        "inventory": inv,
+        "map": build_map_points(inv, lake, stations, gauges, sorted(disabled)),
+        "transect_line": build_transect_line(transect),
     }
 
 
@@ -746,6 +879,8 @@ def main() -> int:
              len(snapshot["sites"]), len(snapshot["stations"]),
              len(snapshot["cameras"]), len(snapshot["gauges"]),
              len(snapshot["inventory"]), len(snapshot["disabled"]))
+    log.info("map: %d plotted locations from %d inventory rows",
+             len(snapshot["map"]["points"]), len(snapshot["inventory"]))
 
     return 0
 

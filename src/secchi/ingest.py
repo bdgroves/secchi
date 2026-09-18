@@ -18,7 +18,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from secchi.config import (
@@ -29,7 +29,7 @@ from secchi.config import (
     USGS_GAUGES,
     USGS_PARAMETERS,
 )
-from secchi.sources.teon import TeonClient, slugify_site
+from secchi.sources.teon import TeonClient, _parse_teon_ts, slugify_site
 from secchi.sources.usgs import UsgsClient, UsgsRateLimited
 
 log = logging.getLogger("secchi.ingest")
@@ -90,49 +90,99 @@ def build_targets(client: TeonClient, mode: str) -> list[tuple[str, str]]:
             pairs.append((sensor["_sensor_type"], sensor["site"]))
         return pairs
 
+    if mode == "all-sensors":
+        # Every sensor in the inventory regardless of freshness. Dormant
+        # instruments still hold their history, and for a project about
+        # long-term change that history is the point.
+        return [(s["_sensor_type"], s["site"]) for s in client.iter_inventory()]
+
     raise ValueError(f"unknown mode {mode!r}")
 
 
-def probe_slugs(client: TeonClient) -> int:
-    """Diagnostic: resolve a URL slug for every live sensor type, no data pull.
+def probe_slugs(client: TeonClient, live_only: bool = False) -> int:
+    """Diagnostic: resolve a URL slug for every sensor type, no data pull.
 
-    Prints a table of sensor type → resolved slug (or MISSING), so we can
-    see at a glance how much of the network is reachable. Useful after
-    TEON ships backend changes.
+    Prints a table of sensor type → resolved slug (or MISSING), plus each
+    type's record count and freshness, so we can see at a glance how much
+    of the network is reachable.
+
+    By default this covers EVERY sensor type in the inventory, dormant
+    included. Restricting it to live sensors — which is what it used to do
+    — hides the slugs of instruments that have stopped reporting, and
+    those instruments still hold their history. The MiniDot and HOBO
+    fleets alone are roughly half a million observations of nearshore lake
+    temperature that went invisible simply because they stopped in June.
     """
     # Sites TEON hides return 404 on the time-series endpoint even when the
     # slug is correct, so they must not be used as probe representatives.
-    # (4H Camp is hidden and sorts first among EXO sites, which previously
-    # made the confirmed-good exo-sensor slug look broken.)
     disabled = client.disabled_sites()
 
-    # One representative site per sensor type, preferring the freshest
-    # non-disabled site.
-    by_type: dict[str, str] = {}
-    for sensor in client.live_sensors(window_hours=LIVE_WINDOW_HOURS):
+    inventory = list(client.iter_inventory())
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=LIVE_WINDOW_HOURS)
+
+    # One representative site per sensor type. Prefer the freshest visible
+    # site, because a site with recent data is the most likely to answer.
+    def freshness(sensor: dict) -> str:
+        return sensor.get("last_update") or ""
+
+    by_type: dict[str, dict] = {}
+    stats: dict[str, dict] = {}
+    for sensor in sorted(inventory, key=freshness, reverse=True):
+        stype = sensor["_sensor_type"]
         site = sensor["site"]
+        last = _parse_teon_ts(sensor.get("last_update"))
+        is_live = bool(last and last >= cutoff)
+
+        st = stats.setdefault(stype, {"sites": 0, "records": 0, "live": 0,
+                                      "newest": None, "category": sensor["_category"]})
+        st["sites"] += 1
+        st["records"] += sensor.get("data_count") or 0
+        st["live"] += 1 if is_live else 0
+        if st["newest"] is None and last is not None:
+            st["newest"] = last
+
+        if live_only and not is_live:
+            continue
         if slugify_site(site) in disabled:
             continue
-        by_type.setdefault(sensor["_sensor_type"], site)
+        by_type.setdefault(stype, {"site": site, "live": is_live})
 
     if not by_type:
-        log.warning("no live, visible sensors found to probe")
+        log.warning("no %ssensors found to probe", "live, visible " if live_only else "")
         return 1
 
-    log.info("probing %d sensor types (skipping %d disabled site slug(s))",
-             len(by_type), len(disabled))
+    log.info("probing %d sensor types (%s), skipping %d disabled site slug(s)",
+             len(by_type), "live only" if live_only else "live and dormant",
+             len(disabled))
     resolved: dict[str, str | None] = {}
-    for sensor_type, site in sorted(by_type.items()):
-        resolved[sensor_type] = client.resolve_slug(sensor_type, site)
+    for sensor_type, rep in sorted(by_type.items()):
+        resolved[sensor_type] = client.resolve_slug(sensor_type, rep["site"])
 
     width = max(len(t) for t in resolved) + 2
-    print("\n  Sensor type".ljust(width + 4) + "Resolved slug")
-    print("  " + "-" * (width + 30))
-    for sensor_type, slug in sorted(resolved.items()):
-        status = f"/sensors/{slug}" if slug else "— MISSING —"
-        print(f"  {sensor_type.ljust(width)}{status}")
-    hits = sum(1 for s in resolved.values() if s)
-    print(f"\n  {hits}/{len(resolved)} sensor types reachable\n")
+    print()
+    print(f"  {'Sensor type'.ljust(width)}{'slug'.ljust(34)}"
+          f"{'sites':>6}{'live':>6}{'records':>12}  newest")
+    print("  " + "-" * (width + 72))
+    dormant_records = 0
+    for sensor_type, slug in sorted(resolved.items(),
+                                    key=lambda kv: (stats[kv[0]]["category"], kv[0])):
+        st = stats[sensor_type]
+        slug_txt = f"/sensors/{slug}" if slug else "— MISSING —"
+        newest = st["newest"].strftime("%Y-%m-%d") if st["newest"] else "never"
+        print(f"  {sensor_type.ljust(width)}{slug_txt.ljust(34)}"
+              f"{st['sites']:>6}{st['live']:>6}{st['records']:>12,}  {newest}")
+        if slug and st["live"] == 0:
+            dormant_records += st["records"]
+
+    hits = sum(1 for v in resolved.values() if v)
+    total = sum(st["records"] for st in stats.values())
+    print()
+    print(f"  {hits}/{len(resolved)} sensor types reachable · "
+          f"{total:,} records catalogued upstream")
+    if dormant_records:
+        print(f"  {dormant_records:,} of those sit in sensor types with nothing "
+              f"live — reachable history we don't currently pull.")
+    print()
     return 0
 
 
@@ -231,7 +281,9 @@ def run(mode: str = "live-exo") -> int:
     with TeonClient() as client:
         # Probe mode is diagnostic only: no snapshots written.
         if mode == "probe":
-            return probe_slugs(client)
+            return probe_slugs(client, live_only=False)
+        if mode == "probe-live":
+            return probe_slugs(client, live_only=True)
 
         # 1) Snapshot the full inventory every run — cheap, and it's the
         #    source of truth for what sensors even exist.
@@ -276,12 +328,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Pull a TEON snapshot into data/raw.")
     parser.add_argument(
         "--mode",
-        choices=("live-exo", "all-live", "probe", "usgs", "usgs-probe"),
+        choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
+                 "usgs", "usgs-probe"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
             "all-live: every live TEON sensor (default for CI). "
-            "probe: resolve TEON URL slugs and print a report, writing nothing. "
+            "all-sensors: every sensor in the inventory, dormant included. "
+            "probe: resolve slugs for ALL sensor types with a coverage report, "
+            "writing nothing. probe-live: same but live types only. "
             "usgs: pull the configured USGS gauges. "
             "usgs-probe: ask each USGS gauge what it measures, writing nothing."
         ),
