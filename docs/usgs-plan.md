@@ -79,6 +79,71 @@ commit the key — it belongs in the secret and the environment, nowhere else.
   `Approved`. We should carry this through and surface it — TEON has no
   equivalent and it's genuinely useful metadata.
 
+## What discovery found, 2026-09-18
+
+First real run: **1,277 stations** in the bounding box, **28 with data in
+the last 30 days**. Two of my assumptions were wrong.
+
+### The bounding box was too wide
+
+A rectangle cannot express a watershed. The original box
+`(-120.35, 38.80, -119.80, 39.35)` caught fourteen active stations that
+drain the wrong way:
+
+- **Carson Range east slope → Carson River basin:** Kings Canyon, Ash
+  Canyon, Franktown (×2), Ophir, Davis, Winters, Little Washoe Lake,
+  Steamboat.
+- **Downstream of the Tahoe outlet → Truckee basin:** Truckee R nr
+  Truckee, Donner Lake, Donner Ck (×2), NF Washeshu Ck.
+
+Tightened to `(-120.25, 38.90, -119.90, 39.28)`, which excludes those
+while keeping every real Tahoe site. Each exclusion is now recorded in
+`USGS_OUT_OF_BASIN` with its reason, and `usgs-discover` marks them `x`
+rather than reporting them as unconfigured — so an omission stays a
+decision rather than becoming an oversight.
+
+**The proper fix is the catchment polygon layer.** Station membership
+should be point-in-polygon against real basin boundaries, not a rectangle.
+See [`watershed-layer.md`](watershed-layer.md).
+
+### Five tributaries carry real-time turbidity — we had one
+
+This is the find. Turbidity (`63680`) is the direct clarity measure and the
+same one TEON's sondes report, so these are independent cross-checks on
+readings like Sunnyside's −2.11 FNU offset.
+
+| Site | Gauge | Shore | Turbidity |
+|---|---|---|---|
+| `10336610` | Upper Truckee R at South Lake Tahoe — **largest tributary** | south | ✓ |
+| `10336780` | Trout Ck nr Tahoe Valley | south | ✓ |
+| `10336645` | General C nr Meeks Bay — largely undeveloped catchment | west | ✓ |
+| `10336660` | Blackwood C nr Tahoe City | west | ✓ |
+| `10336676` | Ward C at Hwy 89 | west | ✓ |
+| `10336698` | Third Ck nr Crystal Bay | north | — |
+| `10336700` | Incline Ck nr Crystal Bay | north | — |
+| `10336730` | Glenbrook Ck at Glenbrook | east | — |
+
+All eight are now configured. Note the geography: turbidity exists on the
+west and south shores, not the east or north. Sediment delivery to Tahoe
+is concentrated where the precipitation is.
+
+### 131 years of outflow
+
+`10337500` daily mean discharge: **1895-07-01 → present**. Every drop
+leaving Lake Tahoe, measured for 131 years.
+
+### And 63158 was the wrong code
+
+I configured `63158` for the outlet's NAVD88 elevation. The probe replied
+*"configured but not reported: 63158"* and *"available and not configured:
+63160"*. It uses `63160`, same as Blackwood. Corrected.
+
+### One parameter still unidentified
+
+`70369` appears at `10336610` and I don't know what it is. Resolve against
+`/collections/parameter-codes/items` before configuring it rather than
+guessing.
+
 ## Discovering gauges instead of guessing
 
 `pixi run usgs-discover` queries `/monitoring-locations` against a bounding

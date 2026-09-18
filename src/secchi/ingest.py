@@ -26,6 +26,7 @@ from secchi.config import (
     LIVE_WINDOW_HOURS,
     RAW_DIR,
     USGS_BBOX,
+    USGS_OUT_OF_BASIN,
     USGS_DEFAULT_PERIOD,
     USGS_GAUGES,
     USGS_PARAMETERS,
@@ -277,6 +278,7 @@ def discover_usgs(client: UsgsClient) -> int:
             "type": (props.get("site_type") or props.get("site_type_code") or "")[:16],
             "active": sorted(active.get(num, [])),
             "configured": num in USGS_GAUGES,
+            "excluded": num in USGS_OUT_OF_BASIN,
         })
 
     rows.sort(key=lambda r: (not r["active"], r["num"]))
@@ -286,20 +288,30 @@ def discover_usgs(client: UsgsClient) -> int:
     print(f"  {'site':18}{'':3}{'name':48}{'live parameters'}")
     print("  " + "-" * 96)
     for r in rows:
-        mark = "*" if r["configured"] else (" " if r["active"] else "-")
+        mark = ("*" if r["configured"]
+                else "x" if r["excluded"]
+                else " " if r["active"] else "-")
         params = ", ".join(r["active"]) if r["active"] else "(no recent data)"
         print(f"  {r['num']:18}{mark:3}{r['name']:48}{params}")
 
-    missing = [r for r in rows if r["active"] and not r["configured"]]
-    print(f"\n  * = already in USGS_GAUGES   - = no recent data")
+    missing = [r for r in rows if r["active"] and not r["configured"]
+               and not r["excluded"]]
+    excluded = [r for r in rows if r["active"] and r["excluded"]]
+    print("\n  * = configured   x = deliberately excluded (out of basin)"
+          "   - = no recent data")
+    if excluded:
+        print(f"\n  {len(excluded)} active station(s) excluded as out-of-basin:")
+        for r in excluded:
+            print(f"    {r['num']:16} {USGS_OUT_OF_BASIN[r['num']]}")
     if missing:
-        print(f"\n  {len(missing)} active station(s) NOT yet configured:")
+        print(f"\n  {len(missing)} active station(s) NEITHER configured nor excluded:")
         for r in missing:
-            print(f"    {r['num']:14} {r['name']:48}{', '.join(r['active'])}")
-        print("\n  Add the useful ones to USGS_GAUGES in config.py, then")
-        print("  re-run `pixi run usgs-probe` to confirm their series.")
+            turb = " [turbidity]" if "63680" in r["active"] else ""
+            print(f"    {r['num']:16} {r['name']:46}{', '.join(r['active'])}{turb}")
+        print("\n  Decide each: add to USGS_GAUGES, or record in")
+        print("  USGS_OUT_OF_BASIN with the reason. Then re-run usgs-probe.")
     else:
-        print("\n  Every active station in the basin is already configured.")
+        print("\n  Every active in-basin station is configured. Nothing unaccounted for.")
     if client.rate_remaining is not None:
         print(f"\n  {client.rate_remaining} requests left this hour\n")
     return 0

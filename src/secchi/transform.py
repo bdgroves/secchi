@@ -270,6 +270,11 @@ def build_usgs_cards(df_usgs: pd.DataFrame) -> dict:
             "site_number": site_number,
             "name": meta.get("name") or grp["site"].iloc[0],
             "shore": meta.get("shore"),
+            # lake / outlet / tributary — drives how the dashboard groups
+            # these, since ten flat cards would swamp the page.
+            "role": meta.get("role", "tributary"),
+            "note": meta.get("note"),
+            "has_turbidity": "63680" in (meta.get("parameters") or ()),
             "coordinates": {"lat": _first_float(grp["lat"]), "lng": _first_float(grp["lng"])},
             "observed_at": pd.Timestamp(newest).isoformat(),
             "readings": readings,

@@ -314,7 +314,17 @@ USGS_STATISTIC_INSTANTANEOUS = "00011"
 # find every USGS station in the basin, rather than us guessing site
 # numbers. USGS runs seven major Tahoe drainages under LTIMP; hand-listing
 # them is how you miss one.
-USGS_BBOX = (-120.35, 38.80, -119.80, 39.35)
+# Tightened 2026-09-18 after the first discover run returned 1,277
+# stations, many of them draining the wrong way: the east slope of the
+# Carson Range (Kings Canyon, Ash Canyon, Franktown, Ophir, Davis, Winters,
+# Steamboat) flows to the Carson River, and Donner Lake and the Truckee
+# below Tahoe City are downstream of the lake, not tributary to it.
+#
+# A rectangle cannot express a watershed — this is an approximation that
+# happens to fit Tahoe reasonably well. The real fix is the catchment
+# polygon layer (see docs/watershed-layer.md); once we have it, station
+# membership should be decided by point-in-polygon, not by bounding box.
+USGS_BBOX = (-120.25, 38.90, -119.90, 39.28)
 
 # Vertical datum offsets, in feet, for gauges whose published "gage height"
 # is meaningless without one. Lake Tahoe's stage recorder sits on a datum
@@ -342,63 +352,124 @@ USGS_DATUMS: dict[str, dict] = {
 # confirmed present with an instantaneous (00011) series that is currently
 # reporting, not guesses.
 USGS_GAUGES: dict[str, dict] = {
-    "10336660": {
-        "name": "Blackwood Creek nr Tahoe City, CA",
-        "shore": "west",
-        "note": "The long baseline TEON structurally cannot provide, and the "
-                "only current west-shore stream data while TEON's own "
-                "Blackwood 2 station is offline. Daily mean discharge runs "
-                "back to 1960-10-01; instantaneous to 1987.",
-        # Confirmed instantaneous and current (end 2026-09-17):
-        #   00060 discharge      1987-10-02 ->
-        #   00065 gage height    2007-10-01 ->
-        #   00010 water temp     2015-01-20 ->
-        #   63680 turbidity      2015-01-20 ->   (the EXO cross-check)
-        #   00300 dissolved O2   2024-10-11 ->
-        #   63160 stream level   2023-09-11 ->   (surveyed NAVD88 datum)
-        "parameters": ("00060", "00065", "00010", "63680", "00300", "63160"),
-    },
-    "10336730": {
-        "name": "Glenbrook Creek at Glenbrook, NV",
-        "shore": "east",
-        "note": "Pairs with TEON's Glenbrook 2 stream gauge. No turbidity "
-                "series exists here — that measure is west-shore only.",
-        # Confirmed instantaneous and current:
-        #   00060 discharge      1987-11-17 ->
-        #   00065 gage height    2007-10-01 ->
-        #   00010 water temp     2022-09-30 ->
-        #   00300 dissolved O2   2024-11-12 ->
-        # Deliberately excluded: 00095 specific conductance, whose
-        # instantaneous series ended 2024-11-07.
-        "parameters": ("00060", "00065", "00010", "00300"),
-    },
+    # ---- The lake itself, and the one channel out of it ----------------
     "10337000": {
-        "name": "Lake Tahoe at Tahoe City, CA",
+        "name": "Lake Tahoe at Tahoe City",
+        "role": "lake",
         "shore": "west",
         "note": "Lake surface elevation. Gage height only — no water "
-                "temperature series exists. Add the 6,220.00 ft datum "
-                "(see USGS_DATUMS) to get true elevation. The 32400 daily "
-                "series runs back to 1957-10-01, when the water-stage "
-                "recorder was installed.",
+                "temperature series. Add the 6,220.00 ft datum (see "
+                "USGS_DATUMS) for true elevation. The 32400 daily series "
+                "runs to 1957-10-01, when the recorder was installed.",
         "parameters": ("00065",),
     },
     "10337500": {
-        "name": "Truckee River at Tahoe City, CA",
+        "name": "Truckee River at Tahoe City",
+        "role": "outlet",
         "shore": "west",
-        "note": "THE LAKE OUTLET — 510 ft downstream of the outlet dam, and "
-                "the single channel every drop leaving Lake Tahoe passes "
-                "through. Flow is completely regulated by that dam, so "
-                "discharge here is a management decision as much as a "
-                "hydrologic one. Pairs with 10337000 immediately upstream: "
-                "lake level and the rate it is being let out.",
-        # Parameters are a starting guess for this newly added gauge —
-        # confirm with `pixi run usgs-probe` before trusting them.
-        "parameters": ("00060", "00065", "00010", "63158"),
+        "note": "THE OUTLET — 510 ft below the dam, the single channel "
+                "every drop leaving Lake Tahoe passes through, completely "
+                "regulated by that dam. Daily mean discharge runs back to "
+                "1895-07-01: 131 years of outflow. Pairs with 10337000 "
+                "upstream — lake level, and the rate it is being released.",
+        # 63160 confirmed by probe. An earlier guess of 63158 was wrong;
+        # this gauge uses the same NAVD88 code Blackwood does.
+        "parameters": ("00060", "00065", "63160"),
     },
-    # 10336725 (Glenbrook Creek at Old Hwy 50) is deliberately absent.
-    # The probe found only two series there, discharge and gage height,
-    # both ending 2000-05-01 with no instantaneous data at all. It is a
-    # historical station, not a live one.
+
+    # ---- Tributaries: the LTIMP network --------------------------------
+    # USGS has monitored Tahoe's major drainages since the late 1980s for
+    # discharge, sediment and water quality, with real-time turbidity
+    # added recently. Turbidity (63680) is the direct clarity measure and
+    # the independent cross-check on TEON's in-lake sondes, so gauges
+    # carrying it are flagged below.
+    "10336610": {
+        "name": "Upper Truckee River at South Lake Tahoe",
+        "role": "tributary", "shore": "south",
+        "note": "The largest tributary to Lake Tahoe, draining the south "
+                "end of the basin. Carries real-time turbidity.",
+        # 70369 also reported here; not yet identified — resolve against
+        # /collections/parameter-codes/items before configuring it.
+        "parameters": ("00060", "00065", "00010", "63680"),
+    },
+    "10336780": {
+        "name": "Trout Creek near Tahoe Valley",
+        "role": "tributary", "shore": "south",
+        "note": "South-shore drainage, paired with the Upper Truckee. "
+                "Carries real-time turbidity.",
+        "parameters": ("00060", "00065", "00010", "00300", "63680"),
+    },
+    "10336645": {
+        "name": "General Creek near Meeks Bay",
+        "role": "tributary", "shore": "west",
+        "note": "West shore. Largely undeveloped catchment, which makes it "
+                "a useful reference against disturbed watersheds. Carries "
+                "real-time turbidity.",
+        "parameters": ("00060", "00065", "00010", "00300", "63160", "63680"),
+    },
+    "10336660": {
+        "name": "Blackwood Creek near Tahoe City",
+        "role": "tributary", "shore": "west",
+        "note": "Daily mean discharge to 1960-10-01; instantaneous to "
+                "1987. Long baseline TEON cannot provide, and the only "
+                "current west-shore stream data while TEON's own Blackwood "
+                "station is offline.",
+        "parameters": ("00060", "00065", "00010", "63680", "00300", "63160"),
+    },
+    "10336676": {
+        "name": "Ward Creek at Highway 89",
+        "role": "tributary", "shore": "west",
+        "note": "West shore, immediately south of Blackwood. Carries "
+                "real-time turbidity.",
+        "parameters": ("00060", "00065", "00010", "63160", "63680"),
+    },
+    "10336698": {
+        "name": "Third Creek near Crystal Bay",
+        "role": "tributary", "shore": "north",
+        "note": "North shore. No turbidity series here.",
+        "parameters": ("00060", "00065", "00010", "00300", "63160"),
+    },
+    "10336700": {
+        "name": "Incline Creek near Crystal Bay",
+        "role": "tributary", "shore": "north",
+        "note": "North shore, paired with Third Creek. No turbidity series.",
+        "parameters": ("00060", "00065", "00010", "00300", "63160"),
+    },
+    "10336730": {
+        "name": "Glenbrook Creek at Glenbrook",
+        "role": "tributary", "shore": "east",
+        "note": "East shore, rain shadow. Pairs with TEON's Glenbrook 2 "
+                "stream gauge. No turbidity series exists here — that "
+                "measure is west- and south-shore only.",
+        "parameters": ("00060", "00065", "00010", "00300"),
+    },
+    # 10336725 (Glenbrook at Old Hwy 50) is deliberately absent — two
+    # series, both ending 2000-05-01, no instantaneous data. Historical.
+}
+
+# Stations the bbox catches that are NOT in the Tahoe basin. Recorded so
+# the exclusion is a documented decision rather than an oversight.
+USGS_OUT_OF_BASIN: dict[str, str] = {
+    "10311100": "Kings Canyon Ck — Carson Range east slope, Carson River basin",
+    "10311200": "Ash Canyon Ck — Carson Range east slope, Carson River basin",
+    "10348460": "Franktown Ck — Washoe Valley, Carson River basin",
+    "10348505": "Franktown Ck at Old US 395 — Washoe Valley",
+    "10348520": "Ophir Ck — Washoe Valley",
+    "10348550": "Davis Ck — Washoe Valley",
+    "10348570": "Winters Ck — Washoe Valley",
+    "10348800": "Little Washoe Lake — Washoe Valley",
+    "10348801": "Steamboat Ck — Truckee Meadows",
+    "10338000": "Truckee R nr Truckee — downstream of the Tahoe outlet",
+    "10338400": "Donner Lake — Donner Ck / Truckee basin, not Tahoe",
+    "10338500": "Donner Ck at Donner Lake — Donner basin",
+    "10338700": "Donner Ck at Hwy 89 — Donner basin",
+    "10337810": "NF Washeshu Ck — Truckee basin below the outlet",
+    "10336710": "Marlette Lake — diverted to Virginia City, not free-draining to Tahoe",
+    "10336715": "Marlette Ck — below Marlette Lake's diversion",
+    "103366092": "Upper Truckee at Hwy 50 abv Meyers — upper reach, "
+                 "superseded by 10336610 downstream",
+    "391004120083401": "Lake Tahoe outlet precip gage — reports only air "
+                       "temperature (00020) in the last 30 days, no precipitation",
 }
 
 # Gauges with useful history but nothing current. Not ingested on the
@@ -427,15 +498,12 @@ USGS_PARAMETERS: dict[str, dict] = {
                       "only; no turbidity series exists at Glenbrook."},
     "00300": {"label": "Dissolved O₂", "units": "mg/L",
               "note": "Directly comparable to the EXO sondes' Do_mgL."},
-    "63160": {"label": "Stream level", "units": "ft",
-              "note": "Referenced to the NAVD88 vertical datum, unlike "
-                      "TEON's Uncalibrated_water_depth. Absolute, not "
-                      "relative."},
+
     "00095": {"label": "Conductance",  "units": "µS/cm"},
-    "63158": {"label": "Stream elevation", "units": "ft",
-              "note": "Water-surface elevation above NAVD 1988. Already "
-                      "referenced to a national datum, so comparable "
-                      "between sites and across years."},
+    "63160": {"label": "Stream level", "units": "ft",
+              "note": "Water-surface elevation above NAVD 1988 — already on "
+                      "a national datum, so comparable between sites and "
+                      "across years, unlike TEON's uncalibrated depth."},
     "80155": {"label": "Sediment discharge", "units": "tons/day"},
     # Historical only at Blackwood (1974-10-01 to 1992-09-29, daily mean),
     # but suspended sediment is the direct physical driver of Tahoe clarity

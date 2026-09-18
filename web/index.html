@@ -323,15 +323,24 @@
   <section class="cards" id="cards" aria-label="Lake sonde readings"></section>
   <p class="offline" id="offline"></p>
 
-  <h2>Stream gauges</h2>
+  <h2>The lake and its outlet</h2>
   <p>
-    USGS gauges on the creeks feeding the lake. Blackwood Creek has been
-    measured continuously since <strong>1961</strong> — the long baseline a
-    two-day-old sensor network structurally cannot provide, and the only
-    current stream data for the west shore while TEON's own Blackwood
-    station is offline.
+    Lake Tahoe's surface elevation, and the single channel every drop
+    leaving it passes through. Daily mean outflow at the outlet has been
+    measured since <strong>1895</strong> — 131 years, a baseline no new
+    sensor network can manufacture.
   </p>
-  <section class="cards two" id="gauges" aria-label="USGS stream gauge readings"></section>
+  <section class="cards two" id="gauges-lake" aria-label="Lake level and outlet"></section>
+
+  <h2>Tributaries</h2>
+  <p id="trib-intro">
+    USGS gauges on the creeks feeding the lake, monitored for discharge,
+    sediment and water quality since the late 1980s. Five carry
+    <strong>real-time turbidity</strong> — the same measure as TEON's
+    in-lake sondes, from independent instruments, which makes them the
+    cross-check on readings like Sunnyside's faulty turbidity channel.
+  </p>
+  <section class="cards" id="gauges-trib" aria-label="Tributary gauge readings"></section>
 
   <h2>Forest stations</h2>
   <p>
@@ -595,13 +604,19 @@
       ${meta}`;
   }
 
-  function renderGauges(gauges) {
-    const nums = Object.keys(gauges || {});
+  function renderGauges(gauges, roles) {
+    const nums = Object.keys(gauges || {})
+      .filter(n => roles.includes(gauges[n].role || "tributary"));
     if (!nums.length) {
       return `<div class="placeholder-card">No USGS gauge data ingested yet.
         Run <code>pixi run usgs</code> — it wants a <code>USGS_API_KEY</code>
         for anything beyond a handful of requests per hour.</div>`;
     }
+    // Turbidity-carrying gauges first: they're the clarity cross-check and
+    // the reason this section exists.
+    nums.sort((a, b) =>
+      (gauges[b].has_turbidity ? 1 : 0) - (gauges[a].has_turbidity ? 1 : 0)
+      || String(gauges[a].name).localeCompare(String(gauges[b].name)));
     return nums.map(num => {
       const g = gauges[num];
       const paramOf = (key) => String(key).split(":")[0];
@@ -656,7 +671,8 @@
             <h3 class="card-title">${esc(g.name)}</h3>
             <span class="shore">${esc(g.shore || "")}${g.shore ? " shore" : ""}</span>
           </div>
-          <p class="observed">USGS ${esc(num)} · observed ${timeAgo(g.observed_at)}</p>
+          <p class="observed">USGS ${esc(num)} · observed ${timeAgo(g.observed_at)}${
+            g.has_turbidity ? " · turbidity" : ""}</p>
           <div class="readings">${cells}</div>
         </article>`;
     }).join("");
@@ -938,8 +954,9 @@
         : `<div class="placeholder-card">No station data ingested yet. Run an
            <code>all-live</code> ingest to populate this section.</div>`;
 
-      // USGS stream gauges
-      $("gauges").innerHTML = renderGauges(snap.gauges);
+      // USGS gauges, split by role — ten flat cards would swamp the page.
+      $("gauges-lake").innerHTML = renderGauges(snap.gauges, ["lake", "outlet"]);
+      $("gauges-trib").innerHTML = renderGauges(snap.gauges, ["tributary"]);
 
       // Cameras
       $("cameras").innerHTML = renderCameras(snap.cameras);
@@ -1004,7 +1021,8 @@
       text.textContent = `Couldn't load the latest snapshot (${err.message}).`;
       $("cards").innerHTML = LAKE_ORDER
         .map(n => renderEmptyCard(n, "Waiting on ingest.")).join("");
-      for (const id of ["transect", "stations", "gauges", "cameras", "inventory"]) {
+      for (const id of ["transect", "stations", "gauges-lake", "gauges-trib",
+                        "cameras", "inventory"]) {
         $(id).innerHTML = "";
       }
     }
