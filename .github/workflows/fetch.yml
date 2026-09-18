@@ -1,30 +1,26 @@
 name: fetch
 
-# Archives raw snapshots into data/raw/ on a schedule. This is the durable,
-# append-only record the transform layer and any future analysis build on.
+# Pulls raw snapshots, folds them into the accumulating parquet record,
+# prunes the raw buffer, and commits.
 #
-# Two sources:
-#   TEON — every live, visible sensor across all six confirmed sensor types,
-#          skipping sites TEON flags non-public via /site-visibility/disabled.
-#   USGS — the configured stream gauges from the modernized Water Data
-#          OGC APIs.
+# Data model:
+#   data/raw/               working buffer of fetch artifacts, pruned to
+#                           RAW_RETENTION_DAYS. Exists so a transform bug
+#                           can be caught and reprocessed.
+#   data/processed/*.parquet  the DURABLE RECORD. Accumulates across runs,
+#                           deduplicated on the source's own record ids.
 #
-# This workflow deliberately does NOT commit web/assets/latest.json. That
-# file is generated at deploy time by pages.yml, which avoids merge
-# conflicts between the cron and local development runs.
+# This workflow deliberately does NOT trigger on pushes to src/. It used
+# to, which meant every code change kicked off a data pull and produced a
+# redundant snapshot commit — pushing the tributary config on 2026-09-18
+# produced two snapshots five minutes apart. Code changes are published by
+# pages.yml; only the schedule and manual dispatch should move data.
 
 on:
   schedule:
     # Every hour on the hour.
     - cron: "0 * * * *"
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - "src/secchi/**"
-      - ".github/workflows/fetch.yml"
-      - "pyproject.toml"
-      - "pixi.lock"
 
 concurrency:
   group: fetch
@@ -51,21 +47,30 @@ jobs:
         run: pixi run ingest-all
 
       - name: Ingest USGS
-        # Non-fatal: a USGS outage or an exhausted rate limit shouldn't cost
-        # us the TEON snapshot, which is the time-sensitive half. USGS has a
-        # 65-year archive and will still be there next hour.
+        # Non-fatal: a USGS outage or exhausted quota shouldn't cost us the
+        # TEON snapshot, which is the time-sensitive half. USGS has a
+        # 131-year archive and will still be there next hour.
         continue-on-error: true
         env:
           USGS_API_KEY: ${{ secrets.USGS_API_KEY }}
         run: pixi run usgs
 
-      - name: Commit new snapshots
+      - name: Fold into the parquet record
+        # Must run here, not only at deploy time: raw is about to be pruned,
+        # so anything not accumulated now is lost.
+        run: pixi run transform
+
+      - name: Prune the raw buffer
+        run: pixi run prune
+
+      - name: Commit
         run: |
           git config user.name "secchi-bot"
           git config user.email "secchi-bot@users.noreply.github.com"
-          git add data/raw/ || true
+          # -A so pruned files are staged as deletions, not left behind.
+          git add -A data/ || true
           if git diff --cached --quiet; then
-            echo "no new data"
+            echo "no data changes"
           else
             git commit -m "data: hourly snapshot $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             git push

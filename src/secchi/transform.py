@@ -290,6 +290,56 @@ def _first_float(series: pd.Series) -> float | None:
     return float(vals.iloc[0]) if not vals.empty else None
 
 
+def _load_existing(path: Path, required: Iterable[str]) -> pd.DataFrame:
+    """Read a previously written parquet, or return an empty frame.
+
+    This is what makes the parquet the durable record rather than a
+    disposable derivative: each run appends to what is already there. Raw
+    snapshots can then be pruned on a retention window without losing
+    history, which is the difference between a repo that grows without
+    bound and one that reaches a steady state.
+
+    A schema change is handled by discarding the old file rather than
+    failing — the alternative is a crash loop that needs manual cleanup,
+    and the raw buffer can rebuild recent history.
+    """
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        existing = pd.read_parquet(path)
+    except Exception as exc:
+        log.warning("could not read %s (%s); rebuilding from raw", path.name, exc)
+        return pd.DataFrame()
+    missing = set(required) - set(existing.columns)
+    if missing:
+        log.warning("%s is missing %s; rebuilding from raw",
+                    path.name, ", ".join(sorted(missing)))
+        return pd.DataFrame()
+    return existing
+
+
+def _accumulate(new: pd.DataFrame, path: Path, dedupe_on: list[str]) -> pd.DataFrame:
+    """Merge newly-parsed rows into the stored record and dedupe.
+
+    New rows are put first so that a re-fetch of the same observation keeps
+    the freshest copy — relevant if TEON ever corrects a value in place.
+    """
+    if new.empty:
+        return _load_existing(path, dedupe_on)
+    existing = _load_existing(path, dedupe_on)
+    if existing.empty:
+        combined = new
+    else:
+        combined = pd.concat([new, existing], ignore_index=True)
+    before = len(combined)
+    combined = combined.drop_duplicates(subset=dedupe_on).reset_index(drop=True)
+    if "timestamp" in combined.columns:
+        combined = combined.sort_values("timestamp").reset_index(drop=True)
+    log.info("%s: %d new + %d stored -> %d unique (%d duplicates collapsed)",
+             path.name, len(new), len(existing), len(combined), before - len(combined))
+    return combined
+
+
 def load_latest_json(raw_dir: Path, subdir: str) -> dict | None:
     """Return the most recent JSON snapshot in ``data/raw/<subdir>/``."""
     root = raw_dir / subdir
@@ -1091,29 +1141,35 @@ def main() -> int:
     )
 
     df_obs, df_assets = to_frames(load_teon_snapshots())
-    log.info("TEON: %d numeric observations (%d unique records), %d asset refs",
+    log.info("TEON: %d numeric observations parsed from raw "
+             "(%d unique records), %d asset refs",
              len(df_obs),
              df_obs["uuid"].nunique() if not df_obs.empty else 0,
              len(df_assets))
 
     df_usgs = usgs_to_long(load_usgs_snapshots())
     if not df_usgs.empty:
-        log.info("USGS: %d observations across %d gauge(s)",
+        log.info("USGS: %d observations parsed from raw across %d gauge(s)",
                  len(df_usgs), df_usgs["site_number"].nunique())
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Accumulate into the stored record rather than overwriting it, so the
+    # parquet survives raw-snapshot pruning.
     obs_path = PROCESSED_DIR / "observations.parquet"
+    df_obs = _accumulate(df_obs, obs_path, ["uuid", "site", "variable"])
     df_obs.to_parquet(obs_path, index=False)
-    log.info("wrote %s", obs_path)
+    log.info("wrote %s (%d rows)", obs_path, len(df_obs))
 
     assets_path = PROCESSED_DIR / "assets.parquet"
+    df_assets = _accumulate(df_assets, assets_path, ["uuid", "site", "kind"])
     df_assets.to_parquet(assets_path, index=False)
-    log.info("wrote %s", assets_path)
+    log.info("wrote %s (%d rows)", assets_path, len(df_assets))
 
     usgs_path = PROCESSED_DIR / "usgs_observations.parquet"
+    df_usgs = _accumulate(df_usgs, usgs_path, ["uuid", "variable", "statistic_id"])
     df_usgs.to_parquet(usgs_path, index=False)
-    log.info("wrote %s", usgs_path)
+    log.info("wrote %s (%d rows)", usgs_path, len(df_usgs))
 
     df_wide = to_latest_wide(df_obs)
     wide_path = PROCESSED_DIR / "latest_wide.parquet"

@@ -18,13 +18,14 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from secchi.config import (
     LIVE_EXO_SITES,
     LIVE_WINDOW_HOURS,
     RAW_DIR,
+    RAW_RETENTION_DAYS,
     USGS_BBOX,
     USGS_OUT_OF_BASIN,
     USGS_DEFAULT_PERIOD,
@@ -99,6 +100,57 @@ def build_targets(client: TeonClient, mode: str) -> list[tuple[str, str]]:
         return [(s["_sensor_type"], s["site"]) for s in client.iter_inventory()]
 
     raise ValueError(f"unknown mode {mode!r}")
+
+
+def prune_raw(root: Path = RAW_DIR, days: int = RAW_RETENTION_DAYS) -> int:
+    """Delete raw snapshots older than the retention window.
+
+    Safe because the deduplicated parquet under data/processed is the
+    durable record and accumulates across runs — raw is a working buffer
+    that exists so a transform bug can be caught and reprocessed.
+
+    Dates come from the YYYY/MM/DD directory layout rather than filesystem
+    mtimes, which a fresh git checkout would reset to clone time and make
+    every snapshot look new.
+    """
+    if not root.exists() or days <= 0:
+        return 0
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date()
+    removed = 0
+    freed = 0
+
+    for path in list(root.rglob("*.json")):
+        parts = path.parts
+        # .../YYYY/MM/DD/HHMMSS.json
+        if len(parts) < 4:
+            continue
+        try:
+            snap_date = date(int(parts[-4]), int(parts[-3]), int(parts[-2]))
+        except (ValueError, TypeError):
+            continue
+        if snap_date < cutoff:
+            try:
+                freed += path.stat().st_size
+                path.unlink()
+                removed += 1
+            except OSError as exc:
+                log.warning("could not remove %s: %s", path, exc)
+
+    # Clear out directories the deletions emptied.
+    for d in sorted((p for p in root.rglob("*") if p.is_dir()),
+                    key=lambda p: len(p.parts), reverse=True):
+        try:
+            if not any(d.iterdir()):
+                d.rmdir()
+        except OSError:
+            pass
+
+    if removed:
+        log.info("pruned %d raw snapshot(s) older than %d days (%.1f MB freed)",
+                 removed, days, freed / 1048576)
+    else:
+        log.info("no raw snapshots older than %d days", days)
+    return removed
 
 
 def probe_slugs(client: TeonClient, live_only: bool = False) -> int:
@@ -345,15 +397,21 @@ def run_usgs(mode: str) -> int:
             successes += 1
 
         log.info("USGS ingest complete: %d/%d gauges", successes, len(USGS_GAUGES))
+        prune_raw()
         return 0 if successes else 1
 
 
 def run(mode: str = "live-exo") -> int:
+    if mode == "prune":
+        prune_raw()
+        return 0
     if mode.startswith("usgs"):
         return run_usgs(mode)
 
     with TeonClient() as client:
         # Probe mode is diagnostic only: no snapshots written.
+        if mode == "prune":
+            return 0 if prune_raw() >= 0 else 1
         if mode == "probe":
             return probe_slugs(client, live_only=False)
         if mode == "probe-live":
@@ -395,6 +453,7 @@ def run(mode: str = "live-exo") -> int:
             successes += 1
 
         log.info("ingest complete: %d/%d snapshots", successes, len(targets))
+        prune_raw()
         return 0 if successes > 0 else 1
 
 
@@ -403,7 +462,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mode",
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
-                 "usgs", "usgs-probe", "usgs-discover"),
+                 "usgs", "usgs-probe", "usgs-discover", "prune"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -414,7 +473,8 @@ def main(argv: list[str] | None = None) -> int:
             "usgs: pull the configured USGS gauges. "
             "usgs-probe: ask each configured USGS gauge what it measures. "
             "usgs-discover: find every USGS station in the Tahoe basin and "
-            "report which are active but unconfigured. Neither writes data."
+            "report which are active but unconfigured. Neither writes data. "
+            "prune: delete raw snapshots past the retention window."
         ),
     )
     args = parser.parse_args(argv)

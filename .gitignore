@@ -21,15 +21,15 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual envs (kept even though pixi is primary — belt and suspenders)
+# Virtual envs
 .venv/
 venv/
 env/
 ENV/
 
 # Pixi
-# Note: pixi.lock is intentionally NOT ignored — it pins per-platform
-# resolutions and is how pixi delivers "same env everywhere". Commit it.
+# pixi.lock is intentionally NOT ignored — it pins per-platform resolutions
+# and is how pixi delivers the same environment everywhere. Commit it.
 .pixi/
 
 # Jupyter
@@ -51,7 +51,7 @@ coverage.xml
 .mypy_cache/
 .pyright/
 
-# Node (for any dashboard tooling later)
+# Node
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -59,6 +59,9 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Environment / secrets
+# USGS_API_KEY lives in the shell environment locally and in a GitHub
+# Actions secret in CI. It must never be committed — this is a public repo
+# and a key in the history stays in forks and caches forever.
 .env
 .env.local
 .env.*.local
@@ -76,12 +79,26 @@ yarn-error.log*
 Thumbs.db
 desktop.ini
 
-# Data — keep the folder structure but ignore bulky intermediates.
-# Committed raw pulls and processed outputs are handled explicitly
-# by the ingest workflow; anything below is scratch.
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
+# data/raw/            IS committed — a working buffer of fetch artifacts,
+#                      pruned to RAW_RETENTION_DAYS by `pixi run prune`.
+# data/processed/*.parquet
+#                      IS committed — these accumulate across runs and are
+#                      the DURABLE RECORD. Because raw gets pruned, ignoring
+#                      these would silently destroy history. They were
+#                      ignored until 2026-09-18, when the parquet became
+#                      accumulating rather than a rebuilt derivative.
+#
+# Two exceptions below are genuinely derived and cheap to rebuild.
+
+# Rebuilt from observations.parquet on every transform.
+data/processed/latest_wide.parquet
+
+# Generated at deploy time by .github/workflows/pages.yml, so local runs
+# don't race the cron for the same path.
+web/assets/latest.json
+
 data/scratch/
 *.tmp
-
-# Generated at deploy time by .github/workflows/pages.yml
-web/assets/latest.json
-data/processed/*.parquet

@@ -514,8 +514,18 @@ USGS_PARAMETERS: dict[str, dict] = {
               "note": "Blackwood 1974-1992, daily mean. Historical."},
 }
 
-# How much history to pull per run. ISO 8601 duration.
-USGS_DEFAULT_PERIOD = "P2D"
+# How much history to pull per run, as an ISO 8601 duration.
+#
+# Was P2D, which at an hourly cron meant re-fetching 47 of the 48 hours we
+# already had — roughly 98 % of every commit was data already in the repo,
+# about 180 MB/day. PT6H still gives six-fold overlap between consecutive
+# runs, so five consecutive failures can pass without leaving a gap, at a
+# quarter the volume.
+#
+# The sparkline trend window (SPARKLINE_WINDOW_HOURS) is satisfied from the
+# accumulated parquet, not from a single pull, so shortening this does not
+# shorten the charts.
+USGS_DEFAULT_PERIOD = "PT6H"
 
 
 # ===========================================================================
@@ -583,6 +593,13 @@ TREND_SIGNIFICANCE = 0.15
 # ---------------------------------------------------------------------------
 # Local paths
 # ---------------------------------------------------------------------------
+
+# Raw snapshots are a working buffer, not the archive. The deduplicated
+# parquet under data/processed is the durable record and accumulates across
+# runs; raw exists so a transform bug can be found and reprocessed within a
+# reasonable window. Without a retention limit the repo grows without
+# bound — an hourly cron committing every fetch artifact forever.
+RAW_RETENTION_DAYS = 7
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data"

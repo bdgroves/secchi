@@ -97,7 +97,11 @@ usgs-probe = "python -m secchi.ingest --mode usgs-probe"
 # which are active but not yet configured. Beats hand-listing site numbers.
 usgs-discover = "python -m secchi.ingest --mode usgs-discover"
 transform  = "python -m secchi.transform"
-pipeline   = { depends-on = ["ingest-all", "usgs", "transform"] }
+# Delete raw snapshots past RAW_RETENTION_DAYS. Safe only because
+# transform accumulates into data/processed/*.parquet, which is the
+# durable record — run transform BEFORE prune, never after.
+prune      = "python -m secchi.ingest --mode prune"
+pipeline   = { depends-on = ["ingest-all", "usgs", "transform", "prune"] }
 serve      = "python -m http.server 8000 --directory web"
 
 # ---------------------------------------------------------------------------
