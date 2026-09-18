@@ -1,16 +1,16 @@
 name: fetch
 
-# Archives raw TEON snapshots into data/raw/ on a schedule. This is the
-# durable record — the append-only history that the transform layer and
-# future analysis build on.
+# Archives raw snapshots into data/raw/ on a schedule. This is the durable,
+# append-only record the transform layer and any future analysis build on.
 #
-# Pulls every live, visible sensor across all six confirmed TEON sensor
-# types (lake EXO sondes, soil, air temperature, tree dendrometers, stream
-# level, field cameras), skipping any site TEON flags as non-public via
-# /api/site-visibility/disabled.
+# Two sources:
+#   TEON — every live, visible sensor across all six confirmed sensor types,
+#          skipping sites TEON flags non-public via /site-visibility/disabled.
+#   USGS — the configured stream gauges from the modernized Water Data
+#          OGC APIs.
 #
-# Note: this workflow deliberately does NOT commit web/assets/latest.json.
-# That file is generated at deploy time by pages.yml, which avoids merge
+# This workflow deliberately does NOT commit web/assets/latest.json. That
+# file is generated at deploy time by pages.yml, which avoids merge
 # conflicts between the cron and local development runs.
 
 on:
@@ -47,8 +47,17 @@ jobs:
           environments: default
           cache: true
 
-      - name: Ingest
+      - name: Ingest TEON
         run: pixi run ingest-all
+
+      - name: Ingest USGS
+        # Non-fatal: a USGS outage or an exhausted rate limit shouldn't cost
+        # us the TEON snapshot, which is the time-sensitive half. USGS has a
+        # 65-year archive and will still be there next hour.
+        continue-on-error: true
+        env:
+          USGS_API_KEY: ${{ secrets.USGS_API_KEY }}
+        run: pixi run usgs
 
       - name: Commit new snapshots
         run: |

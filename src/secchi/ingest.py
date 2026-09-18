@@ -25,8 +25,12 @@ from secchi.config import (
     LIVE_EXO_SITES,
     LIVE_WINDOW_HOURS,
     RAW_DIR,
+    USGS_DEFAULT_PERIOD,
+    USGS_GAUGES,
+    USGS_PARAMETERS,
 )
 from secchi.sources.teon import TeonClient, slugify_site
+from secchi.sources.usgs import UsgsClient, UsgsRateLimited
 
 log = logging.getLogger("secchi.ingest")
 
@@ -132,7 +136,98 @@ def probe_slugs(client: TeonClient) -> int:
     return 0
 
 
+def write_usgs_snapshot(snapshot: dict, root: Path = RAW_DIR) -> Path:
+    fetched_at = datetime.fromisoformat(snapshot["fetched_at"])
+    collection = snapshot["collection"]
+    site = snapshot["site_number"]
+    return _write_json(_snapshot_path(root / "usgs" / collection / site, fetched_at), snapshot)
+
+
+def probe_usgs(client: UsgsClient) -> int:
+    """Ask each configured gauge what it actually measures.
+
+    This is the honest replacement for assuming parameter availability.
+    /time-series-metadata reports one row per (parameter, statistic) series
+    with its period of record, so we learn both what exists and how far
+    back it goes.
+    """
+    log.info("USGS probe: %d gauges, key %s",
+             len(USGS_GAUGES), "set" if client.authenticated else "NOT set")
+
+    described = client.describe_gauges()
+    for site, series in described.items():
+        meta = USGS_GAUGES.get(site, {})
+        print(f"\n  {site} — {meta.get('name', '?')}")
+        if not series:
+            print("    no time series returned")
+            continue
+
+        rows = []
+        for feat in series:
+            props = feat.get("properties") or feat
+            rows.append((
+                props.get("parameter_code") or "?",
+                (props.get("parameter_name") or "")[:42],
+                props.get("statistic_id") or "",
+                props.get("unit_of_measure") or "",
+                (props.get("begin") or "")[:10],
+                (props.get("end") or "")[:10],
+            ))
+        rows.sort()
+        print(f"    {'code':6} {'parameter':44} {'stat':6} {'units':10} {'begin':11} end")
+        print("    " + "-" * 92)
+        for code, name, stat, unit, begin, end in rows:
+            print(f"    {code:6} {name:44} {stat:6} {unit:10} {begin:11} {end}")
+
+        wanted = set(meta.get("parameters", ()))
+        present = {r[0] for r in rows}
+        missing = wanted - present
+        if missing:
+            print(f"    NOTE: configured but not reported: {', '.join(sorted(missing))}")
+        extra = present - wanted
+        if extra:
+            known = [c for c in sorted(extra) if c in USGS_PARAMETERS]
+            if known:
+                print(f"    NOTE: available and not configured: {', '.join(known)}")
+
+    if client.rate_remaining is not None:
+        print(f"\n  {client.rate_remaining} requests left this hour\n")
+    return 0
+
+
+def run_usgs(mode: str) -> int:
+    """Ingest USGS gauges. Modes: usgs-probe (discovery), usgs (data)."""
+    with UsgsClient() as client:
+        if mode == "usgs-probe":
+            return probe_usgs(client)
+
+        successes = 0
+        for site, meta in USGS_GAUGES.items():
+            params = list(meta.get("parameters", ())) or None
+            try:
+                snapshot = client.fetch_continuous(
+                    site, parameter_codes=params, period=USGS_DEFAULT_PERIOD)
+            except UsgsRateLimited as exc:
+                log.error("%s", exc)
+                return 1
+            except Exception:
+                log.exception("USGS fetch failed for %s", site)
+                continue
+
+            if snapshot["feature_count"] == 0:
+                log.warning("no features for %s (%s)", site, meta.get("name"))
+                continue
+            write_usgs_snapshot(snapshot)
+            successes += 1
+
+        log.info("USGS ingest complete: %d/%d gauges", successes, len(USGS_GAUGES))
+        return 0 if successes else 1
+
+
 def run(mode: str = "live-exo") -> int:
+    if mode.startswith("usgs"):
+        return run_usgs(mode)
+
     with TeonClient() as client:
         # Probe mode is diagnostic only: no snapshots written.
         if mode == "probe":
@@ -181,13 +276,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Pull a TEON snapshot into data/raw.")
     parser.add_argument(
         "--mode",
-        choices=("live-exo", "all-live", "probe"),
+        choices=("live-exo", "all-live", "probe", "usgs", "usgs-probe"),
         default="live-exo",
         help=(
-            "live-exo: only the curated EXO sites (default, used by CI). "
-            "all-live: every sensor with recent data. "
-            "probe: resolve URL slugs for every live sensor type and print a "
-            "report, without writing any snapshots."
+            "live-exo: only the curated EXO sites. "
+            "all-live: every live TEON sensor (default for CI). "
+            "probe: resolve TEON URL slugs and print a report, writing nothing. "
+            "usgs: pull the configured USGS gauges. "
+            "usgs-probe: ask each USGS gauge what it measures, writing nothing."
         ),
     )
     args = parser.parse_args(argv)

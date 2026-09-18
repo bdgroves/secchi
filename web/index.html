@@ -171,17 +171,28 @@
 
   <h2>Same weather, two watersheds</h2>
   <p>
-    Homewood and Glenbrook 2 sit within about a kilometre of the same
-    latitude on opposite shores — close enough to share every storm and
-    sun angle, far enough apart to sit on opposite sides of the Sierra
-    rain shadow. The west side collects the precipitation; the east side
-    stays dry. Watch the two columns diverge.
+    Homewood and Glenbrook 5 sit 64 metres apart in latitude on opposite
+    shores of the lake — the same line across the map, one side facing the
+    Pacific storms and one side in the Sierra rain shadow. Both are upland
+    hillslope stations, and both readings below are taken at the same
+    instant, because air temperature and humidity swing far too much across
+    a day for "latest at each site" to mean anything.
   </p>
   <section id="transect" aria-label="East-west transect comparison"></section>
 
   <h2>Three anchors on the lake</h2>
   <section class="cards" id="cards" aria-label="Lake sonde readings"></section>
   <p class="offline" id="offline"></p>
+
+  <h2>Stream gauges</h2>
+  <p>
+    USGS gauges on the creeks feeding the lake. Blackwood Creek has been
+    measured continuously since <strong>1961</strong> — the long baseline a
+    two-day-old sensor network structurally cannot provide, and the only
+    current stream data for the west shore while TEON's own Blackwood
+    station is offline.
+  </p>
+  <section class="cards two" id="gauges" aria-label="USGS stream gauge readings"></section>
 
   <h2>Forest stations</h2>
   <p>
@@ -224,7 +235,8 @@
   <hr class="rule">
 
   <footer>
-    Data from the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a>. Provisional and subject to revision.
+    Data from the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a>
+    and the <a href="https://api.waterdata.usgs.gov/">U.S. Geological Survey</a>. Provisional and subject to revision.
     Source on <a href="https://github.com/bdgroves/secchi">GitHub</a>.
     Part of <a href="https://github.com/bdgroves">Brooks Labs</a>.
   </footer>
@@ -238,6 +250,11 @@
   const STATION_VARS = ["Air_Temp", "RH", "Soil_VWC", "Soil_T"];
   const TRANSECT_VARS = ["Air_Temp", "RH", "Soil_VWC", "Soil_T"];
   const CATEGORY_LABELS = { lake: "Lake", stream: "Stream", terrestrial: "Terrestrial" };
+  // Display order for USGS parameters, by code. Reading keys are
+  // "code:statistic" because one gauge publishes the same parameter as
+  // instantaneous and as daily max/min/mean, so the code alone doesn't
+  // identify a series.
+  const GAUGE_VARS = ["00060", "63680", "00300", "00010", "63160", "00065"];
 
   const fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
   const fmtInt = new Intl.NumberFormat();
@@ -310,10 +327,21 @@
 
   function renderTransect(t) {
     if (!t) {
-      return `<div class="placeholder-card">Both halves of the transect need
-        current data. Waiting on one or both stations.</div>`;
+      return `<div class="placeholder-card">The two stations' histories don't
+        currently overlap, so there's no simultaneous pair to compare.
+        Waiting on the next ingest.</div>`;
     }
     const w = t.west, e = t.east;
+    const offset = t.offset_minutes
+      ? ` (${fmt.format(t.offset_minutes)} min apart)` : " — same instant";
+    const meta = `
+      <p class="observed" style="margin-top:0.75rem">
+        Compared at ${esc(t.aligned_at ? new Date(t.aligned_at).toLocaleString() : "—")}${offset}.
+        ${t.latitude_offset_m != null
+            ? `Stations sit ${fmtInt.format(t.latitude_offset_m)} m apart in latitude.` : ""}
+        ${t.overlap_hours != null
+            ? `${fmt.format(t.overlap_hours)} h of shared history on hand.` : ""}
+      </p>`;
     const rows = TRANSECT_VARS
       .filter(v => w.readings[v] !== undefined || e.readings[v] !== undefined)
       .map(v => {
@@ -336,25 +364,75 @@
           <div class="tside e">${esc(e.site)}</div>
         </div>
         ${rows}
-      </div>`;
+      </div>
+      ${meta}`;
+  }
+
+  function renderGauges(gauges) {
+    const nums = Object.keys(gauges || {});
+    if (!nums.length) {
+      return `<div class="placeholder-card">No USGS gauge data ingested yet.
+        Run <code>pixi run usgs</code> — it wants a <code>USGS_API_KEY</code>
+        for anything beyond a handful of requests per hour.</div>`;
+    }
+    return nums.map(num => {
+      const g = gauges[num];
+      const paramOf = (key) => String(key).split(":")[0];
+      const rank = (key) => {
+        const i = GAUGE_VARS.indexOf(paramOf(key));
+        return i === -1 ? GAUGE_VARS.length : i;
+      };
+      // Instantaneous first within a parameter, then aggregates.
+      const keys = Object.keys(g.readings).sort((a, b) =>
+        rank(a) - rank(b) || String(a).localeCompare(String(b)));
+      const cells = keys.map(c => {
+        const r = g.readings[c];
+        // USGS says outright when a value hasn't had Director's approval.
+        // TEON publishes no equivalent, so it's worth surfacing.
+        const prov = r.approval_status === "Provisional"
+          ? `<div class="reading-note" style="color:var(--muted)">provisional</div>` : "";
+        return `
+          <div class="reading">
+            <div class="reading-value">${fmt.format(r.value)}<span class="units">${esc(r.units || "")}</span></div>
+            <div class="reading-label">${esc(r.label)}</div>
+            ${prov}
+          </div>`;
+      }).join("");
+      return `
+        <article class="card">
+          <div class="card-head">
+            <h3 class="card-title">${esc(g.name)}</h3>
+            <span class="shore">${esc(g.shore || "")}${g.shore ? " shore" : ""}</span>
+          </div>
+          <p class="observed">USGS ${esc(num)} · observed ${timeAgo(g.observed_at)}</p>
+          <div class="readings">${cells}</div>
+        </article>`;
+    }).join("");
   }
 
   function renderCameras(cameras) {
     if (!cameras || !cameras.length) {
       return `<div class="placeholder-card">No camera records ingested yet.</div>`;
     }
-    const total = cameras.reduce((n, c) => n + c.count, 0);
-    const rows = cameras.map(c => `
+    const upstream = cameras.reduce((n, c) => n + (c.upstream_total || c.held || 0), 0);
+    const rows = cameras.map(c => {
+      const held = c.held != null ? c.held : c.count;
+      const total = c.upstream_total;
+      const label = total != null && total !== held
+        ? `${fmtInt.format(total)} frames <span style="opacity:.6">(${fmtInt.format(held)} held)</span>`
+        : `${fmtInt.format(held)} frames`;
+      return `
       <tr>
         <td style="width:1rem"><span class="inv-dot" data-state="${ageState(c.latest_at)}"></span></td>
         <td class="inv-site">${esc(c.site)}</td>
         <td class="inv-meta" style="text-align:right; white-space:nowrap">${timeAgo(c.latest_at)}</td>
-        <td class="inv-meta" style="text-align:right; white-space:nowrap">${fmtInt.format(c.count)} frames</td>
-      </tr>`).join("");
+        <td class="inv-meta" style="text-align:right; white-space:nowrap">${label}</td>
+      </tr>`;
+    }).join("");
     return `
       <table class="inv-table"><tbody>${rows}</tbody></table>
       <div class="placeholder-card" style="margin-top:1rem">
-        <strong>${fmtInt.format(total)} frames indexed, none displayable yet.</strong>
+        <strong>${fmtInt.format(upstream)} frames upstream, none displayable yet.</strong>
         TEON stores each capture as an <code>s3://</code> object reference,
         which a browser can't load directly. A time-lapse needs either a
         public HTTPS form of these URLs or a small proxy. Until then secchi
@@ -442,6 +520,9 @@
         : `<div class="placeholder-card">No station data ingested yet. Run an
            <code>all-live</code> ingest to populate this section.</div>`;
 
+      // USGS stream gauges
+      $("gauges").innerHTML = renderGauges(snap.gauges);
+
       // Cameras
       $("cameras").innerHTML = renderCameras(snap.cameras);
 
@@ -458,8 +539,12 @@
         const newest = new Date(Math.max(...stamps)).toISOString();
         const liveCount = Object.keys(sites).length + stationNames.length;
         dot.dataset.state = ageState(newest);
+        const srcs = (snap.sources || ["TEON"]).join(" + ");
+        const gaugeCount = Object.keys(snap.gauges || {}).length;
+        const bits = [`${liveCount} station${liveCount === 1 ? "" : "s"}`];
+        if (gaugeCount) bits.push(`${gaugeCount} gauge${gaugeCount === 1 ? "" : "s"}`);
         text.textContent =
-          `Live from TEON — ${liveCount} station${liveCount === 1 ? "" : "s"} reporting. `
+          `Live from ${srcs} — ${bits.join(" and ")} reporting. `
           + `Freshest reading ${timeAgo(newest)}.`;
       } else {
         dot.dataset.state = "stale";
@@ -477,6 +562,7 @@
         .map(n => renderEmptyCard(n, "Waiting on ingest.")).join("");
       $("transect").innerHTML = "";
       $("stations").innerHTML = "";
+      $("gauges").innerHTML = "";
       $("cameras").innerHTML = "";
       $("inventory").innerHTML = "";
     }

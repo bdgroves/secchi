@@ -78,8 +78,16 @@ ingest     = "python -m secchi.ingest --mode live-exo"
 # report, writing nothing. Re-run after TEON ships backend changes, or when
 # a dormant sensor type comes back online.
 probe      = "python -m secchi.ingest --mode probe"
+# USGS stream gauges, via the modernized Water Data OGC APIs. Reads
+# USGS_API_KEY from the environment; without it USGS caps you at 50
+# requests/hour per IP instead of 1000.
+usgs       = "python -m secchi.ingest --mode usgs"
+# Ask each configured gauge what it actually measures, and over what period
+# of record. Writes nothing. Run this before trusting the parameter lists in
+# config.py — they're what we want, not what's confirmed.
+usgs-probe = "python -m secchi.ingest --mode usgs-probe"
 transform  = "python -m secchi.transform"
-pipeline   = { depends-on = ["ingest-all", "transform"] }
+pipeline   = { depends-on = ["ingest-all", "usgs", "transform"] }
 serve      = "python -m http.server 8000 --directory web"
 
 # ---------------------------------------------------------------------------

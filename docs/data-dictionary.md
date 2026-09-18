@@ -13,7 +13,7 @@ An AWS App Runner container; assume it may move. If it does, update `TEON_API_BA
 | `/sensors/locations` | Full inventory by category → sensor type, with coordinates, first/last update, row counts. | in use |
 | `/sensors/{slug}?site={site}&page={n}&page_size={s}` | Paginated time series for one (sensor type, site) pair. | in use |
 | `/site-visibility/disabled` | Sites the frontend hides. Returns `{"disabled": ["4hcamp|lake|EXO"]}`. | in use |
-| `/calibration/events?site_name={site}` | Per-site calibration log. | not yet consumed |
+| `/calibration/events?site_name={site}` | Per-site calibration log. Schema is `{events, rows, count}`. **Checked 2026-09-17 for Glenbrook and Sunnyside: both return `count: 0`.** Scaffolding TEON has not populated, so it does not explain the dead pH probes or the Sunnyside turbidity offset. | empty |
 | `/aquatic-metadata/` | Aquatic sensor metadata. | redirect-loops for our client; unresolved |
 | `/stats/visits`, `/auth/status` | Site analytics and auth state. | not relevant |
 
@@ -58,7 +58,7 @@ soil-moisture    uuid 02035d8b-…  TIMESTAMP 2026-09-17T08:15:00  BattV_Avg 13.
 Identical record uuid, identical diagnostics, identical row count. Consequences:
 
 - The inventory's "43 sensors" is closer to **~10 physical logger stations**, each exposing several sensor packages. Identical `data_count` values across soil/air/tree at one site are the tell.
-- Deduping on `(uuid, variable)` in the transform collapses the shared `BattV_Avg` / `PTemp_C_Avg` channels to one row, which is correct.
+- Deduping on `(uuid, site, variable)` in the transform collapses the shared `BattV_Avg` / `PTemp_C_Avg` channels to one row, which is correct. `site` is in the key as defensive hardening only: the shared-logger case is always within one site, so including site never blocks the collapse, but it makes a uuid collision across two sites harmless instead of silently discarding one site's observations.
 - The `sensor_type` recorded against a shared diagnostic channel is whichever snapshot the transform reached first. Cosmetic only — the value is identical either way.
 
 ---
@@ -142,6 +142,8 @@ Band dendrometers, eight trees per station, at Glenbrook 2, 4, and 5.
 
 The bucket path confirms the backend stack: Campbell LoggerNet writing to S3. The "Snow photos" folder suggests these are aimed at snowpack monitoring.
 
+Frame counts are reported two ways, because they differ: `upstream_total` is what TEON says exists (from the pagination envelope's `total`), while `held` is what we have locally, capped by `DEFAULT_INGEST_PAGE_SIZE` per run. As of 2026-09-17 there are 3,378 frames upstream across five stations, oldest dating to November 2025.
+
 ---
 
 ## Sites
@@ -170,11 +172,33 @@ The bucket path confirms the backend stack: Campbell LoggerNet writing to S3. Th
 
 ### The transect pair
 
-`TRANSECT_PAIR = ("Homewood", "Glenbrook 2")`
+`TRANSECT_PAIR = ("Homewood", "Glenbrook 5")`
 
-Homewood (39.075 N, west shore) and Glenbrook 2 (39.086 N, east shore) sit within ~0.011° latitude — about 1.2 km — on opposite sides of the lake. They share every storm and sun angle while sitting on opposite sides of the Sierra rain shadow, which makes them the cleanest available basis for the "same storm, two watersheds" comparison.
+Homewood (39.07521 N, west shore) and Glenbrook 5 (39.07464 N, east shore) sit **64 m apart in latitude** — effectively the same line across the map, on opposite sides of the lake. Both are upland hillslope stations.
 
-This is a better pairing than the original Blackwood/Glenbrook idea: Blackwood 2 is ~4 km further north *and* offline since June.
+Latitude offset from Homewood, for every east-shore candidate:
+
+| Station | Δ latitude | North–south offset |
+|---|---|---|
+| **Glenbrook 5** | 0.00057° | **64 m** |
+| Glenbrook 2 | 0.01068° | 1,189 m |
+| Glenbrook 1 | 0.01289° | 1,435 m |
+| Glenbrook 4 | 0.01823° | 2,029 m |
+
+Two earlier candidates were rejected:
+
+- **Blackwood 2**, the original plan, is ~4 km further north and offline since 2026-06-18.
+- **Glenbrook 2** is 1,189 m off Homewood's latitude *and* is a riparian microsite. It reads 42 % volumetric water content while every upland station around it reads 3.5–11.5 %, and it is the one station that also carries a stream gauge. Pairing it with Homewood measured "streambank vs. hillslope", not "wet side vs. rain shadow".
+
+### Transect alignment
+
+`TRANSECT_ALIGN_TOLERANCE_MINUTES = 20`
+
+The transect compares both sites **at the same instant**, found by intersecting the two stations' timestamp sets and taking the most recent shared value. Loggers report on a 15-minute grid so exact matches are normal; the tolerance covers clock drift.
+
+This matters because the first version of the feature compared each site's *latest* reading, and those can be hours apart — Homewood reporting at 10:15 against Glenbrook 5 at 05:45. Air temperature and relative humidity swing enormously over a diurnal cycle, so that version displayed a time-of-day artifact as a geographic signal. Any east-west difference it showed was mostly just the sun.
+
+Only meteorology and soil state are compared (`Air_Temp`, `RH`, `Soil_VWC`, `Soil_T`). Stream depth and dendrometers exist at some stations and not others, so including them would make the two columns structurally different rather than comparable.
 
 ---
 
@@ -182,11 +206,12 @@ This is a better pairing than the original Blackwood/Glenbrook idea: Blackwood 2
 
 1. **Field camera image URLs.** Is there an HTTPS form of those `s3://` refs, or a proxy endpoint? A DevTools sniff on a field-camera detail page that renders an actual image would answer it. This unlocks a snowpack/smoke time-lapse.
 2. **`/aquatic-metadata/` redirect loop.** Likely holds sonde deployment depths and QC context. Needs a look at what the frontend sends.
-3. **Sunnyside turbidity offset.** −1.98 FNU is a calibration problem, not noise. Cross-reference `/calibration/events?site_name=Sunnyside`.
-4. **Fleetwide pH failure.** Null or zero everywhere. Also a calibration-log question.
+3. **Sunnyside turbidity offset.** −1.98 FNU is a calibration problem, not noise. `/calibration/events` is empty, so this needs another route — USGS turbidity at Blackwood (parameter `63680`) would give an independent cross-check from a separate instrument. See [`usgs-plan.md`](usgs-plan.md).
+4. **Fleetwide pH failure.** Null or zero everywhere. The calibration log is empty, so there is no documented explanation available through the API.
 5. **Dendrometer units.** µm is inferred from magnitude alone.
 6. **Stream level datum.** "Uncalibrated" in the field name; is a correction published anywhere?
 7. **Dormant sensor slugs.** Minidot, HOBO, Stream Chemistry, Precipitation Gauge are unconfirmed — no live sensors to probe against. Re-run `--mode probe` when they return.
+8. **Mixed timestamp conventions.** Loggers appear to be on Pacific wall-clock; a Glenbrook 4 camera frame is timestamped six hours *after* the snapshot containing it, which only resolves if cameras are on UTC. Separate devices with independently configured clocks would explain it. `TEON_TIMEZONE` currently applies one zone to everything, so camera freshness may be off by the offset.
 
 ---
 

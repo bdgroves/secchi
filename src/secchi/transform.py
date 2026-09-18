@@ -43,8 +43,13 @@ from secchi.config import (
     RECORD_META_FIELDS,
     SENSOR_VARIABLES,
     SITE_METADATA,
+    USGS_GAUGES,
+    USGS_PARAMETERS,
+    USGS_STATISTIC_INSTANTANEOUS,
+    USGS_STATISTICS,
     TEON_TIMEZONE,
     TERRESTRIAL_STATIONS,
+    TRANSECT_ALIGN_TOLERANCE_MINUTES,
     TRANSECT_PAIR,
     WEB_DIR,
 )
@@ -56,6 +61,11 @@ _CATEGORY_ORDER = {"lake": 0, "stream": 1, "terrestrial": 2}
 # Which variables each dashboard card surfaces, in display order.
 EXO_CARD_VARIABLES = ("Temp", "Chl_a", "Do_percent", "Turbidity")
 STATION_CARD_VARIABLES = ("Air_Temp", "RH", "Soil_VWC", "Soil_T")
+# The transect compares meteorology and soil state only. Stream depth and
+# dendrometers are deliberately excluded: they exist at some stations and
+# not others, so including them would make the two columns structurally
+# different rather than comparable.
+TRANSECT_VARIABLES = ("Air_Temp", "RH", "Soil_VWC", "Soil_T")
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +82,136 @@ def load_teon_snapshots(raw_dir: Path = RAW_DIR) -> Iterable[dict]:
             yield json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             log.warning("skipping malformed %s: %s", path, exc)
+
+
+def load_usgs_snapshots(raw_dir: Path = RAW_DIR) -> Iterable[dict]:
+    """Iterate over every ``usgs/*/*/YYYY/MM/DD/*.json`` snapshot on disk."""
+    root = raw_dir / "usgs"
+    if not root.exists():
+        return
+    for path in sorted(root.rglob("*.json")):
+        try:
+            yield json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            log.warning("skipping malformed %s: %s", path, exc)
+
+
+def usgs_to_long(snapshots: Iterable[dict]) -> pd.DataFrame:
+    """Flatten USGS GeoJSON snapshots into the same long format as TEON.
+
+    USGS returns one feature per observation, so each becomes one row.
+    Two USGS-only columns come along: ``approval_status`` (Provisional vs.
+    Director-approved) and ``qualifier``. TEON publishes no equivalent, so
+    they're null for TEON rows — worth keeping rather than discarding, since
+    knowing a value is provisional changes how much weight it carries.
+    """
+    from secchi.sources.usgs import flatten_features
+
+    rows: list[dict] = []
+    for snap in snapshots:
+        for obs in flatten_features(snap):
+            value = obs.get("value")
+            if value is None:
+                continue
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                continue
+
+            code = obs.get("parameter_code") or ""
+            stat = obs.get("statistic_id") or ""
+            site_number = obs.get("site_number") or ""
+            gauge = USGS_GAUGES.get(site_number, {})
+            rows.append({
+                "uuid": (obs.get("feature_id")
+                         or f"{site_number}-{code}-{stat}-{obs.get('time')}"),
+                "source": "USGS",
+                # Site label mirrors TEON's human-readable naming so the two
+                # sources can share downstream grouping.
+                "site": gauge.get("name") or obs.get("site_name") or f"USGS {site_number}",
+                "site_number": site_number,
+                "sensor_type": "UsgsGauge",
+                "timestamp": obs.get("time"),
+                "lat": obs.get("lat"),
+                "lng": obs.get("lng"),
+                "variable": code,
+                # A parameter code alone does not identify a series: one
+                # gauge publishes the same parameter as instantaneous, daily
+                # max, min, mean and median. The statistic is part of the
+                # identity, so it's part of the dedupe key and part of what
+                # the card builder groups on.
+                "statistic_id": stat,
+                "statistic": USGS_STATISTICS.get(stat, stat),
+                "value": numeric,
+                "unit_of_measure": obs.get("unit_of_measure"),
+                "approval_status": obs.get("approval_status"),
+                "qualifier": obs.get("qualifier"),
+            })
+
+    cols = ["uuid", "source", "site", "site_number", "sensor_type", "timestamp",
+            "lat", "lng", "variable", "statistic_id", "statistic", "value",
+            "unit_of_measure", "approval_status", "qualifier"]
+    df = pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+    if not df.empty:
+        # USGS timestamps are RFC 3339 with real offsets — no guessing,
+        # unlike TEON. Normalize to UTC so both sources compare cleanly.
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+        df = df.drop_duplicates(
+            subset=["uuid", "variable", "statistic_id"]).reset_index(drop=True)
+    return df
+
+
+def build_usgs_cards(df_usgs: pd.DataFrame) -> dict:
+    """Latest reading per parameter per gauge, shaped like the other cards."""
+    if df_usgs.empty:
+        return {}
+    gauges: dict[str, dict] = {}
+    for site_number, grp in df_usgs.groupby("site_number"):
+        meta = USGS_GAUGES.get(site_number, {})
+        readings: dict[str, dict] = {}
+        group_cols = ["variable", "statistic_id"] if "statistic_id" in grp.columns \
+            else ["variable"]
+        for key, sub in grp.groupby(group_cols):
+            code, stat = (key if isinstance(key, tuple) else (key, ""))
+            latest = sub.loc[sub["timestamp"].idxmax()]
+            pmeta = USGS_PARAMETERS.get(code, {})
+            label = pmeta.get("label", code)
+            # Only annotate when it's NOT the instantaneous series, so the
+            # common case stays clean but an aggregate can never be mistaken
+            # for a live reading.
+            if stat and stat != USGS_STATISTIC_INSTANTANEOUS:
+                label = f"{label} ({USGS_STATISTICS.get(stat, stat)})"
+            entry = {
+                "value": round(float(latest["value"]), 3),
+                "label": label,
+                "units": pmeta.get("units") or latest.get("unit_of_measure") or "",
+                "parameter_code": code,
+                "statistic_id": stat,
+                "observed_at": pd.Timestamp(latest["timestamp"]).isoformat(),
+            }
+            if latest.get("approval_status"):
+                entry["approval_status"] = latest["approval_status"]
+            if pmeta.get("note"):
+                entry["note"] = pmeta["note"]
+            readings[f"{code}:{stat}" if stat else code] = entry
+
+        if not readings:
+            continue
+        newest = grp["timestamp"].max()
+        gauges[site_number] = {
+            "site_number": site_number,
+            "name": meta.get("name") or grp["site"].iloc[0],
+            "shore": meta.get("shore"),
+            "coordinates": {"lat": _first_float(grp["lat"]), "lng": _first_float(grp["lng"])},
+            "observed_at": pd.Timestamp(newest).isoformat(),
+            "readings": readings,
+        }
+    return gauges
+
+
+def _first_float(series: pd.Series) -> float | None:
+    vals = series.dropna()
+    return float(vals.iloc[0]) if not vals.empty else None
 
 
 def load_latest_json(raw_dir: Path, subdir: str) -> dict | None:
@@ -109,9 +249,13 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     for snap in snapshots:
         sensor_type = snap.get("sensor_type", "")
+        # TEON reports how many records exist upstream; keep it so asset
+        # counts reflect the real archive rather than our ingest page size.
+        total_available = snap.get("total_available")
         for rec in snap.get("records", []):
             base = {
                 "uuid": rec.get("uuid"),
+                "source": "TEON",
                 "site": rec.get("site"),
                 "sensor_type": sensor_type,
                 "timestamp": rec.get("TIMESTAMP"),
@@ -125,7 +269,8 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
 
                 if field in ASSET_FIELDS:
                     if value is not None:
-                        asset_rows.append({**base, "kind": field, "ref": str(value)})
+                        asset_rows.append({**base, "kind": field, "ref": str(value),
+                                           "total_available": total_available})
                     continue
 
                 if value is None:
@@ -146,8 +291,10 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
         log.warning("skipped non-numeric values in undeclared fields: %s",
                     ", ".join(f"{k} (×{v})" for k, v in sorted(skipped_non_numeric.items())))
 
-    obs_cols = ["uuid", "site", "sensor_type", "timestamp", "lat", "lng", "variable", "value"]
-    asset_cols = ["uuid", "site", "sensor_type", "timestamp", "lat", "lng", "kind", "ref"]
+    obs_cols = ["uuid", "source", "site", "sensor_type", "timestamp",
+                "lat", "lng", "variable", "value"]
+    asset_cols = ["uuid", "source", "site", "sensor_type", "timestamp", "lat", "lng",
+                  "kind", "ref", "total_available"]
 
     df_obs = pd.DataFrame(obs_rows, columns=obs_cols) if obs_rows else pd.DataFrame(columns=obs_cols)
     df_assets = (pd.DataFrame(asset_rows, columns=asset_cols)
@@ -161,9 +308,18 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
         # The record uuid is stable, so this collapses both re-fetched
         # snapshots and the shared-logger duplication described in the
         # module docstring.
-        df_obs = df_obs.drop_duplicates(subset=["uuid", "variable"]).reset_index(drop=True)
+        #
+        # `site` is in the key purely as defensive hardening. The
+        # shared-logger case we want to collapse is always within one site,
+        # so including site never blocks it — but it does make a uuid
+        # collision across two different sites harmless instead of silently
+        # discarding one site's observations. TEON emits UUID4s, so this
+        # shouldn't be reachable; it costs nothing to be certain.
+        df_obs = df_obs.drop_duplicates(
+            subset=["uuid", "site", "variable"]).reset_index(drop=True)
     if not df_assets.empty:
-        df_assets = df_assets.drop_duplicates(subset=["uuid", "kind"]).reset_index(drop=True)
+        df_assets = df_assets.drop_duplicates(
+            subset=["uuid", "site", "kind"]).reset_index(drop=True)
 
     return df_obs, df_assets
 
@@ -322,21 +478,105 @@ def build_station_cards(df_wide: pd.DataFrame) -> dict:
     return stations
 
 
-def build_transect(stations: dict) -> dict | None:
-    """The east–west pair, if both halves have current data.
+def build_transect(df_long: pd.DataFrame) -> dict | None:
+    """The east–west pair, compared at a timestamp both sites share.
 
-    Homewood and Glenbrook 2 sit within ~1.2 km of the same latitude on
-    opposite shores, so they see the same weather from opposite sides of
-    the rain shadow — the cleanest available basis for comparing watershed
-    response to a single storm.
+    Works from the full long-format history rather than each site's latest
+    row. Air temperature and humidity swing hard across a diurnal cycle, so
+    comparing Homewood's 10:15 reading against Glenbrook 5's 05:45 reading
+    would show a time-of-day artifact as a geographic signal — which is
+    exactly what the first version of this function did.
+
+    Finds the most recent timestamp present at both sites (within
+    :data:`TRANSECT_ALIGN_TOLERANCE_MINUTES`) and reads both sides there.
+    Returns ``None`` if the two histories don't overlap at all.
     """
-    west, east = TRANSECT_PAIR
-    if west not in stations or east not in stations:
+    west_site, east_site = TRANSECT_PAIR
+    if df_long.empty:
         return None
+
+    pair = df_long[
+        df_long["site"].isin(TRANSECT_PAIR)
+        & df_long["variable"].isin(TRANSECT_VARIABLES)
+        & df_long["timestamp"].notna()
+    ]
+    if pair.empty:
+        return None
+
+    west_times = set(pair.loc[pair["site"] == west_site, "timestamp"])
+    east_times = set(pair.loc[pair["site"] == east_site, "timestamp"])
+    if not west_times or not east_times:
+        return None
+
+    exact = west_times & east_times
+    if exact:
+        w_time = e_time = max(exact)
+        offset_minutes = 0.0
+    else:
+        # No shared instant on the grid. Take the latest west reading that
+        # has an east reading within tolerance.
+        tolerance = pd.Timedelta(minutes=TRANSECT_ALIGN_TOLERANCE_MINUTES)
+        best: tuple[pd.Timestamp, pd.Timestamp] | None = None
+        for wt in sorted(west_times, reverse=True):
+            candidates = [et for et in east_times if abs(et - wt) <= tolerance]
+            if candidates:
+                best = (wt, min(candidates, key=lambda et: abs(et - wt)))
+                break
+        if best is None:
+            log.warning("transect: %s and %s histories do not overlap within %d min",
+                        west_site, east_site, TRANSECT_ALIGN_TOLERANCE_MINUTES)
+            return None
+        w_time, e_time = best
+        offset_minutes = abs((e_time - w_time).total_seconds()) / 60.0
+
+    def side(site: str, at: pd.Timestamp) -> dict:
+        rows = pair[(pair["site"] == site) & (pair["timestamp"] == at)]
+        readings: dict[str, dict] = {}
+        for _, r in rows.iterrows():
+            formatted = _format_reading(r["sensor_type"], r["variable"], r["value"])
+            if formatted is not None:
+                readings[r["variable"]] = formatted
+        meta = SITE_METADATA.get(site, {})
+        return {
+            "site": site,
+            "shore": meta.get("shore"),
+            "coordinates": {"lat": meta.get("lat"), "lng": meta.get("lng")},
+            "observed_at": _iso_local(at),
+            "readings": readings,
+        }
+
+    west = side(west_site, w_time)
+    east = side(east_site, e_time)
+    if not west["readings"] or not east["readings"]:
+        return None
+
+    # How much shared history exists, for context on the dashboard.
+    overlap_start = max(min(west_times), min(east_times))
+    overlap_end = min(max(west_times), max(east_times))
+    overlap_hours = max(0.0, (overlap_end - overlap_start).total_seconds() / 3600.0)
+
     return {
-        "west": {"site": west, **stations[west]},
-        "east": {"site": east, **stations[east]},
+        "aligned_at": _iso_local(w_time),
+        "offset_minutes": round(offset_minutes, 1),
+        "overlap_hours": round(overlap_hours, 1),
+        "latitude_offset_m": _latitude_offset_m(west_site, east_site),
+        "west": west,
+        "east": east,
     }
+
+
+def _latitude_offset_m(a: str, b: str) -> int | None:
+    """North–south separation of two sites, in metres.
+
+    The transect's whole claim is that these two stations sit on the same
+    line of latitude, so it's worth stating the number rather than asserting
+    it. One degree of latitude is ~111.32 km everywhere.
+    """
+    lat_a = SITE_METADATA.get(a, {}).get("lat")
+    lat_b = SITE_METADATA.get(b, {}).get("lat")
+    if lat_a is None or lat_b is None:
+        return None
+    return round(abs(lat_a - lat_b) * 111_320)
 
 
 def build_asset_summary(df_assets: pd.DataFrame) -> list[dict]:
@@ -352,10 +592,18 @@ def build_asset_summary(df_assets: pd.DataFrame) -> list[dict]:
     out: list[dict] = []
     for (site, kind), grp in df_assets.groupby(["site", "kind"]):
         latest = grp.loc[grp["timestamp"].idxmax()]
+        upstream = None
+        if "total_available" in grp.columns:
+            vals = grp["total_available"].dropna()
+            if not vals.empty:
+                upstream = int(vals.max())
         out.append({
             "site": site,
             "kind": kind,
-            "count": int(len(grp)),
+            # Frames we hold locally, vs. frames TEON says exist. These
+            # differ because each ingest pulls a fixed page depth.
+            "held": int(len(grp)),
+            "upstream_total": upstream,
             "latest_at": _iso_local(latest["timestamp"]),
             "latest_ref": str(latest["ref"]),
             "resolvable": False,
@@ -423,18 +671,20 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 def build_dashboard_snapshot(df_wide: pd.DataFrame,
+                             df_long: pd.DataFrame,
                              df_assets: pd.DataFrame,
+                             df_usgs: pd.DataFrame,
                              inventory: dict | None,
                              disabled: list[str]) -> dict:
     """Compose the payload the dashboard reads."""
-    stations = build_station_cards(df_wide)
     return {
         "generated_at": pd.Timestamp.now(tz="UTC").isoformat(),
-        "source": "TEON",
+        "sources": ["TEON"] + (["USGS"] if not df_usgs.empty else []),
         "sites": build_lake_cards(df_wide),
-        "stations": stations,
-        "transect": build_transect(stations),
+        "stations": build_station_cards(df_wide),
+        "transect": build_transect(df_long),
         "cameras": build_asset_summary(df_assets),
+        "gauges": build_usgs_cards(df_usgs),
         "disabled": sorted(disabled),
         "inventory": build_inventory_summary(inventory),
     }
@@ -451,10 +701,15 @@ def main() -> int:
     )
 
     df_obs, df_assets = to_frames(load_teon_snapshots())
-    log.info("loaded %d numeric observations (%d unique records) and %d asset refs",
+    log.info("TEON: %d numeric observations (%d unique records), %d asset refs",
              len(df_obs),
              df_obs["uuid"].nunique() if not df_obs.empty else 0,
              len(df_assets))
+
+    df_usgs = usgs_to_long(load_usgs_snapshots())
+    if not df_usgs.empty:
+        log.info("USGS: %d observations across %d gauge(s)",
+                 len(df_usgs), df_usgs["site_number"].nunique())
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -466,6 +721,10 @@ def main() -> int:
     df_assets.to_parquet(assets_path, index=False)
     log.info("wrote %s", assets_path)
 
+    usgs_path = PROCESSED_DIR / "usgs_observations.parquet"
+    df_usgs.to_parquet(usgs_path, index=False)
+    log.info("wrote %s", usgs_path)
+
     df_wide = to_latest_wide(df_obs)
     wide_path = PROCESSED_DIR / "latest_wide.parquet"
     df_wide.to_parquet(wide_path, index=False)
@@ -475,16 +734,18 @@ def main() -> int:
     visibility = load_latest_json(RAW_DIR, "visibility") or {}
     disabled = visibility.get("disabled", [])
 
-    snapshot = build_dashboard_snapshot(df_wide, df_assets, inventory, disabled)
+    snapshot = build_dashboard_snapshot(df_wide, df_obs, df_assets, df_usgs,
+                                        inventory, disabled)
     assets_dir = WEB_DIR / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     latest_path = assets_dir / "latest.json"
     latest_path.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8")
-    log.info("wrote %s (%d lake, %d stations, %d cameras, %d inventory, %d disabled)",
+    log.info("wrote %s (%d lake, %d stations, %d cameras, %d gauges, "
+             "%d inventory, %d disabled)",
              latest_path,
              len(snapshot["sites"]), len(snapshot["stations"]),
-             len(snapshot["cameras"]), len(snapshot["inventory"]),
-             len(snapshot["disabled"]))
+             len(snapshot["cameras"]), len(snapshot["gauges"]),
+             len(snapshot["inventory"]), len(snapshot["disabled"]))
 
     return 0
 

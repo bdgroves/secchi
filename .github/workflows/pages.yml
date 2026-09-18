@@ -3,16 +3,14 @@ name: pages
 # Publishes web/ to GitHub Pages, generating web/assets/latest.json fresh
 # at deploy time rather than reading a committed copy.
 #
-# Why generate here instead of committing the file:
-#   - latest.json is a derived artifact. Committing it meant every local
-#     `pixi run transform` raced the hourly fetch cron for the same path,
-#     producing a merge conflict on nearly every push.
-#   - Generating at deploy time guarantees the published dashboard was
-#     built by current code against current data, with no stale-schema
-#     window after a transform change.
+# latest.json is a derived artifact. Committing it meant every local
+# `pixi run transform` raced the hourly fetch cron for the same path,
+# producing a merge conflict on nearly every push. Generating it here also
+# guarantees the published dashboard was built by current code against
+# current data, with no stale-schema window after a transform change.
 #
-# The raw snapshots under data/ are still committed by fetch.yml — those
-# are the durable record and the input to this build.
+# The raw snapshots under data/ are still committed by fetch.yml — those are
+# the durable record and the input to this build.
 
 on:
   push:
@@ -53,11 +51,17 @@ jobs:
           cache: true
 
       - name: Pull a fresh TEON snapshot
-        # Non-fatal: if TEON is unreachable, fall back to the committed
-        # raw snapshots so a deploy still ships something current-ish
-        # rather than failing outright.
+        # Non-fatal: if TEON is unreachable, fall back to the committed raw
+        # snapshots so a deploy still ships something current-ish rather
+        # than failing outright.
         continue-on-error: true
         run: pixi run ingest-all
+
+      - name: Pull a fresh USGS snapshot
+        continue-on-error: true
+        env:
+          USGS_API_KEY: ${{ secrets.USGS_API_KEY }}
+        run: pixi run usgs
 
       - name: Build latest.json
         run: pixi run transform
