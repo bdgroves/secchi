@@ -211,6 +211,12 @@
               font-variant-numeric: tabular-nums; }
   .pop-read dt { color: var(--muted); font-size: 0.78rem; }
   .pop-read dd { margin: 0; font-weight: 500; text-align: right; }
+  .datum-ctx {
+    font-size: 0.68rem; color: var(--muted); margin-top: 0.2rem;
+    font-variant-numeric: tabular-nums; line-height: 1.5;
+  }
+  .datum-ctx b { font-weight: 500; color: var(--slate); }
+
   .pop-flag { display: inline-block; font-size: 0.66rem; letter-spacing: 0.03em;
               padding: 0.05rem 0.35rem; border: 1px solid var(--line);
               color: var(--muted); margin-top: 0.5rem; }
@@ -387,7 +393,7 @@
   // "code:statistic" because one gauge publishes the same parameter as
   // instantaneous and as daily max/min/mean, so the code alone doesn't
   // identify a series.
-  const GAUGE_VARS = ["00060", "63680", "00300", "00010", "63160", "00065"];
+  const GAUGE_VARS = ["00065", "00060", "63158", "63160", "63680", "00300", "00010"];
 
   // ---- Units --------------------------------------------------------
   // Readings arrive with both representations already computed server-side
@@ -601,7 +607,10 @@
       const paramOf = (key) => String(key).split(":")[0];
       const rank = (key) => {
         const i = GAUGE_VARS.indexOf(paramOf(key));
-        return i === -1 ? GAUGE_VARS.length : i;
+        // Datum-derived values sort just ahead of their raw parent, since
+        // "lake elevation 6,227 ft" is the number that means something and
+        // "gage height 7.07 ft" is the intermediate.
+        return (i === -1 ? GAUGE_VARS.length : i) * 2 - (/:datum$/.test(key) ? 1 : 0);
       };
       // Instantaneous first within a parameter, then aggregates.
       const keys = Object.keys(g.readings).sort((a, b) =>
@@ -613,12 +622,32 @@
         // TEON publishes no equivalent, so it's worth surfacing.
         const prov = r.approval_status === "Provisional"
           ? `<div class="reading-note" style="color:var(--muted)">provisional</div>` : "";
+
+        // A datum-derived elevation carries context: how the current
+        // surface compares to the natural rim and the legal maximum. That
+        // comparison is the whole point of applying the datum.
+        let ctx = "";
+        if (r.vs) {
+          const order = ["natural rim", "legal maximum", "record high", "record low"];
+          const keys = order.filter(k => r.vs[k] != null)
+            .concat(Object.keys(r.vs).filter(k => !order.includes(k)));
+          ctx = `<div class="datum-ctx">` + keys.map(k => {
+            const v = r.vs[k];
+            const sign = v >= 0 ? "+" : "\u2212";
+            return `<b>${sign}${fmt.format(Math.abs(v))}</b> ${esc(k)}`;
+          }).join("<br>") + `</div>`;
+        }
+
+        // The sparkline belongs to the source parameter, not the derived
+        // value, so a datum reading borrows its parent's series.
+        const seriesKey = String(c).replace(/:datum$/, "");
         return `
           <div class="reading">
             <div class="reading-value">${fmt.format(d.value)}<span class="units">${esc(d.units || "")}</span></div>
             <div class="reading-label">${esc(r.label)}</div>
             ${prov}
-            ${sparkline(g.series && g.series[c])}
+            ${ctx}
+            ${sparkline(g.series && g.series[seriesKey])}
           </div>`;
       }).join("");
       return `

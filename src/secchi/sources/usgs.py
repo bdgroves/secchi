@@ -41,6 +41,7 @@ from secchi.config import (
     USGS_API_KEY_ENV,
     USGS_COLLECTIONS,
     USGS_GAUGES,
+    USGS_BBOX,
     USGS_PAGE_LIMIT,
     USGS_STATISTIC_INSTANTANEOUS,
 )
@@ -198,6 +199,39 @@ class UsgsClient:
                 log.warning("time-series lookup failed for %s: %s", site, exc)
                 out[site] = []
         return out
+
+    def discover_in_bbox(self, bbox: tuple = USGS_BBOX) -> list[dict]:
+        """Every USGS monitoring location inside a bounding box.
+
+        This is the honest alternative to hand-listing site numbers. USGS
+        runs seven major Tahoe drainages under LTIMP plus lake-level and
+        outlet gauges; picking them from memory is how you quietly omit
+        one. Querying the basin returns whatever is actually there.
+        """
+        return self._items(
+            USGS_COLLECTIONS["monitoring_locations"],
+            {"bbox": ",".join(str(v) for v in bbox)},
+        )
+
+    def active_series_in_bbox(
+        self,
+        bbox: tuple = USGS_BBOX,
+        recent: str = "P30D",
+        statistic_id: str | None = USGS_STATISTIC_INSTANTANEOUS,
+    ) -> list[dict]:
+        """Time series in a box whose record extends into the recent past.
+
+        Filters on ``end`` so stations that stopped years ago don't pad the
+        result. ``recent`` is an ISO 8601 duration the API interprets
+        directly, so "P30D" means "has data from the last 30 days".
+        """
+        params: dict[str, Any] = {
+            "bbox": ",".join(str(v) for v in bbox),
+            "end": recent,
+        }
+        if statistic_id:
+            params["statistic_id"] = statistic_id
+        return self._items(USGS_COLLECTIONS["time_series_metadata"], params)
 
     def monitoring_location(self, site_number: str) -> dict | None:
         """Site metadata: name, coordinates, drainage area, datum."""

@@ -79,6 +79,48 @@ commit the key — it belongs in the secret and the environment, nowhere else.
   `Approved`. We should carry this through and surface it — TEON has no
   equivalent and it's genuinely useful metadata.
 
+## Discovering gauges instead of guessing
+
+`pixi run usgs-discover` queries `/monitoring-locations` against a bounding
+box for the Tahoe basin (`USGS_BBOX`), then `/time-series-metadata`
+filtered to series with data in the last 30 days, and prints every station
+with its live parameters — flagging which are active but **not** yet in
+`USGS_GAUGES`.
+
+This exists because hand-listing site numbers is unreliable. USGS runs
+**seven major Tahoe drainages** under the Lake Tahoe Interagency Monitoring
+Program, monitored since the late 1980s for discharge, sediment and water
+quality, with real-time turbidity added recently. Blackwood is one of the
+seven. Picking gauges from memory is how you quietly omit the other six.
+
+## Lake Tahoe's datum
+
+`10337000` publishes gage height on a local datum, and the raw number is
+meaningless without it. Per the USGS station description, the water-stage
+recorder's **datum is 6,220.00 ft** above the U.S. Bureau of Reclamation
+reference (6,218.86 ft above NGVD 1929), installed **1 October 1957** —
+which is exactly when the `32400` daily series begins.
+
+So a 7.07 ft reading is a lake surface at **6,227.07 ft**, and that number
+can be compared to things that matter:
+
+| Reference | Elevation | Meaning |
+|---|---|---|
+| Natural rim | 6,223.00 ft | Below this the lake stops flowing to the Truckee |
+| Legal maximum | 6,229.10 ft | Regulatory ceiling |
+| Record high | 6,231.26 ft | July 1907 |
+| Record low | 6,220.26 ft | 30 November 1992 |
+
+`USGS_DATUMS` in config holds the offset and these reference levels;
+`transform.py` emits a derived `Lake elevation` reading with a `vs` block
+giving the difference to each, and the dashboard shows them under the
+value. At 6,227.07 ft the lake sits 4 ft above its rim and 2 ft below the
+legal ceiling.
+
+Contrast `63158 Stream elevation` at the outlet gauge, which USGS already
+publishes referenced to **NAVD 1988** — no local datum to apply, directly
+comparable between sites.
+
 ## Gauges worth ingesting
 
 Confirmed active from earlier searching. **Parameter availability per gauge
@@ -90,7 +132,8 @@ call rather than an assumption.
 |---|---|---|
 | `10336660` | Blackwood Creek nr Tahoe City, CA | West-shore, record to **1961**. Reports discharge, gage height *and* turbidity. Covers TEON's Blackwood 2 station, offline since June. |
 | `10336730` | Glenbrook Creek at Glenbrook, NV | East-shore. Pairs with TEON's Glenbrook 2 stream gauge. |
-| `10336725` | Glenbrook Creek at Old Hwy 50 nr Glenbrook, NV | Second Glenbrook point. |
+| `10337500` | **Truckee River at Tahoe City, CA** | **The lake outlet** — 510 ft downstream of the outlet dam, the single channel every drop leaving Lake Tahoe passes through. Flow is completely regulated by that dam, so discharge here is a management decision as much as a hydrologic one. Pairs with `10337000` immediately upstream: lake level, and the rate it is being released. |
+| `10336725` | Glenbrook Creek at Old Hwy 50 nr Glenbrook, NV | Historical only — see below. |
 | `10337000` | Lake Tahoe at Tahoe City, CA | Lake surface elevation. Long record. |
 | `390519119563501` | Lake Tahoe sample point at Glenbrook Bay, NV | Nearshore water quality. |
 

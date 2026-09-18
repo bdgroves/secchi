@@ -50,6 +50,7 @@ from secchi.config import (
     SPARKLINE_WINDOW_HOURS,
     TREND_SIGNIFICANCE,
     UNIT_CONVERSIONS,
+    USGS_DATUMS,
     USGS_PARAMETERS,
     USGS_STATISTIC_INSTANTANEOUS,
     USGS_STATISTICS,
@@ -228,6 +229,34 @@ def build_usgs_cards(df_usgs: pd.DataFrame) -> dict:
             alt = _alt_unit(value, units)
             if alt:
                 entry["alt"] = alt
+
+            # A gage height on a local datum is not a usable number on its
+            # own. Lake Tahoe's recorder sits 6,220.00 ft above the USBR
+            # reference, so 7.07 ft means a lake surface at 6,227.07 ft —
+            # which is what every agency quotes and what can be compared to
+            # the natural rim and the legal maximum.
+            datum = USGS_DATUMS.get(site_number)
+            if datum and datum.get("parameter_code") == code:
+                absolute = value + datum["offset_ft"]
+                derived = {
+                    "value": round(absolute, 2),
+                    "label": datum.get("label", "Elevation"),
+                    "units": units,
+                    "system": _unit_system(units),
+                    "datum": datum.get("datum"),
+                    "derived_from": code,
+                }
+                alt_abs = _alt_unit(absolute, units)
+                if alt_abs:
+                    derived["alt"] = alt_abs
+                refs = datum.get("reference_levels") or {}
+                if refs:
+                    derived["vs"] = {
+                        name: round(absolute - level, 2)
+                        for name, level in refs.items()
+                    }
+                    derived["reference_levels"] = refs
+                readings[f"{code}:{stat}:datum"] = derived
             if latest.get("approval_status"):
                 entry["approval_status"] = latest["approval_status"]
             if pmeta.get("note"):

@@ -25,6 +25,7 @@ from secchi.config import (
     LIVE_EXO_SITES,
     LIVE_WINDOW_HOURS,
     RAW_DIR,
+    USGS_BBOX,
     USGS_DEFAULT_PERIOD,
     USGS_GAUGES,
     USGS_PARAMETERS,
@@ -245,11 +246,72 @@ def probe_usgs(client: UsgsClient) -> int:
     return 0
 
 
+def discover_usgs(client: UsgsClient) -> int:
+    """Find every USGS station in the Tahoe basin and report what's live.
+
+    Two queries: /monitoring-locations for what exists inside the bounding
+    box, then /time-series-metadata filtered to series with data in the
+    last 30 days, so we can tell an active gauge from a historical one.
+    """
+    log.info("discovering USGS stations in bbox %s", USGS_BBOX)
+    locations = client.discover_in_bbox()
+    series = client.active_series_in_bbox()
+
+    # Index active parameter codes by site.
+    active: dict[str, set] = {}
+    for feat in series:
+        props = feat.get("properties") or feat
+        loc = str(props.get("monitoring_location_id") or "")
+        code = props.get("parameter_code")
+        if loc and code:
+            active.setdefault(loc.replace("USGS-", ""), set()).add(code)
+
+    rows = []
+    for feat in locations:
+        props = feat.get("properties") or feat
+        num = str(props.get("monitoring_location_number")
+                  or str(props.get("id") or "").replace("USGS-", ""))
+        rows.append({
+            "num": num,
+            "name": (props.get("monitoring_location_name") or "?")[:46],
+            "type": (props.get("site_type") or props.get("site_type_code") or "")[:16],
+            "active": sorted(active.get(num, [])),
+            "configured": num in USGS_GAUGES,
+        })
+
+    rows.sort(key=lambda r: (not r["active"], r["num"]))
+
+    print(f"\n  {len(locations)} stations in the basin, "
+          f"{sum(1 for r in rows if r['active'])} with data in the last 30 days\n")
+    print(f"  {'site':18}{'':3}{'name':48}{'live parameters'}")
+    print("  " + "-" * 96)
+    for r in rows:
+        mark = "*" if r["configured"] else (" " if r["active"] else "-")
+        params = ", ".join(r["active"]) if r["active"] else "(no recent data)"
+        print(f"  {r['num']:18}{mark:3}{r['name']:48}{params}")
+
+    missing = [r for r in rows if r["active"] and not r["configured"]]
+    print(f"\n  * = already in USGS_GAUGES   - = no recent data")
+    if missing:
+        print(f"\n  {len(missing)} active station(s) NOT yet configured:")
+        for r in missing:
+            print(f"    {r['num']:14} {r['name']:48}{', '.join(r['active'])}")
+        print("\n  Add the useful ones to USGS_GAUGES in config.py, then")
+        print("  re-run `pixi run usgs-probe` to confirm their series.")
+    else:
+        print("\n  Every active station in the basin is already configured.")
+    if client.rate_remaining is not None:
+        print(f"\n  {client.rate_remaining} requests left this hour\n")
+    return 0
+
+
 def run_usgs(mode: str) -> int:
     """Ingest USGS gauges. Modes: usgs-probe (discovery), usgs (data)."""
     with UsgsClient() as client:
         if mode == "usgs-probe":
             return probe_usgs(client)
+        if mode == "usgs-discover":
+            return discover_usgs(client)
 
         successes = 0
         for site, meta in USGS_GAUGES.items():
@@ -329,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mode",
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
-                 "usgs", "usgs-probe"),
+                 "usgs", "usgs-probe", "usgs-discover"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -338,7 +400,9 @@ def main(argv: list[str] | None = None) -> int:
             "probe: resolve slugs for ALL sensor types with a coverage report, "
             "writing nothing. probe-live: same but live types only. "
             "usgs: pull the configured USGS gauges. "
-            "usgs-probe: ask each USGS gauge what it measures, writing nothing."
+            "usgs-probe: ask each configured USGS gauge what it measures. "
+            "usgs-discover: find every USGS station in the Tahoe basin and "
+            "report which are active but unconfigured. Neither writes data."
         ),
     )
     args = parser.parse_args(argv)

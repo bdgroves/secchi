@@ -308,6 +308,35 @@ USGS_STATISTICS: dict[str, str] = {
 # collide with the instantaneous value if mixed into one variable.
 USGS_STATISTIC_INSTANTANEOUS = "00011"
 
+# Bounding box for discovery: the Lake Tahoe basin, generously drawn.
+# (minLon, minLat, maxLon, maxLat) — the order OGC API - Features expects.
+# `pixi run usgs-discover` queries /monitoring-locations against this to
+# find every USGS station in the basin, rather than us guessing site
+# numbers. USGS runs seven major Tahoe drainages under LTIMP; hand-listing
+# them is how you miss one.
+USGS_BBOX = (-120.35, 38.80, -119.80, 39.35)
+
+# Vertical datum offsets, in feet, for gauges whose published "gage height"
+# is meaningless without one. Lake Tahoe's stage recorder sits on a datum
+# 6,220.00 ft above the U.S. Bureau of Reclamation reference, so a 7.07 ft
+# reading means the lake surface is at 6,227.07 ft. That is the number
+# every agency actually quotes.
+USGS_DATUMS: dict[str, dict] = {
+    "10337000": {
+        "parameter_code": "00065",
+        "offset_ft": 6220.00,
+        "label": "Lake elevation",
+        "datum": "USBR datum (6,218.86 ft above NGVD 1929)",
+        # Context lines the dashboard can show alongside the elevation.
+        "reference_levels": {
+            "natural rim": 6223.00,
+            "legal maximum": 6229.10,
+            "record high": 6231.26,   # 1907-07
+            "record low": 6220.26,    # 1992-11-30
+        },
+    },
+}
+
 # Gauges to ingest. Parameter lists below were CORRECTED against
 # /time-series-metadata on 2026-09-17 (`pixi run usgs-probe`) — these are
 # confirmed present with an instantaneous (00011) series that is currently
@@ -344,12 +373,27 @@ USGS_GAUGES: dict[str, dict] = {
         "parameters": ("00060", "00065", "00010", "00300"),
     },
     "10337000": {
-        "name": "Lake Tahoe a Tahoe City, CA",
+        "name": "Lake Tahoe at Tahoe City, CA",
         "shore": "west",
         "note": "Lake surface elevation. Gage height only — no water "
-                "temperature series exists. The 32400 daily series runs "
-                "back to 1957-10-01.",
+                "temperature series exists. Add the 6,220.00 ft datum "
+                "(see USGS_DATUMS) to get true elevation. The 32400 daily "
+                "series runs back to 1957-10-01, when the water-stage "
+                "recorder was installed.",
         "parameters": ("00065",),
+    },
+    "10337500": {
+        "name": "Truckee River at Tahoe City, CA",
+        "shore": "west",
+        "note": "THE LAKE OUTLET — 510 ft downstream of the outlet dam, and "
+                "the single channel every drop leaving Lake Tahoe passes "
+                "through. Flow is completely regulated by that dam, so "
+                "discharge here is a management decision as much as a "
+                "hydrologic one. Pairs with 10337000 immediately upstream: "
+                "lake level and the rate it is being let out.",
+        # Parameters are a starting guess for this newly added gauge —
+        # confirm with `pixi run usgs-probe` before trusting them.
+        "parameters": ("00060", "00065", "00010", "63158"),
     },
     # 10336725 (Glenbrook Creek at Old Hwy 50) is deliberately absent.
     # The probe found only two series there, discharge and gage height,
@@ -388,6 +432,11 @@ USGS_PARAMETERS: dict[str, dict] = {
                       "TEON's Uncalibrated_water_depth. Absolute, not "
                       "relative."},
     "00095": {"label": "Conductance",  "units": "µS/cm"},
+    "63158": {"label": "Stream elevation", "units": "ft",
+              "note": "Water-surface elevation above NAVD 1988. Already "
+                      "referenced to a national datum, so comparable "
+                      "between sites and across years."},
+    "80155": {"label": "Sediment discharge", "units": "tons/day"},
     # Historical only at Blackwood (1974-10-01 to 1992-09-29, daily mean),
     # but suspended sediment is the direct physical driver of Tahoe clarity
     # loss. Valuable for baseline work via the /daily endpoint.
