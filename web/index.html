@@ -137,6 +137,36 @@
               padding: 0.1rem 0.4rem; margin-left: 0.4rem;
               border: 1px solid var(--line); color: var(--muted); vertical-align: middle; }
 
+  /* ---- Unit toggle -------------------------------------------------- */
+  .unit-toggle {
+    display: inline-flex; border: 1px solid var(--line); margin-left: auto;
+    font-size: 0.75rem; letter-spacing: 0.02em;
+  }
+  .unit-toggle button {
+    appearance: none; background: transparent; border: 0; cursor: pointer;
+    color: var(--muted); padding: 0.25rem 0.6rem; font: inherit;
+  }
+  .unit-toggle button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .unit-toggle button:not([aria-pressed="true"]):hover { color: var(--ink); }
+
+  .status { gap: 0.75rem; align-items: center; }
+  .status .status-text { flex: 1; }
+
+  /* ---- Sparklines --------------------------------------------------- */
+  .spark { display: block; margin-top: 0.3rem; overflow: visible; }
+  .spark path { fill: none; stroke: var(--slate); stroke-width: 1.25;
+                stroke-linejoin: round; stroke-linecap: round; }
+  .spark .spark-fill { fill: var(--ice); stroke: none; opacity: 0.55; }
+  .spark .spark-dot { fill: var(--ink); stroke: none; }
+  .trend {
+    display: inline-flex; align-items: baseline; gap: 0.25rem;
+    font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem;
+  }
+  .trend-rising  { color: var(--ember); }
+  .trend-falling { color: var(--wet); }
+  .trend-steady  { color: var(--muted); }
+  .trend-dead    { color: var(--ember); font-style: italic; }
+
   /* ---- Map ---------------------------------------------------------- */
   .map-wrap { position: relative; margin-top: 1.25rem; border: 1px solid var(--line); }
   #map { height: 520px; width: 100%; background: var(--paper); }
@@ -247,6 +277,10 @@
   <div class="status" role="status" aria-live="polite">
     <span class="dot" id="status-dot" aria-hidden="true"></span>
     <span class="status-text" id="status-text">Loading latest observations…</span>
+    <span class="unit-toggle" id="unit-toggle" role="group" aria-label="Unit system">
+      <button type="button" data-system="imperial" aria-pressed="true">°F / ft</button>
+      <button type="button" data-system="metric" aria-pressed="false">°C / m</button>
+    </span>
   </div>
 
   <h2>The network</h2>
@@ -355,6 +389,34 @@
   // identify a series.
   const GAUGE_VARS = ["00060", "63680", "00300", "00010", "63160", "00065"];
 
+  // ---- Units --------------------------------------------------------
+  // Readings arrive with both representations already computed server-side
+  // (`value`/`units` as published by the source, plus `alt` in the other
+  // system), so switching is a display concern only — no conversion math
+  // here, and the source value is never lost.
+  let UNITS = "imperial";
+  const UNIT_KEY = "secchi.units";
+
+  function loadUnitPref(fallback) {
+    try {
+      const v = localStorage.getItem(UNIT_KEY);
+      if (v === "metric" || v === "imperial") return v;
+    } catch (_) { /* storage unavailable; fall through */ }
+    return fallback || "imperial";
+  }
+  function saveUnitPref(v) {
+    try { localStorage.setItem(UNIT_KEY, v); } catch (_) {}
+  }
+
+  /** Pick the representation matching the active system. */
+  function inUnits(r) {
+    if (!r) return null;
+    if (r.alt && r.alt.system === UNITS) {
+      return { value: r.alt.value, units: r.alt.units };
+    }
+    return { value: r.value, units: r.units };
+  }
+
   const fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
   const fmtInt = new Intl.NumberFormat();
   const slugify = (s) => (s || "").toLowerCase().replace(/\s+/g, "");
@@ -385,22 +447,81 @@
     return "dead";
   }
 
-  function readingCells(readings, order) {
+  // ---- Sparklines ---------------------------------------------------
+  const SPARK_W = 104, SPARK_H = 22;
+
+  function sparkPath(points) {
+    const n = points.length;
+    if (n < 2) return null;
+    const lo = Math.min(...points), hi = Math.max(...points);
+    const span = (hi - lo) || 1;
+    // Inset vertically so the stroke isn't clipped at the extremes.
+    const x = (i) => (i / (n - 1)) * SPARK_W;
+    const y = (v) => SPARK_H - 1.5 - ((v - lo) / span) * (SPARK_H - 3);
+    const line = points.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    const fill = `${line}L${SPARK_W},${SPARK_H}L0,${SPARK_H}Z`;
+    return { line, fill, lastX: x(n - 1), lastY: y(points[n - 1]) };
+  }
+
+  function sparkline(series) {
+    if (!series) return "";
+
+    // A channel whose every sample sat below its floor is a fault, not a
+    // flat measurement. Drawing a tidy line at zero would imply a valid
+    // stable reading, so say what's actually happening instead.
+    if (series.all_clipped) {
+      return `<div class="trend trend-dead" title="All samples below the sensor floor">
+        no valid signal${series.raw_mean != null
+          ? ` · raw mean ${fmt.format(series.raw_mean)}` : ""}</div>`;
+    }
+
+    const pts = series.points || [];
+    const p = sparkPath(pts);
+    const t = series.trend;
+
+    const svg = p ? `
+      <svg class="spark" width="${SPARK_W}" height="${SPARK_H}"
+           viewBox="0 0 ${SPARK_W} ${SPARK_H}" aria-hidden="true">
+        <path class="spark-fill" d="${p.fill}"/>
+        <path d="${p.line}"/>
+        <circle class="spark-dot" cx="${p.lastX.toFixed(1)}" cy="${p.lastY.toFixed(1)}" r="1.8"/>
+      </svg>` : "";
+
+    let label = "";
+    if (t) {
+      const arrow = { rising: "\u2197", falling: "\u2198", steady: "\u2192" }[t.direction] || "";
+      const word = { rising: "rising", falling: "falling", steady: "steady" }[t.direction] || "";
+      const delta = t.direction === "steady" ? "" : ` ${fmt.format(Math.abs(t.change))}`;
+      const hedge = t.provisional ? "?" : "";
+      const detail = t.basis === "day-over-day"
+        ? `24 h vs previous 24 h · range ${fmt.format(t.min)}–${fmt.format(t.max)} · ${t.samples} samples`
+        : `trend from ${t.samples} samples, less than 36 h of history`;
+      label = `<div class="trend trend-${t.direction}" title="${esc(detail)}">
+        ${arrow} ${word}${delta}${hedge}</div>`;
+    } else if (series.span_hours != null) {
+      label = `<div class="trend">${fmt.format(series.span_hours)} h history</div>`;
+    }
+    return svg + label;
+  }
+
+  function readingCells(readings, order, series) {
     return order
       .filter(v => readings[v] !== undefined)
       .map(v => {
         const r = readings[v];
+        const d = inUnits(r);
         const note = r.note ? `<div class="reading-note">calibration suspect</div>` : "";
         return `
           <div class="reading">
-            <div class="reading-value">${fmt.format(r.value)}<span class="units">${esc(r.units || "")}</span></div>
+            <div class="reading-value">${fmt.format(d.value)}<span class="units">${esc(d.units || "")}</span></div>
             <div class="reading-label">${esc(r.label)}</div>
             ${note}
+            ${sparkline(series && series[v])}
           </div>`;
       }).join("");
   }
 
-  function renderCard(name, meta, readings, order, extra) {
+  function renderCard(name, meta, readings, order, extra, series) {
     return `
       <article class="card">
         <div class="card-head">
@@ -408,7 +529,7 @@
           <span class="shore">${esc(meta.shore || "")}${meta.shore ? " shore" : ""}</span>
         </div>
         <p class="observed">Observed ${timeAgo(meta.observed_at)}</p>
-        <div class="readings">${readingCells(readings, order)}</div>
+        <div class="readings">${readingCells(readings, order, series)}</div>
         ${extra || ""}
       </article>`;
   }
@@ -446,8 +567,9 @@
       .map(v => {
         const wr = w.readings[v], er = e.readings[v];
         const label = (wr || er).label;
-        const wv = wr ? `${fmt.format(wr.value)}<span class="units">${esc(wr.units||"")}</span>` : "—";
-        const ev = er ? `${fmt.format(er.value)}<span class="units">${esc(er.units||"")}</span>` : "—";
+        const wd = inUnits(wr), ed = inUnits(er);
+        const wv = wd ? `${fmt.format(wd.value)}<span class="units">${esc(wd.units||"")}</span>` : "—";
+        const ev = ed ? `${fmt.format(ed.value)}<span class="units">${esc(ed.units||"")}</span>` : "—";
         return `
           <div class="transect-row">
             <div class="tval">${wv}</div>
@@ -486,15 +608,17 @@
         rank(a) - rank(b) || String(a).localeCompare(String(b)));
       const cells = keys.map(c => {
         const r = g.readings[c];
+        const d = inUnits(r);
         // USGS says outright when a value hasn't had Director's approval.
         // TEON publishes no equivalent, so it's worth surfacing.
         const prov = r.approval_status === "Provisional"
           ? `<div class="reading-note" style="color:var(--muted)">provisional</div>` : "";
         return `
           <div class="reading">
-            <div class="reading-value">${fmt.format(r.value)}<span class="units">${esc(r.units || "")}</span></div>
+            <div class="reading-value">${fmt.format(d.value)}<span class="units">${esc(d.units || "")}</span></div>
             <div class="reading-label">${esc(r.label)}</div>
             ${prov}
+            ${sparkline(g.series && g.series[c])}
           </div>`;
       }).join("");
       return `
@@ -580,10 +704,12 @@
   // (which makes the rain-shadow geography legible — the whole point of
   // the transect) and imagery.
   const BASEMAPS = () => ({
-    "Muted": L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    // OpenStreetMap standard tiles: no key, no account. (CARTO's basemaps
+    // now require registration, so they're out.)
+    "Streets": L.tileLayer(
+      "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
       { maxZoom: 19, attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>' }),
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }),
     "Terrain": L.tileLayer(
       "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
       { maxZoom: 17, attribution:
@@ -622,7 +748,8 @@
     const dl = keys.length
       ? `<dl class="pop-read">` + keys.map(k => {
           const r = readings[k];
-          return `<dt>${esc(r.label)}</dt><dd>${fmt.format(r.value)} ${esc(r.units || "")}</dd>`;
+          const d = inUnits(r);
+          return `<dt>${esc(r.label)}</dt><dd>${fmt.format(d.value)} ${esc(d.units || "")}</dd>`;
         }).join("") + `</dl>`
       : "";
 
@@ -652,7 +779,7 @@
     const bases = BASEMAPS();
     const map = L.map(el, {
       scrollWheelZoom: false,     // don't hijack page scrolling
-      layers: [bases.Muted],
+      layers: [bases.Streets],
     });
     // Click to enable wheel zoom, so the map is usable without trapping
     // someone who is just scrolling past it.
@@ -714,14 +841,38 @@
     setTimeout(() => map.invalidateSize(), 160);
   }
 
-  async function load() {
+  let SNAPSHOT = null;      // cached so a unit switch doesn't refetch
+  let MAP_DRAWN = false;    // Leaflet must only initialise once per container
+
+  function wireUnitToggle() {
+    const box = document.getElementById("unit-toggle");
+    if (!box) return;
+    box.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-system]");
+      if (!btn) return;
+      const next = btn.dataset.system;
+      if (next === UNITS) return;
+      UNITS = next;
+      saveUnitPref(next);
+      for (const b of box.querySelectorAll("button[data-system]")) {
+        b.setAttribute("aria-pressed", String(b.dataset.system === next));
+      }
+      if (SNAPSHOT) render(SNAPSHOT);
+    });
+  }
+
+  function syncUnitToggle() {
+    const box = document.getElementById("unit-toggle");
+    if (!box) return;
+    for (const b of box.querySelectorAll("button[data-system]")) {
+      b.setAttribute("aria-pressed", String(b.dataset.system === UNITS));
+    }
+  }
+
+  function render(snap) {
     const $ = (id) => document.getElementById(id);
     const dot = $("status-dot"), text = $("status-text");
-
-    try {
-      const res = await fetch("assets/latest.json", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const snap = await res.json();
+    {
       const disabled = new Set(snap.disabled || []);
 
       // Lake cards
@@ -736,7 +887,7 @@
         if (!sites[name]) return renderEmptyCard(name, "No recent data.");
         return renderCard(name,
           { shore: sites[name].shore, observed_at: sites[name].observed_at },
-          sites[name].readings, LAKE_VARS);
+          sites[name].readings, LAKE_VARS, "", sites[name].series);
       }).join("");
 
       // Transect
@@ -753,7 +904,7 @@
                  mean stem Δ ${fmtInt.format(s.dendrometers.mean_change)} ${esc(s.dendrometers.units)}</p>`
               : "";
             return renderCard(name, { shore: s.shore, observed_at: s.observed_at },
-                              s.readings, STATION_VARS, dendro);
+                              s.readings, STATION_VARS, dendro, s.series);
           }).join("")
         : `<div class="placeholder-card">No station data ingested yet. Run an
            <code>all-live</code> ingest to populate this section.</div>`;
@@ -767,8 +918,12 @@
       // Inventory
       $("inventory").innerHTML = renderInventory(snap.inventory || [], disabled);
 
-      // Map
-      renderMap(snap);
+      // Map — initialise once; a unit switch re-renders the cards around
+      // it but must not re-instantiate Leaflet on the same container.
+      if (!MAP_DRAWN) {
+        renderMap(snap);
+        MAP_DRAWN = true;
+      }
 
       // Status line — freshest reading anywhere.
       const stamps = [
@@ -796,18 +951,40 @@
         `Two more EXO sites — <em>Blackwood 3</em> and <em>Meeks</em>, both west-shore — `
         + `are manual sondes and stopped reporting on 2026-07-09 pending physical retrieval.`;
 
+    }
+  }
+
+  async function load() {
+    const $ = (id) => document.getElementById(id);
+    UNITS = loadUnitPref(UNITS);
+    syncUnitToggle();
+    wireUnitToggle();
+    try {
+      const res = await fetch("assets/latest.json", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const snap = await res.json();
+      if (snap.default_unit_system && !hasStoredUnitPref()) {
+        UNITS = snap.default_unit_system;
+        syncUnitToggle();
+      }
+      SNAPSHOT = snap;
+      render(snap);
     } catch (err) {
+      const dot = $("status-dot"), text = $("status-text");
       dot.dataset.state = "stale";
       text.textContent = `Couldn't load the latest snapshot (${err.message}).`;
       $("cards").innerHTML = LAKE_ORDER
         .map(n => renderEmptyCard(n, "Waiting on ingest.")).join("");
-      $("transect").innerHTML = "";
-      $("stations").innerHTML = "";
-      $("gauges").innerHTML = "";
-      $("cameras").innerHTML = "";
-      $("inventory").innerHTML = "";
+      for (const id of ["transect", "stations", "gauges", "cameras", "inventory"]) {
+        $(id).innerHTML = "";
+      }
     }
   }
+
+  function hasStoredUnitPref() {
+    try { return !!localStorage.getItem(UNIT_KEY); } catch (_) { return false; }
+  }
+
   load();
 </script>
 </body>

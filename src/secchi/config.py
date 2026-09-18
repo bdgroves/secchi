@@ -400,6 +400,69 @@ USGS_PARAMETERS: dict[str, dict] = {
 # How much history to pull per run. ISO 8601 duration.
 USGS_DEFAULT_PERIOD = "P2D"
 
+
+# ===========================================================================
+# Units and display
+# ===========================================================================
+# Readings are stored in whatever unit the source publishes — TEON is
+# metric, USGS is imperial. Rather than convert at ingest (which would
+# destroy the source value) we emit BOTH representations in latest.json and
+# let the dashboard toggle. Each entry maps a stored unit to its
+# counterpart in the other system.
+#
+#   factor/offset convert FROM the stored unit TO the target unit:
+#       target = stored * factor + offset
+UNIT_CONVERSIONS: dict[str, dict] = {
+    # metric stored -> imperial
+    "°C":     {"system": "metric",   "to": "°F",     "factor": 1.8,      "offset": 32.0},
+    "m":      {"system": "metric",   "to": "ft",     "factor": 3.280839895},
+    "mm":     {"system": "metric",   "to": "in",     "factor": 0.0393701},
+    "m³/s":   {"system": "metric",   "to": "ft³/s",  "factor": 35.3146667},
+    "km/h":   {"system": "metric",   "to": "mph",    "factor": 0.621371},
+    # imperial stored -> metric
+    "°F":     {"system": "imperial", "to": "°C",     "factor": 0.5555556, "offset": -17.7777778},
+    "ft":     {"system": "imperial", "to": "m",      "factor": 0.3048},
+    "in":     {"system": "imperial", "to": "mm",     "factor": 25.4},
+    "ft³/s":  {"system": "imperial", "to": "m³/s",   "factor": 0.0283168},
+    "mph":    {"system": "imperial", "to": "km/h",   "factor": 1.609344},
+    # Dimensionless or system-neutral units: no counterpart. Listed
+    # explicitly so a missing entry means "we forgot", not "no conversion".
+    "%":      {"system": "both"},
+    "µg/L":   {"system": "both"},
+    "mg/L":   {"system": "both"},
+    "FNU":    {"system": "both"},
+    "µS/cm":  {"system": "both"},
+    "dS/m":   {"system": "both"},
+    "ppt":    {"system": "both"},
+    "µm":     {"system": "both"},
+    "V":      {"system": "both"},
+    "":       {"system": "both"},
+}
+
+# Default system the dashboard opens in. US-facing project on a US lake.
+DEFAULT_UNIT_SYSTEM = "imperial"
+
+# ---------------------------------------------------------------------------
+# Trend sparklines
+# ---------------------------------------------------------------------------
+
+# Window of history summarised behind each card reading.
+SPARKLINE_WINDOW_HOURS = 48
+
+# Points kept per sparkline. 48 hours at 15-minute cadence is 192 samples;
+# ~60 is plenty for a 90px-wide inline SVG and keeps latest.json small.
+SPARKLINE_POINTS = 60
+
+# A trend is only reported when the window holds at least this many
+# samples, so a sensor that just came online doesn't get a slope drawn
+# through three points.
+SPARKLINE_MIN_POINTS = 8
+
+# Fraction of a variable's own observed range that the change across the
+# window must exceed before we call it rising or falling rather than
+# steady. Keeps instrument noise from reading as a trend.
+TREND_SIGNIFICANCE = 0.15
+
 # ---------------------------------------------------------------------------
 # Local paths
 # ---------------------------------------------------------------------------

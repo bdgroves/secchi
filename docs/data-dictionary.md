@@ -149,16 +149,17 @@ Frame counts are reported two ways, because they differ: `upstream_total` is wha
 ## Manual vs. telemetered sondes
 
 Two of the five lake EXO sondes carry `Manual` in their inventory `id`
-(`ExoSensorManual_Blackwood 3_…`, `ExoSensorManual_Meeks_…`). The reading
-here is that these are **self-logging instruments whose data arrives only
-when someone dives and downloads them**, as opposed to the three sondes on
-live telemetry. Four independent lines of evidence:
+(`ExoSensorManual_Blackwood 3_…`, `ExoSensorManual_Meeks_…`). These are
+**self-logging instruments whose data arrives only when someone dives and
+downloads them**, as opposed to the three sondes on live telemetry. This
+is now documented rather than inferred:
 
-**1. TEON documents the retrieval workflow.** In the University of Nevada,
-Reno launch coverage, researcher Emily Carlson describes going out on the
-lake to collect the underwater sondes, bringing them back to the lab,
-cleaning off accumulated algae, downloading and backing up the data, then
-recalibrating against third-party certified standards.
+**1. TEON states the retrieval cycle outright.** From their ArcGIS
+StoryMap: *Emily Carlson and Katie Senft ride and snorkel to their sensors
+every month, come rain, shine, and even snow in the winter months.* The UNR
+launch coverage adds the detail — collect the sondes, bring them to the
+lab, clean off accumulated algae, download and back up the data, then
+recalibrate against third-party certified standards.
 
 **2. Record completeness has the signature of internal logging.** A
 self-logging instrument has no radio link to drop packets, so its record
@@ -181,6 +182,26 @@ one shared service event when both were out of the water at once.
 2026-07-09 within 30 minutes of each other, having been deployed on
 2026-01-27 within three hours of each other. Coordinated deployment,
 coordinated retrieval.
+
+**The nearshore network is bigger than the API shows.** The StoryMap says
+ten stations measure "oxygen, temperature, conductivity, turbidity,
+chlorophyll, and pH" around the lake. The API exposes five EXO sites. The
+gap is almost certainly the dormant MiniDot and HOBO fleet — twelve
+instruments across six shared nearshore sites (Camp Richardson, Lake
+Forest, Lakeside, Incline, Tahoe Keys, Tallac). Five EXO plus six
+MiniDot/HOBO locations is eleven, which matches "ten stations" closely.
+That reframes the dormant fleet: it isn't peripheral, it's half of what the
+nearshore programme was built to do. See [`dormant-data.md`](dormant-data.md).
+
+**pH is meant to work.** It appears in the StoryMap's stated parameter
+list, so the fleetwide pH failure is a fault, not an unequipped channel.
+
+**A fourth monitoring domain is missing entirely.** The StoryMap describes
+four: nearshore water quality, terrestrial, stream, and *aquatic* — upland
+lakes, ponds and wet meadows, with the note that east-shore sites are most
+climate-vulnerable because so few exist there. `/sensors/locations` exposes
+only `lake`, `stream` and `terrestrial`. Ponds and meadows are not in the
+API at all.
 
 **Why manual at these sites.** Not documented. Telemetry needs power, a
 radio or cellular path and a shore receiver; Meeks Bay and Blackwood are

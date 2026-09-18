@@ -44,6 +44,12 @@ from secchi.config import (
     SENSOR_VARIABLES,
     SITE_METADATA,
     USGS_GAUGES,
+    DEFAULT_UNIT_SYSTEM,
+    SPARKLINE_MIN_POINTS,
+    SPARKLINE_POINTS,
+    SPARKLINE_WINDOW_HOURS,
+    TREND_SIGNIFICANCE,
+    UNIT_CONVERSIONS,
     USGS_PARAMETERS,
     USGS_STATISTIC_INSTANTANEOUS,
     USGS_STATISTICS,
@@ -161,6 +167,33 @@ def usgs_to_long(snapshots: Iterable[dict]) -> pd.DataFrame:
     return df
 
 
+def build_usgs_series(df_usgs: pd.DataFrame, site_number: str) -> dict:
+    """Sparkline series per (parameter, statistic) for one USGS gauge."""
+    if df_usgs.empty:
+        return {}
+    sub = df_usgs[(df_usgs["site_number"] == site_number) & df_usgs["timestamp"].notna()]
+    if sub.empty:
+        return {}
+    newest = sub["timestamp"].max()
+    sub = sub[sub["timestamp"] >= newest - pd.Timedelta(hours=SPARKLINE_WINDOW_HOURS)]
+
+    out: dict[str, dict] = {}
+    group_cols = ["variable", "statistic_id"] if "statistic_id" in sub.columns else ["variable"]
+    for key, rows in sub.groupby(group_cols):
+        code, stat = (key if isinstance(key, tuple) else (key, ""))
+        rows = rows.sort_values("timestamp")
+        vals = [float(v) for v in rows["value"].tolist()]
+        entry: dict = {"points": _downsample(vals)}
+        ages = [(newest - t).total_seconds() / 3600 for t in rows["timestamp"]]
+        trend = _trend(vals, ages)
+        if trend:
+            entry["trend"] = trend
+        span_h = (rows["timestamp"].max() - rows["timestamp"].min()).total_seconds() / 3600
+        entry["span_hours"] = round(span_h, 1)
+        out[f"{code}:{stat}" if stat else code] = entry
+    return out
+
+
 def build_usgs_cards(df_usgs: pd.DataFrame) -> dict:
     """Latest reading per parameter per gauge, shaped like the other cards."""
     if df_usgs.empty:
@@ -181,14 +214,20 @@ def build_usgs_cards(df_usgs: pd.DataFrame) -> dict:
             # for a live reading.
             if stat and stat != USGS_STATISTIC_INSTANTANEOUS:
                 label = f"{label} ({USGS_STATISTICS.get(stat, stat)})"
+            units = pmeta.get("units") or latest.get("unit_of_measure") or ""
+            value = round(float(latest["value"]), 3)
             entry = {
-                "value": round(float(latest["value"]), 3),
+                "value": value,
                 "label": label,
-                "units": pmeta.get("units") or latest.get("unit_of_measure") or "",
+                "units": units,
+                "system": _unit_system(units),
                 "parameter_code": code,
                 "statistic_id": stat,
                 "observed_at": pd.Timestamp(latest["timestamp"]).isoformat(),
             }
+            alt = _alt_unit(value, units)
+            if alt:
+                entry["alt"] = alt
             if latest.get("approval_status"):
                 entry["approval_status"] = latest["approval_status"]
             if pmeta.get("note"):
@@ -206,6 +245,9 @@ def build_usgs_cards(df_usgs: pd.DataFrame) -> dict:
             "observed_at": pd.Timestamp(newest).isoformat(),
             "readings": readings,
         }
+        series = build_usgs_series(df_usgs, site_number)
+        if series:
+            gauges[site_number]["series"] = series
     return gauges
 
 
@@ -363,6 +405,167 @@ def _iso_local(ts) -> str | None:
     return t.isoformat()
 
 
+def _alt_unit(value: float, units: str) -> dict | None:
+    """The same value expressed in the other measurement system.
+
+    Returns ``None`` for dimensionless or system-neutral units. Emitting
+    both representations here means the dashboard toggles between them
+    without duplicating conversion logic in JavaScript, and the stored
+    source value is never overwritten.
+    """
+    conv = UNIT_CONVERSIONS.get(units)
+    if not conv or not conv.get("to"):
+        return None
+    converted = value * conv["factor"] + conv.get("offset", 0.0)
+    return {
+        "value": round(converted, 3),
+        "units": conv["to"],
+        "system": "imperial" if conv["system"] == "metric" else "metric",
+    }
+
+
+def _unit_system(units: str) -> str:
+    conv = UNIT_CONVERSIONS.get(units)
+    return conv.get("system", "both") if conv else "both"
+
+
+def _trend(values: list[float], hours: list[float]) -> dict | None:
+    """Day-over-day change across a window of samples.
+
+    Compares the mean of the most recent 24 hours against the mean of the
+    24 hours before it, rather than fitting a slope across the whole
+    window. This matters because almost everything here has a strong
+    diurnal cycle: air temperature swings 14 °C in a day, so a
+    least-squares slope over 48 hours mostly reports where in the cycle
+    the window happens to begin and end. Comparing whole days cancels the
+    cycle and leaves actual change.
+
+    ``hours`` is each sample's age in hours, newest = 0.
+
+    Falls back to a linear slope when there isn't a full 36 hours yet, and
+    flags that case as provisional so the dashboard can hedge.
+    """
+    n = len(values)
+    if n < SPARKLINE_MIN_POINTS:
+        return None
+
+    lo, hi = min(values), max(values)
+    span = hi - lo
+    mean_all = sum(values) / n
+
+    recent = [v for v, h in zip(values, hours) if h <= 24]
+    prior = [v for v, h in zip(values, hours) if 24 < h <= 48]
+
+    provisional = False
+    if len(recent) >= 4 and len(prior) >= 4:
+        change = sum(recent) / len(recent) - sum(prior) / len(prior)
+        basis = "day-over-day"
+    else:
+        # Not enough history for a clean day comparison. Use a slope, but
+        # say so — for a diurnal variable this number is unreliable.
+        mean_x = (n - 1) / 2
+        denom = sum((i - mean_x) ** 2 for i in range(n))
+        slope = (sum((i - mean_x) * (v - mean_all) for i, v in enumerate(values)) / denom
+                 if denom else 0.0)
+        change = slope * (n - 1)
+        basis = "slope"
+        provisional = True
+
+    if span <= 0 or abs(change) < span * TREND_SIGNIFICANCE:
+        direction = "steady"
+    else:
+        direction = "rising" if change > 0 else "falling"
+
+    out = {
+        "direction": direction,
+        "change": round(change, 3),
+        "basis": basis,
+        "min": round(lo, 3),
+        "max": round(hi, 3),
+        "mean": round(mean_all, 3),
+        "samples": n,
+        "window_hours": SPARKLINE_WINDOW_HOURS,
+    }
+    if provisional:
+        out["provisional"] = True
+    return out
+
+
+def _downsample(values: list[float], target: int = SPARKLINE_POINTS) -> list[float]:
+    """Thin a series to at most ``target`` points, preserving both ends."""
+    n = len(values)
+    if n <= target:
+        return [round(v, 3) for v in values]
+    step = (n - 1) / (target - 1)
+    return [round(values[min(int(round(i * step)), n - 1)], 3) for i in range(target)]
+
+
+def build_series(df_long: pd.DataFrame,
+                 site: str,
+                 sensor_type: str | None,
+                 fields: Iterable[str]) -> dict:
+    """Recent history per variable for one site, for inline sparklines.
+
+    Answers the question a single number can't: is this reading drifting or
+    holding? Turbidity sitting at a steady 0.3 FNU and turbidity climbing
+    through 0.3 are the same snapshot and completely different stories.
+    """
+    if df_long.empty:
+        return {}
+
+    sel = df_long["site"] == site
+    if sensor_type:
+        sel &= df_long["sensor_type"] == sensor_type
+    sub = df_long[sel & df_long["timestamp"].notna()]
+    if sub.empty:
+        return {}
+
+    newest = sub["timestamp"].max()
+    cutoff = newest - pd.Timedelta(hours=SPARKLINE_WINDOW_HOURS)
+    sub = sub[sub["timestamp"] >= cutoff]
+
+    out: dict[str, dict] = {}
+    for field in fields:
+        rows = sub[sub["variable"] == field].sort_values("timestamp")
+        if rows.empty:
+            continue
+        raw = [float(v) for v in rows["value"].tolist()]
+
+        meta = SENSOR_VARIABLES.get(sensor_type or "", {}).get(field, {})
+        scale = meta.get("scale")
+        clip = meta.get("clip_low")
+        vals, clipped_count = [], 0
+        for v in raw:
+            if scale:
+                v *= scale
+            if clip is not None and v < clip:
+                v = clip
+                clipped_count += 1
+            vals.append(v)
+
+        entry: dict = {"points": _downsample(vals)}
+
+        # A series where every sample sat below the floor is not a stable
+        # measurement — it's a broken channel that clipping has flattened
+        # to a confident-looking line. Say so rather than draw it.
+        if clip is not None and clipped_count == len(vals) and len(vals) > 0:
+            entry["all_clipped"] = True
+            entry["raw_mean"] = round(sum(raw) / len(raw), 3)
+        elif clipped_count:
+            entry["clipped_count"] = clipped_count
+
+        ages = [(newest - t).total_seconds() / 3600 for t in rows["timestamp"]]
+        trend = _trend(vals, ages)
+        if trend:
+            entry["trend"] = trend
+        # Timespan actually covered, which may be shorter than the window
+        # if the sensor only recently came online.
+        span_h = (rows["timestamp"].max() - rows["timestamp"].min()).total_seconds() / 3600
+        entry["span_hours"] = round(span_h, 1)
+        out[field] = entry
+    return out
+
+
 def _format_reading(sensor_type: str, field: str, raw: float) -> dict | None:
     """Apply scale/clip/label metadata to one raw value."""
     meta = SENSOR_VARIABLES.get(sensor_type, {}).get(field)
@@ -377,7 +580,11 @@ def _format_reading(sensor_type: str, field: str, raw: float) -> dict | None:
         "value": round(value, 3),
         "label": meta["label"],
         "units": meta["units"],
+        "system": _unit_system(meta["units"]),
     }
+    alt = _alt_unit(value, meta["units"])
+    if alt:
+        out["alt"] = alt
     if "note" in meta:
         out["note"] = meta["note"]
     return out
@@ -397,7 +604,7 @@ def _readings_for(row: pd.Series, columns, sensor_type: str, fields: Iterable[st
     return readings
 
 
-def build_lake_cards(df_wide: pd.DataFrame) -> dict:
+def build_lake_cards(df_wide: pd.DataFrame, df_long: pd.DataFrame | None = None) -> dict:
     """Card payload for the lake EXO sondes."""
     sites: dict[str, dict] = {}
     for site in LIVE_EXO_SITES:
@@ -413,10 +620,14 @@ def build_lake_cards(df_wide: pd.DataFrame) -> dict:
             "observed_at": _iso_local(r["timestamp"]),
             "readings": _readings_for(r, row.columns, "ExoSensor", EXO_CARD_VARIABLES),
         }
+        if df_long is not None:
+            series = build_series(df_long, site, "ExoSensor", EXO_CARD_VARIABLES)
+            if series:
+                sites[site]["series"] = series
     return sites
 
 
-def build_station_cards(df_wide: pd.DataFrame) -> dict:
+def build_station_cards(df_wide: pd.DataFrame, df_long: pd.DataFrame | None = None) -> dict:
     """Card payload for the terrestrial logger stations.
 
     Each station's air-temperature and soil-moisture readings come from the
@@ -474,6 +685,16 @@ def build_station_cards(df_wide: pd.DataFrame) -> dict:
             }
         if "note" in meta:
             card["note"] = meta["note"]
+        if df_long is not None:
+            # Station readings come off several sensor types on one logger,
+            # so gather series per type and merge.
+            series: dict = {}
+            for stype in ("AirTemperatureRelativeHumidity",
+                          "SoilEnvironmentalConditions", "StreamLevel"):
+                series.update(build_series(df_long, site, stype, STATION_CARD_VARIABLES
+                                           + ("Uncalibrated_water_depth",)))
+            if series:
+                card["series"] = series
         stations[site] = card
     return stations
 
@@ -803,14 +1024,16 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
                              inventory: dict | None,
                              disabled: list[str]) -> dict:
     """Compose the payload the dashboard reads."""
-    lake = build_lake_cards(df_wide)
-    stations = build_station_cards(df_wide)
+    lake = build_lake_cards(df_wide, df_long)
+    stations = build_station_cards(df_wide, df_long)
     gauges = build_usgs_cards(df_usgs)
     transect = build_transect(df_long)
     inv = build_inventory_summary(inventory)
     return {
         "generated_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "sources": ["TEON"] + (["USGS"] if not df_usgs.empty else []),
+        "default_unit_system": DEFAULT_UNIT_SYSTEM,
+        "sparkline_window_hours": SPARKLINE_WINDOW_HOURS,
         "sites": lake,
         "stations": stations,
         "transect": transect,
