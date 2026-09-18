@@ -2,236 +2,273 @@
 
 ### A modern Secchi disk for Lake Tahoe
 
-**[→ Live dashboard](https://brooksgroves.com/secchi/)** · updating hourly from a sensor network that went public two days before this repo existed
+**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 33 instruments, updating hourly, entirely unattended
 
 ---
 
 ## Cold open
 
-In 1865, an Italian astronomer named Angelo Secchi was handed a problem by the Papal Navy: *how clear is the water?* He lowered a white disk over the side of a yacht in the Mediterranean and wrote down the depth at which it vanished.
+In 1865 the Papal Navy asked an astronomer a simple question: *how clear is the water?*
 
-That's it. That's the instrument. A plate on a rope.
+Angelo Secchi lowered a white plate over the side of a yacht in the Mediterranean and wrote down the depth at which it disappeared.
 
-One hundred and sixty-one years later it is still the standard measure of lake transparency on Earth, and it is still how Lake Tahoe's famous clarity gets reported every single year. Twenty-two metres in the 1960s. Roughly seventeen now. A number you get by dropping a disk in the water and watching it disappear.
+That's the instrument. A plate on a rope.
 
-On **September 15, 2026**, the University of Nevada, Reno switched on the [Tahoe Environmental Observatory Network](https://tahoeenvironmentalobservatorynetwork.org/) — sondes in the water, loggers in the forest, cameras on the ridgelines, all of it streaming. For the first time you can watch clarity *assemble itself* out of its causes in near-real time: the chlorophyll bloom, the turbidity pulse, the soil that did or didn't hold last night's rain.
+One hundred and sixty-one years later it is still the world standard for lake transparency, and it is still how Lake Tahoe's famous clarity gets reported every single year. Twenty-two metres in the 1960s. About twenty-one now. A number you get by dropping a disk in the water and watching it vanish.
 
-On **September 17, 2026**, this repo started pulling all of it.
+On **September 15, 2026**, the University of Nevada, Reno switched on the [Tahoe Environmental Observatory Network](https://tahoeenvironmentalobservatorynetwork.org/) — sondes in the water, loggers in the forest, cameras on the ridgelines. For the first time you could watch clarity *assemble itself out of its causes*, every fifteen minutes.
 
-`secchi` is the disk, rebuilt as a pipeline.
+There was no API documentation. There still isn't.
 
----
-
-## The instrument
-
-```
-                         ╭───────────────╮
-                         │  ███████      │   ← 15-min telemetry
-                         │  ███████      │      temp · chlorophyll
-                         │       ███████ │      DO · turbidity
-                         │       ███████ │      conductivity · phycocyanin
-                         ╰───────┬───────╯
-                                 │
-                            ~3 m of rope
-                                 │
-                            Lake Tahoe
-```
-
-Two YSI EXO multiparameter sondes are reporting from opposite shores of the lake right now — **Sunnyside** on the west, **Glenbrook** on the east — dropping a full water-chemistry panel every fifteen minutes. Six Campbell Scientific loggers sit up in the watersheds reading soil moisture at two depths, air temperature, humidity, and the swelling and shrinking of instrumented tree trunks. Five field cameras watch the snow.
-
-`secchi` archives every reading, reshapes it, and puts it on a page.
+This is what two days of reading someone else's undocumented sensor network looks like.
 
 ---
 
-## What we had to figure out first
+## What this reads
 
-TEON is two days old. There is no API documentation. There is a JavaScript frontend and a REST backend on an AWS container, and everything below was reverse-engineered from network traffic and a lot of educated guessing.
+```
+   TEON                                    USGS
+   ────                                    ────
+   2  lake sondes      (YSI EXO)           10 stream & lake gauges
+   6  forest loggers   (Campbell)          131 years of lake outflow
+   5  field cameras                        66 years of Blackwood discharge
+   60 stream catchments, 164 attributes    5 gauges with real-time turbidity
+   10 sensor types, all resolved           the TMDL-regulated clarity pollutant
+```
 
-**The slug convention.** Time-series endpoints don't use the sensor's display name. They use the label *truncated to its leading concept*, kebab-cased. `Air Temperature & Relative Humidity` is not `air-temperature-relative-humidity` — it's just **`air-temperature`**. `Tree stress and growth` is **`tree-stress`**. `Soil Environmental Conditions` is, for reasons known only to the backend, **`soil-moisture`**. Six endpoints found by probing candidate slugs until something returned a 200:
+Hourly, into an append-only record. Nobody presses a button.
 
-| Display name | Endpoint |
+---
+
+## The API had to be guessed
+
+TEON publishes a JavaScript frontend and an undocumented REST backend on an AWS container. Everything below was reverse-engineered from network traffic.
+
+**The slug convention.** Time-series endpoints don't use a sensor's display name — they use the label **truncated to its leading concept** and kebab-cased. `Air Temperature & Relative Humidity` is not `air-temperature-relative-humidity`; it's just **`air-temperature`**. `Tree stress and growth` is **`tree-stress`**. `Soil Environmental Conditions` is, for reasons known only to the backend, **`soil-moisture`**.
+
+Ten sensor types, found by probing candidate slugs until something returned a 200. The convention held exactly once we'd seen enough of it: `{name}-sensor`, name not word-split. `Minidot` → `minidot-sensor`, which was the one candidate the first probe forgot to try.
+
+**Forty-three sensors that are thirteen devices.** The inventory lists forty-three. They are not forty-three.
+
+At every forest station, the soil, air-temperature, tree-stress *and* stream-level endpoints return **projections of a single Campbell logger table** — identical record UUIDs, identical battery voltage, identical panel temperature, identical row counts. One box, four names.
+
+The arithmetic is exact. A full pull grabs 4,600 records; deduplicating on the source's own IDs collapses it to **1,600**. The real network is **2 lake sondes + 6 forest loggers + 5 cameras**. Useful to know before writing a paper about forty-three independent measurement sites.
+
+**Whose data this isn't.** TEON publishes an inventory *and* a `/site-visibility/disabled` list. The 4H Camp sonde appears in the first and is suppressed in the second: deployed, reporting, and flagged non-public. Their frontend hides it. So does this one — the dashboard renders a card explaining *why* the site is blank rather than quietly scraping around the flag.
+
+---
+
+## The ones you have to swim out to
+
+Two of the five lake sondes carry `Manual` in their IDs. Working out what that meant turned into the most satisfying piece of inference in the project.
+
+TEON's own StoryMap gave it away eventually — *"Emily Carlson and Katie Senft ride and snorkel to their sensors every month, come rain, shine, and even snow in the winter months."* But the data said it first:
+
+| Sonde | Telemetry | Records | Expected | Complete |
+|---|---|---|---|---|
+| Blackwood 3 | manual | 15,451 | 15,642 | **98.8 %** |
+| Meeks | manual | 15,441 | 15,632 | **98.8 %** |
+| 4H Camp | live | 52,443 | 54,344 | 96.5 % |
+| Glenbrook | live | 46,271 | 47,811 | 96.8 % |
+| Sunnyside | live | 38,562 | 52,422 | 73.6 % |
+
+A self-logging instrument writes to memory and almost never misses. A telemetered one loses whatever the radio drops — Sunnyside has lost **over a quarter** of its expected record.
+
+Better still: both manual sondes are short by **exactly 191 records**. 15,642 − 15,451 and 15,632 − 15,441 both equal 191, which is 47.75 hours. An identical two-day gap on two separate instruments isn't packet loss. That's one service visit with both out of the water at once.
+
+**The counter-intuitive lesson, measured:** telemetry buys you *timeliness*, not *completeness*. If your question is "what is happening right now", telemeter. If it's "what happened over the last decade", a logger you visit quarterly may give you a better dataset for less money. Telemetry's real value is often knowing the station is still alive.
+
+---
+
+## pH 1.8, or: we've seen this movie
+
+Every monitoring project has the moment where the instrument says something impossible and you have to work out whether it's the world or the wiring. Here's the current list — all of it live on the dashboard **with the caveats attached**, rather than quietly smoothed away.
+
+**The pH probes are dead across the entire fleet.** Glenbrook returns exactly `0`. Sunnyside returns `null`. Not a plausible reading anywhere. TEON's StoryMap lists pH among the measured parameters, so this is a fault, not an unequipped channel. Hidden from display, flagged in the data dictionary.
+
+**Sunnyside is reading negative turbidity.** Not noise — across 48 consecutive readings it sat at **−2.109 FNU with a standard deviation of 0.042**. That tight a spread around that negative a mean is a mis-set zero point. Add 2.11 and the site reads ~0.0 FNU, which is correct for clear alpine water. The USGS gauge on Blackwood Creek reads **+0.3 FNU** on the same measure, same units, different instrument, different agency — independent corroboration that the fault is Sunnyside's, not the lake's.
+
+**And in TEON's own watershed data, a soil pH of 1.79.** Cave Rock catchment. Glenbrook Creek reads 2.61, Mill Creek 2.74. A soil pH of 1.8 is approximately battery acid and does not occur in Sierra granite; the enormous companion standard deviations are the signature of nodata cells averaged in as zeros. *Dante's Peak* had an acidified lake too, and it was also the thing that killed somebody. Excluded from display, with the reason recorded so nobody wires it back in.
+
+**One Topographic Wetness Index of 833.9** against a 5–55 range everywhere else — Marlette Creek, whose catchment contains Marlette Lake. TWI diverges over standing water. Unfortunate, since TWI is one of the variables most worth having.
+
+**The stream gauge is called `Uncalibrated_water_depth` and reads 0.001 m.** Their field name, not ours. Meanwhile the USGS gauge on the same creek reads **0.04 ft³/s** — two agencies, separate hardware, both saying the east-shore creek is essentially dry. That's real cross-validation, and it settles the question: the channel *is* dry, the datum isn't broken.
+
+**A field camera filed a frame from the future.** Glenbrook 4's most recent capture was timestamped six hours *after* the snapshot containing it. TEON returns naive timestamps with no offset; the loggers appear to run on Pacific wall-clock and the cameras on UTC. Mixed conventions in one payload. Every timestamp this project emits now carries an explicit offset rather than leaving browsers to guess.
+
+None of this is a knock on TEON. The network was two weeks old. Cataloguing the gremlins *is* the work — and finding faults from outside, with no obligation to stand behind the numbers, is a great deal easier than operating the thing.
+
+---
+
+## Same storm, two watersheds
+
+The project's headline question: do two stations on opposite shores respond differently to the same weather?
+
+Picking the pair took three attempts. Blackwood 2 was the obvious choice and is offline. Glenbrook 2 looked ideal until it turned out to be a **riparian microsite** — 42 % soil moisture against 3.5–11.5 % at every upland station around it, and the only station also carrying a stream gauge. Pairing it with Homewood would have measured *streambank versus hillslope*.
+
+The answer is **Homewood and Glenbrook 5**: opposite shores, both upland, and **64 metres apart in latitude**. Effectively the same line across the map.
+
+Then the catchment data arrived and made the point far better than any sensor could:
+
+```
+Homewood      (Madden Creek catchment)      1,463 mm/yr
+Glenbrook 5   (Glenbrook Creek catchment)     689 mm/yr
+                                             ──────────
+                                                 2.12×
+```
+
+Two stations a stone's throw apart in latitude, in catchments receiving **twice** the annual precipitation. Basin-wide the gradient reaches **3.03×** — 1,459 mm at Watson Creek on the northwest shore down to 482 mm at Deadman Point on the east.
+
+That's the Sierra rain shadow, measured, per catchment.
+
+And here's the honest part: right now the two stations read **identical** soil moisture, 3.5 % each. Mid-September, no rain in weeks — there is nothing to detect. The earlier read was "nothing here." The catchment data says the opposite: the *climatology* isn't remotely similar, so the first atmospheric river should split them hard. Now there's a number to predict against instead of a hypothesis.
+
+---
+
+## The clarity chain
+
+Late in the project a five-digit USGS parameter code turned up at Upper Truckee River that neither of us recognised. Rather than guess, we asked:
+
+> **70369** — *Suspended sediment particles between 0.50 to 16.00 microns, water, unfiltered, computed by regression equation, counts per liter*
+
+Then Lake Tahoe Info, verbatim: *"Fine sediment particles (0.5–16 µm) are primarily responsible for clarity loss in Lake Tahoe."*
+
+**The size class matches the regulation exactly.**
+
+Fine sediment under 16 µm is, per EPA, the main pollutant degrading Tahoe's deep-water clarity — roughly **two-thirds** of the lake's impairment. Lake Tahoe is Clean Water Act 303(d)-listed for it. The TMDL requires a **65 % reduction** to restore Secchi depth to **97.4 ft by 2076**.
+
+So parameter 70369, at the lake's largest tributary, is the **regulated clarity pollutant, measured continuously**. Its companion `70372` is the same thing as a daily *load* — which is the unit the TMDL actually writes its allocations in.
+
+This project is named after a disk on a rope. The regulatory target is stated in Secchi depth. 70369 is the thing that controls it.
+
+What we now hold in one pipeline:
+
+| Process | Measurement |
 |---|---|
-| EXO | `/api/sensors/exo-sensor` |
-| Air Temperature & Relative Humidity | `/api/sensors/air-temperature` |
-| Soil Environmental Conditions | `/api/sensors/soil-moisture` |
-| Tree stress and growth | `/api/sensors/tree-stress` |
-| Stream Level | `/api/sensors/stream-level` |
-| Field Camera | `/api/sensors/field-camera` |
+| The regulated pollutant | `70369` / `70372`, Upper Truckee |
+| Independent continuous proxy | turbidity at 5 tributaries |
+| The algal half of the mechanism | chlorophyll + phycocyanin, lake sondes |
+| Sediment supply | catchment precipitation, slope, burn history |
+| Long baseline | 131 years of outflow, 66 of Blackwood discharge |
 
-`pixi run probe` re-resolves all of them and prints a report. Run it whenever TEON ships a change.
-
-**The 43 sensors that are actually 13 devices.** The inventory endpoint lists forty-three sensors. They are not forty-three sensors.
-
-At every forest station, the soil, air-temperature, tree-stress *and* stream-level endpoints return **three-to-four projections of one logger table** — identical record UUIDs, identical battery voltage, identical panel temperature, identical row counts. One Campbell unit is being served under four different names.
-
-The arithmetic is exact. A full pull grabs 4,600 records. Deduplicating on `(uuid, variable)` collapses it to **1,600 unique observations**: 400 from the two lake sondes, 1,200 from six terrestrial loggers, and every field-camera frame living entirely in a separate asset table. 2.25× redundancy in the API, gone in storage.
-
-So the real network is **2 lake sondes + 6 forest loggers + 5 cameras**. Good to know before you go writing a paper about forty-three independent measurement sites.
-
-**Where the photos live.** The cameras return `s3://teon-loggernet-data-storage/Glenbrook 2 - Terrestrial/Snow photos/…`. Which tells you the whole backend stack — Campbell LoggerNet writing into an S3 bucket — and also that a browser can't render any of it. 3,378 frames exist upstream, 1,000 pulled so far, zero displayable. Yet.
-
-**Whose data this isn't.** TEON publishes a `/api/sensors/locations` inventory *and* a `/api/site-visibility/disabled` list. The 4H Camp sonde appears in the first and is suppressed in the second: deployed, reporting, and flagged non-public by the observatory. Their own frontend hides it. So does this one. The dashboard renders a card explaining *why* the site is blank rather than quietly scraping around the flag.
+Both sediment parameters are **regression surrogates**, per USGS's own definitions — not laboratory particle counts. That caveat travels with them everywhere it appears.
 
 ---
 
-## We got cows
+## The bugs were mostly mine
 
-Every good monitoring project has the moment where the instrument tells you something absurd and you have to work out whether it's the world or the wiring. Here's the current list, all of it live on the dashboard with caveats attached rather than silently smoothed away.
+Worth a section, because the process that caught them is the most portable thing here.
 
-**The pH probe is dead across the entire fleet.** Glenbrook returns exactly `0`. Sunnyside returns `null`. Not a plausible reading anywhere. Hidden from display, flagged in the data dictionary, and almost certainly the reason TEON ships a `/api/calibration/events` endpoint.
+Nine errors shipped or nearly shipped during this build. Every one produced **plausible-looking output** rather than a crash:
 
-**Sunnyside is reading negative turbidity.** Down to **−1.98 FNU**. Optical sensors do dip slightly below zero at their detection floor in genuinely clear water, and Tahoe is genuinely clear — but −1.98 is an order of magnitude past noise. That's a calibration offset. Clipped to zero for display, marked *calibration suspect* on the card.
+| What broke | How it looked | How it was caught |
+|---|---|---|
+| Sensor-slug map keyed on the wrong names | Skipped all 23 sensors, **zero HTTP requests made** | A probe that asked which slugs resolve |
+| `63158` for the outlet's elevation | Silently absent column | Probe reported "configured but not reported" |
+| `statistic_id=00011` alone | Hid the TMDL load parameter | Reading probe output instead of assuming |
+| `statistic_id=00011,00006` | **HTTP 200, zero features, every gauge** | An empty-looking CI log |
+| Bounding box instead of a watershed | 14 gauges draining to the Carson River | Discovery report flagged unconfigured stations |
+| Web Mercator polygons vs WGS84 points | 0 of 28 stations matched, no error | A total miss is systematic, not scattered |
+| 48-hour slope on a diurnal signal | Air temperature "rising 4.85" | Fixture built with a known-flat trend |
+| A fully-clipped channel | Confident flat line at zero | Asking what the clipping was hiding |
+| A string replace that matched nothing | Printed "tasks added" | `pixi task list` showing five missing |
 
-**Glenbrook 2's soil is soaking wet and nothing around it is.** Volumetric water content across the eastern cluster, mid-September, all within about a kilometre of each other:
+The pattern in almost all of them: **a filter that removed more than intended, and returned success.** A query returning zero rows is indistinguishable from one that was never going to match. Neither raises.
 
-```
-Glenbrook 2   ████████████████████████████████████████  42.0 %
-Glenbrook 1   ███████████                                11.5 %
-Glenbrook 4   ██████                                      6.4 %
-Glenbrook 5   ███                                         3.5 %
-Homewood      ███                                         3.5 %   (west shore)
-```
+So the operating rule, now written into `docs/silent-failures.md`: **when a query narrows results, check the count, not the syntax.**
 
-Regional climate cannot produce a 12× difference over a kilometre. A microsite can. And Glenbrook 2 is — not coincidentally — the one station that also carries the **stream level** sensor. It's sitting in a riparian zone. That single fact invalidated the first version of this project's headline comparison (see the roadmap).
-
-**The stream gauge is labelled `Uncalibrated_water_depth` and reads 0.001 m.** Upstream field name, not ours. Either the channel is dry or the datum correction hasn't been applied. Treated as relative, never absolute.
-
-**A field camera filed a frame from the future.** Glenbrook 4's most recent capture is timestamped six hours *after* the snapshot that contains it. TEON returns naive timestamps with no offset, the loggers appear to be on Pacific wall-clock, and the cameras appear to be on UTC. Mixed conventions in one payload. Unresolved, tracked below, and the reason every timestamp in `latest.json` now carries an explicit offset instead of leaving browsers to guess.
-
-None of this is a knock on TEON. The network is two days old and visibly mid-build. Cataloguing the gremlins *is* the work.
+The probe commands — `probe`, `usgs-probe`, `usgs-discover`, `usgs-params`, `reference-inspect`, `camera-probe`, `watch` — exist for this. They're a few dozen lines each and they've caught six real bugs. The alternative isn't fewer bugs; it's the same bugs, shipped, producing numbers that look fine.
 
 ---
 
 ## By the numbers
 
 ```
-  22,471   numeric observations archived
-   1,600   unique records after dedupe
-   3,378   camera frames upstream (1,000 pulled)
-      43   sensors listed by the API
-      13   actual physical devices
-       6   endpoint slugs reverse-engineered
-       1   site TEON asked us not to show   (we don't)
-       5   data-quality gremlins catalogued
-       0   pH readings worth anything
+   2,635,395   records catalogued upstream
+   1,197,845   in dormant sensor types, now reachable
+          60   stream catchments, 164 attributes each
+          43   sensors listed by the API
+          13   actual physical devices
+          10   sensor types, all slugs resolved
+           9   of my own bugs caught before or shortly after shipping
+           6   data-quality faults found in the upstream networks
+           3.03×  rain-shadow precipitation gradient across the basin
+        0.00 km  reprojection error, verified against published centroids
+           0   pH readings worth anything
 ```
-
-Snapshots land in `data/raw/` hourly via GitHub Actions and are never overwritten — the append-only record is the point.
-
----
-
-## Roadmap
-
-### Next up
-
-**Fix the transect.** The dashboard leads with a west-vs-east watershed comparison, and right now it's **measuring the wrong thing**. Two problems, both mine: it pairs each site's *latest* reading, and those readings can be six hours apart — so a diurnal temperature swing gets displayed as a geographic signal. And the east anchor is Glenbrook 2, the riparian outlier above. Needs timestamp-aligned binning and an upland anchor (Glenbrook 5 vs Homewood is the honest pairing, and the honest current answer is that in September both sides are equally bone dry).
-
-**Settle the timezone.** Loggers read as Pacific local, cameras read as UTC, and the only hard evidence is a frame from the future. Everything derives from one constant (`TEON_TIMEZONE`), so this is a one-line fix once we know — but we need to know.
-
-**Camera frame counts** currently display the ingest page size, not `total_available`. Small, dumb, visible.
-
-### Then
-
-**Snowpack time-lapse.** 3,378 frames sitting in a bucket named *Snow photos*, going back to November 2025. Needs an HTTPS form of those `s3://` refs or a small proxy. This is the single highest-payoff item on the list — a winter of Tahoe snowpack, animated, from five angles.
-
-**Sparklines.** We store 200 records per sensor per pull and display exactly one. A 24-hour trace under each card turns a snapshot into motion.
-
-**A real map.** Every one of the 43 inventory rows carries lat/lng. Colour by freshness, size by record count, and the network's geography — the Glenbrook cluster, the lonely west-shore stations, the north-end campus — becomes legible at a glance.
-
-**USGS as a second source.** Blackwood Creek (gauge `10336660`) has continuous turbidity and discharge back to **1961**. Glenbrook Creek (`10336730`) is active too. TEON gives us fifteen-minute resolution; USGS gives us sixty-five years of context and covers Blackwood while TEON's own station there is offline.
-
-**The calibration log.** `/api/calibration/events?site_name=…` exists and we've never called it. It probably explains the dead pH probes and the Sunnyside turbidity offset in one request.
-
-### The actual science
-
-**Wildfire in the water.** Smoke deposition drops nutrients on the lake, nutrients feed algae, algae eat clarity. Overlay NASA FIRMS active-fire detections and NOAA HRRR-Smoke plume forecasts on the chlorophyll and turbidity traces and you can watch a fire's fingerprint arrive in Tahoe. Needs a few weeks of continuous history to have anything to detect against — that clock started the moment the cron went live.
-
-**Clarity nowcast.** Predict Secchi depth from live chlorophyll, turbidity and wave stirring, validated against UC Davis TERC's published annual clarity record. If it calibrates over a season, it's a real contribution: the 1865 instrument, estimated continuously, from the inside.
-
-### Housekeeping
-
-- `tests/` doesn't exist yet, so `pixi run -e dev test` errors on an empty path
-- `/api/aquatic-metadata/` redirect-loops our client — likely holds deployment depths and QC context
-- Dendrometer units are inferred from magnitude (~1,000–3,000 → µm), not documented
-- MiniDot, HOBO, Stream Chemistry and Precipitation Gauge slugs are unconfirmed — no live sensors to probe against. Re-run `pixi run probe` when they wake up
-- `inspect_schemas.py` should move out of the repo root
 
 ---
 
 ## Running it
 
-[pixi](https://pixi.sh) handles the environment — conda-forge underneath, one lockfile per platform, ready for GDAL when the geospatial layer lands.
-
-```bash
-# Windows
-iwr -useb https://pixi.sh/install.ps1 | iex
-```
-
-```bash
-# macOS / Linux
-curl -fsSL https://pixi.sh/install.sh | bash
-```
-
-Then:
+[pixi](https://pixi.sh) handles the environment — conda-forge underneath, one lockfile per platform.
 
 ```bash
 pixi install
-pixi run pipeline     # pull every live sensor, then rebuild the dashboard data
+pixi run pipeline     # ingest both agencies, rebuild, prune
 pixi run serve        # http://localhost:8000
 ```
 
 | Task | What it does |
 |---|---|
-| `pixi run ingest-all` | every live, visible sensor across all six types |
-| `pixi run ingest` | lake sondes only — faster, for water-quality iteration |
-| `pixi run probe` | resolve endpoint slugs and print a report, writing nothing |
-| `pixi run transform` | rebuild parquet + `latest.json` |
-| `pixi run pipeline` | ingest-all → transform |
-| `pixi run serve` | dashboard on :8000 |
+| `pipeline` | ingest-all → usgs → transform → prune |
+| `ingest-all` / `usgs` | TEON sensors / USGS gauges |
+| `reference` | cache the catchment polygons and attributes |
+| `catchment-join` | assign each station to its catchment |
+| `watch` | report what changed upstream |
+| `probe` / `usgs-probe` | resolve every endpoint, write nothing |
+| `usgs-discover` | find every gauge in the basin |
+| `usgs-params` | look up a parameter code properly |
+| `reference-inspect` | CRS, extent and property keys of the polygon file |
+| `camera-probe` | test whether camera imagery is reachable |
+| `transform` / `serve` | rebuild the dashboard data / serve it |
 
-Dev environment adds ruff, pytest and JupyterLab: `pixi run -e dev lab`.
+Needs a free [USGS API key](https://api.waterdata.usgs.gov/signup/) in `USGS_API_KEY` — 50 requests/hour without one, 1,000 with.
 
 ---
 
-## How it's wired
+## How it stays honest
 
 ```
-        TEON REST API  (AWS App Runner, undocumented)
-               │
-               ▼
-    src/secchi/sources/teon.py     slug resolution, pagination, visibility flags
-               │
-               ▼
-    src/secchi/ingest.py           hourly snapshots, append-only
-               │
-               ▼
-        data/raw/**.json           the durable record — never overwritten
-               │
-               ▼
-    src/secchi/transform.py        dedupe, numeric/asset split, scale, clip
-               │
-               ├──► data/processed/*.parquet     for notebooks and modelling
-               └──► web/assets/latest.json       for the page
-                            │
-                            ▼
-                   GitHub Pages  →  brooksgroves.com/secchi
+   TEON + USGS APIs
+         │
+         ▼
+   data/raw/**.json          a 7-day working buffer, pruned
+         │
+         ▼
+   data/processed/*.parquet  THE DURABLE RECORD — accumulates,
+         │                   deduped on the sources' own IDs
+         ▼
+   web/assets/latest.json    built at deploy time, never committed
+         │
+         ▼
+   GitHub Pages → brooksgroves.com/secchi
 ```
 
-`latest.json` is **generated at deploy time**, not committed — it's a derived artifact, and committing it meant every local run raced the hourly cron for the same file. Two workflows: `fetch.yml` archives raw snapshots on the hour, `pages.yml` rebuilds and publishes.
+Three workflows: **fetch** hourly, **pages** on push, **watch** every six hours — which opens a GitHub issue when the manual sondes upload, when the dormant fleet resumes, if 4H Camp is un-hidden, or if TEON's missing fourth monitoring domain ever appears.
 
-Full endpoint map, record schemas, unit notes and open questions: **[`docs/data-dictionary.md`](docs/data-dictionary.md)**.
+Repo growth is bounded at roughly 160 MB steady state. The first design committed every fetch artifact forever and would have hit GitHub's limit in five days.
+
+Full endpoint map, record schemas, unit notes and open questions: **[`docs/`](docs/)**.
+
+---
+
+## What the disk can't see yet
+
+- **3,392 camera frames** in a bucket named *Snow photos*, going back to November 2025. `camera-probe` proved the bucket refuses anonymous reads. A winter of Tahoe snowpack from five angles, one email away.
+- **~930,000 dormant records** — slugs confirmed, reachable, waiting on a deliberate paginated backfill. Includes the precipitation gauge, which is the forcing variable the transect wants most.
+- **Why Glenbrook 2 is wet.** The catchment join gives it and Glenbrook 5 identical attributes while they read 42 % and 3.5 % soil moisture. Catchment means explain *between*-catchment variation, not *within*. That needs the source rasters sampled at each station point.
+- **Ground truth for a clarity model.** TERC's Secchi record lives in the [EDI repository](https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340) as a versioned, DOI-bearing package. Their 2025 report also shows why any model here must be **seasonal**: winter clarity is stable, summer clarity is degrading, and 2025's summer average of 53.4 ft was the fifth poorest on record. An annual mean averages away the only part of the signal that's moving.
 
 ---
 
 ## Data & attribution
 
-All sensor data belong to the **Tahoe Environmental Observatory Network**, a project of the Tahoe Institute for Global Sustainability at the University of Nevada, Reno, with the U.S. Forest Service, the Tahoe Science Advisory Council, USGS, NOAA, TRPA and the NV Energy Foundation.
+Sensor data from the **Tahoe Environmental Observatory Network** (Tahoe Institute for Global Sustainability, University of Nevada, Reno) and the **U.S. Geological Survey**. All provisional.
 
-Data are provisional. Per TEON:
+`secchi` honours TEON's own `/site-visibility/disabled` flags — a site the observatory marks non-public is neither ingested nor displayed.
 
-> Data may be subject to inaccuracies due to instrument performance, maintenance cycles, or environmental conditions at measurement locations.
-
-`secchi` honours TEON's own `/site-visibility/disabled` flags — a site the observatory marks non-public is neither ingested nor displayed. If you use anything derived from this repo, please cite both `secchi` and TEON.
+Clarity context from UC Davis TERC and the Lake Tahoe TMDL. If you use anything derived from this repo, cite the upstream sources, not this one.
 
 ---
 
@@ -239,7 +276,7 @@ Data are provisional. Per TEON:
 
 🌲 **Environmental Intelligence Lab** · [Brooks Labs](https://github.com/bdgroves)
 
-MIT licensed. Built by [Brooks Groves](https://brooksgroves.com), GISP® — who got his undergraduate degree at the university that built the network this reads from.
+MIT licensed. Built by [Brooks Groves](https://brooksgroves.com), GISP® — who did his undergraduate degree at the university that built the network this reads from.
 
 ---
 
