@@ -51,6 +51,7 @@ from secchi.config import (
     TREND_SIGNIFICANCE,
     UNIT_CONVERSIONS,
     USGS_DATUMS,
+    WATERSHED_DISPLAY_VARIABLES,
     USGS_PARAMETERS,
     USGS_STATISTIC_INSTANTANEOUS,
     USGS_STATISTICS,
@@ -1101,12 +1102,68 @@ def build_transect_line(transect: dict | None) -> dict | None:
     }
 
 
+def write_web_watersheds(web_dir: Path = WEB_DIR) -> dict | None:
+    """Write a browser-sized copy of the catchment polygons.
+
+    The cached file is 7.8 MB in Web Mercator with 164 properties per
+    feature. This reprojects it to WGS84 (Leaflet expects lon/lat),
+    simplifies the geometry, trims to the display variables, and writes
+    ``web/assets/watersheds.geojson``.
+
+    Returns a summary for the snapshot, or None if the reference data
+    hasn't been cached yet — the dashboard then just omits the layer
+    rather than failing.
+    """
+    from secchi.sources.reference import load_reference, reproject_geojson
+    from secchi.sources.simplify import simplify_collection
+
+    ref = load_reference()
+    polygons = ref.get("polygons")
+    if not polygons:
+        log.info("no cached catchment polygons — skipping the map layer. "
+                 "Run `pixi run reference` to enable it.")
+        return None
+
+    wgs = reproject_geojson(polygons)
+    reduced = simplify_collection(wgs, list(WATERSHED_DISPLAY_VARIABLES))
+
+    assets = web_dir / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    out_path = assets / "watersheds.geojson"
+    # Compact separators: this file is machine-read, and indentation would
+    # add roughly a third to the payload for no benefit.
+    out_path.write_text(json.dumps(reduced, separators=(",", ":")), encoding="utf-8")
+    size_kb = out_path.stat().st_size / 1024
+    log.info("wrote %s (%d features, %.0f KB)", out_path,
+             len(reduced.get("features", [])), size_kb)
+
+    # Per-variable ranges, so the dashboard can scale its colours without
+    # reading every feature twice in JavaScript.
+    ranges: dict[str, dict] = {}
+    for var in WATERSHED_DISPLAY_VARIABLES:
+        vals = []
+        for feat in reduced.get("features", []):
+            v = (feat.get("properties") or {}).get(var)
+            if isinstance(v, (int, float)):
+                vals.append(float(v))
+        if len(vals) >= 2:
+            ranges[var] = {"min": round(min(vals), 4), "max": round(max(vals), 4)}
+
+    return {
+        "path": "assets/watersheds.geojson",
+        "features": len(reduced.get("features", [])),
+        "size_kb": round(size_kb, 1),
+        "ranges": ranges,
+    }
+
+
 def build_dashboard_snapshot(df_wide: pd.DataFrame,
                              df_long: pd.DataFrame,
                              df_assets: pd.DataFrame,
                              df_usgs: pd.DataFrame,
                              inventory: dict | None,
-                             disabled: list[str]) -> dict:
+                             disabled: list[str],
+                             watersheds: dict | None = None) -> dict:
     """Compose the payload the dashboard reads."""
     lake = build_lake_cards(df_wide, df_long)
     stations = build_station_cards(df_wide, df_long)
@@ -1127,6 +1184,7 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "inventory": inv,
         "map": build_map_points(inv, lake, stations, gauges, sorted(disabled)),
         "transect_line": build_transect_line(transect),
+        "watersheds": watersheds,
     }
 
 
@@ -1180,8 +1238,10 @@ def main() -> int:
     visibility = load_latest_json(RAW_DIR, "visibility") or {}
     disabled = visibility.get("disabled", [])
 
+    watersheds = write_web_watersheds()
+
     snapshot = build_dashboard_snapshot(df_wide, df_obs, df_assets, df_usgs,
-                                        inventory, disabled)
+                                        inventory, disabled, watersheds)
     assets_dir = WEB_DIR / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     latest_path = assets_dir / "latest.json"

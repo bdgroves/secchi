@@ -1,0 +1,102 @@
+name: watch
+
+# Notices when the upstream networks change, so nobody has to keep
+# checking manually.
+#
+# What this is actually watching for:
+#   * The two manual EXO sondes (Blackwood 3, Meeks) publish nothing until
+#     someone snorkels out and uploads. When that happens their record
+#     jumps ~2 months at once through the endpoint we already poll.
+#   * MiniDot and HOBO stopped around 2026-06-10 and the manual sondes on
+#     2026-07-09 — clustering that looks like a summer haul-out rather
+#     than failure, so they will probably resume.
+#   * TEON currently hides 4H Camp via /site-visibility/disabled. That
+#     flag could lift.
+#   * An entire fourth monitoring domain (aquatic: ponds, wet meadows,
+#     upland lakes) is described in TEON's StoryMap but absent from the
+#     API. If it appears, that is a large amount of new data.
+#
+# On a notable change this opens a GitHub issue, which sends the usual
+# notification. Minor state flapping is reported in the log only.
+
+on:
+  schedule:
+    # Every six hours. The things being watched change on the scale of
+    # weeks, so hourly would be noise; six-hourly still catches a
+    # retrieval the same day it lands.
+    - cron: "17 */6 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: watch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          manifest-path: pyproject.toml
+          environments: default
+          cache: true
+
+      - name: Check for upstream changes
+        id: check
+        # Exit 2 means notable changes, 0 means none. Anything else is a
+        # real failure, so don't swallow it.
+        run: |
+          set +e
+          pixi run watch > watch-report.txt 2>&1
+          code=$?
+          set -e
+          cat watch-report.txt
+          if [ "$code" -eq 2 ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 0 ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "watch failed with exit $code"
+            exit "$code"
+          fi
+
+      - name: Open an issue
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('watch-report.txt', 'utf8');
+            const today = new Date().toISOString().slice(0, 10);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Upstream change detected — ${today}`,
+              body: body.slice(0, 60000),
+              labels: ['upstream-change'],
+            });
+
+      - name: Commit the updated baseline
+        run: |
+          git config user.name "secchi-bot"
+          git config user.email "secchi-bot@users.noreply.github.com"
+          git add data/reference/watch_baseline.json || true
+          if git diff --cached --quiet; then
+            echo "baseline unchanged"
+            exit 0
+          fi
+          git commit -m "watch: update baseline $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          for attempt in 1 2 3; do
+            git push && exit 0
+            echo "push rejected, rebasing"
+            git pull --rebase -X theirs || { git rebase --abort || true; exit 1; }
+          done
+          exit 1

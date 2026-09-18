@@ -111,6 +111,12 @@ reference = "python -m secchi.ingest --mode reference"
 # names line up with the attribute records. Written after the first
 # catchment-join matched 0 of 28 stations.
 reference-inspect = "python -m secchi.ingest --mode reference-inspect"
+# Compare the upstream inventory against a stored baseline and report what
+# changed: new sensors or sensor types, dormant instruments resuming, live
+# ones going quiet, TEON visibility flags lifting. Run hourly by
+# .github/workflows/watch.yml, which opens an issue on notable changes so
+# you don't have to keep checking.
+watch = "python -m secchi.ingest --mode watch"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.

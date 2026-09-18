@@ -371,6 +371,59 @@ def discover_usgs(client: UsgsClient) -> int:
     return 0
 
 
+def run_watch(write_baseline: bool = True) -> int:
+    """Check what changed upstream and report it.
+
+    Exit code carries the signal so a workflow can branch on it without
+    parsing output:
+      0  no changes (or first run, baseline established)
+      2  changes found — the report is on stdout
+      1  the check itself failed
+    """
+    from secchi.sources.watch import (_snapshot_state, diff_state,
+                                      format_report, load_baseline,
+                                      save_baseline)
+
+    with TeonClient() as client:
+        try:
+            inventory = client.list_sensors()
+            disabled = client.disabled_sites()
+        except Exception:
+            log.exception("could not read the TEON inventory")
+            return 1
+
+    state = _snapshot_state(inventory, disabled)
+    baseline = load_baseline()
+
+    if baseline is None:
+        save_baseline(state)
+        live = sum(1 for v in state["sensors"].values() if v["state"] == "live")
+        log.info("no baseline existed — established one: %d sensors, %d live, "
+                 "%d types", len(state["sensors"]), live,
+                 len(state["sensor_types"]))
+        print("Baseline established. Future runs will report changes against it.")
+        return 0
+
+    changes = diff_state(baseline, state)
+    report = format_report(changes, state)
+    print()
+    print(report)
+    print()
+
+    if write_baseline:
+        save_baseline(state)
+
+    notable = [c for c in changes if c["severity"] == "notable"]
+    if notable:
+        log.info("%d notable change(s), %d total", len(notable), len(changes))
+        return 2
+    if changes:
+        log.info("%d minor change(s) only", len(changes))
+        return 0
+    log.info("nothing changed upstream")
+    return 0
+
+
 def fetch_reference_data(force: bool = False) -> int:
     """Cache the watershed polygons, attributes and dictionary."""
     from secchi.sources.reference import fetch_reference
@@ -545,6 +598,8 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         return 0
     if mode == "camera-probe":
         return probe_camera_assets()
+    if mode == "watch":
+        return run_watch()
     if mode == "reference":
         return fetch_reference_data(force=force)
     if mode == "reference-inspect":
@@ -613,7 +668,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
                  "usgs", "usgs-probe", "usgs-discover", "usgs-params",
                  "camera-probe", "reference", "reference-inspect",
-                 "catchment-join",
+                 "catchment-join", "watch",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -630,6 +685,8 @@ def main(argv: list[str] | None = None) -> int:
             "(--codes 70369), defaulting to everything in USGS_PARAMETERS. "
             "camera-probe: test whether the field-camera s3:// refs resolve "
             "over public HTTPS. "
+            "watch: compare the upstream inventory against a stored baseline "
+            "and report new sensors, sensors resuming, and data going dark. "
             "reference: cache the watershed polygons and attributes. "
             "reference-inspect: report the cached polygon file's CRS, extent "
             "and property keys. "

@@ -1,0 +1,252 @@
+{
+  "captured_at": "2026-09-18T22:19:13.784476+00:00",
+  "sensor_types": [
+    "Air Temperature & Relative Humidity",
+    "EXO",
+    "Field Camera",
+    "Hobo",
+    "Minidot",
+    "Precipitation Gauge",
+    "Soil Environmental Conditions",
+    "Stream Chemistry",
+    "Stream Level",
+    "Tree stress and growth"
+  ],
+  "categories": [
+    "lake",
+    "stream",
+    "terrestrial"
+  ],
+  "disabled_sites": [
+    "4hcamp"
+  ],
+  "usgs_gauges": [
+    "10336610",
+    "10336645",
+    "10336660",
+    "10336676",
+    "10336698",
+    "10336700",
+    "10336730",
+    "10336780",
+    "10337000",
+    "10337500"
+  ],
+  "sensors": {
+    "terrestrial/Soil Environmental Conditions/Blackwood 2": {
+      "state": "dormant",
+      "last_update": "2026-06-18T08:15:00",
+      "data_count": 124620
+    },
+    "terrestrial/Soil Environmental Conditions/Glenbrook 1": {
+      "state": "live",
+      "last_update": "2026-09-18T13:30:00",
+      "data_count": 58026
+    },
+    "terrestrial/Soil Environmental Conditions/Glenbrook 2": {
+      "state": "live",
+      "last_update": "2026-09-18T03:45:00",
+      "data_count": 40594
+    },
+    "terrestrial/Soil Environmental Conditions/Glenbrook 4": {
+      "state": "live",
+      "last_update": "2026-09-18T01:45:00",
+      "data_count": 71026
+    },
+    "terrestrial/Soil Environmental Conditions/Glenbrook 5": {
+      "state": "live",
+      "last_update": "2026-09-18T05:45:00",
+      "data_count": 63052
+    },
+    "terrestrial/Soil Environmental Conditions/Homewood": {
+      "state": "live",
+      "last_update": "2026-09-18T10:15:00",
+      "data_count": 35797
+    },
+    "terrestrial/Soil Environmental Conditions/UNR Tahoe Campus": {
+      "state": "live",
+      "last_update": "2026-09-18T08:15:00",
+      "data_count": 70507
+    },
+    "terrestrial/Air Temperature & Relative Humidity/Blackwood 2": {
+      "state": "dormant",
+      "last_update": "2026-06-18T08:15:00",
+      "data_count": 124620
+    },
+    "terrestrial/Air Temperature & Relative Humidity/Glenbrook 1": {
+      "state": "live",
+      "last_update": "2026-09-18T13:30:00",
+      "data_count": 58026
+    },
+    "terrestrial/Air Temperature & Relative Humidity/Glenbrook 2": {
+      "state": "live",
+      "last_update": "2026-09-18T03:45:00",
+      "data_count": 40594
+    },
+    "terrestrial/Air Temperature & Relative Humidity/Glenbrook 4": {
+      "state": "live",
+      "last_update": "2026-09-18T01:45:00",
+      "data_count": 71026
+    },
+    "terrestrial/Air Temperature & Relative Humidity/Glenbrook 5": {
+      "state": "live",
+      "last_update": "2026-09-18T05:45:00",
+      "data_count": 63052
+    },
+    "terrestrial/Air Temperature & Relative Humidity/Homewood": {
+      "state": "live",
+      "last_update": "2026-09-18T10:15:00",
+      "data_count": 35797
+    },
+    "terrestrial/Air Temperature & Relative Humidity/UNR Tahoe Campus": {
+      "state": "live",
+      "last_update": "2026-09-18T08:15:00",
+      "data_count": 70507
+    },
+    "terrestrial/Tree stress and growth/Glenbrook 2": {
+      "state": "live",
+      "last_update": "2026-09-18T03:45:00",
+      "data_count": 40594
+    },
+    "terrestrial/Tree stress and growth/Glenbrook 4": {
+      "state": "live",
+      "last_update": "2026-09-18T01:45:00",
+      "data_count": 71026
+    },
+    "terrestrial/Tree stress and growth/Glenbrook 5": {
+      "state": "live",
+      "last_update": "2026-09-18T05:45:00",
+      "data_count": 63052
+    },
+    "terrestrial/Precipitation Gauge/Blackwood 2": {
+      "state": "dormant",
+      "last_update": "2026-08-14T13:22:00",
+      "data_count": 593507
+    },
+    "terrestrial/Field Camera/Glenbrook 2": {
+      "state": "live",
+      "last_update": "2026-09-18T00:30:34",
+      "data_count": 681
+    },
+    "terrestrial/Field Camera/Glenbrook 4": {
+      "state": "live",
+      "last_update": "2026-09-17T22:31:18",
+      "data_count": 722
+    },
+    "terrestrial/Field Camera/Glenbrook 5": {
+      "state": "live",
+      "last_update": "2026-09-18T02:31:48",
+      "data_count": 554
+    },
+    "terrestrial/Field Camera/Homewood": {
+      "state": "live",
+      "last_update": "2026-09-18T06:32:15",
+      "data_count": 728
+    },
+    "terrestrial/Field Camera/UNR Tahoe Campus": {
+      "state": "live",
+      "last_update": "2026-09-18T04:32:53",
+      "data_count": 707
+    },
+    "lake/Minidot/Camp Richardson": {
+      "state": "dormant",
+      "last_update": "2026-06-10T14:46:00",
+      "data_count": 47226
+    },
+    "lake/Minidot/incline_lake": {
+      "state": "dormant",
+      "last_update": "2026-06-10T13:16:00",
+      "data_count": 43911
+    },
+    "lake/Minidot/Lake Forest": {
+      "state": "dormant",
+      "last_update": "2026-06-10T12:46:00",
+      "data_count": 47144
+    },
+    "lake/Minidot/Lakeside": {
+      "state": "dormant",
+      "last_update": "2026-06-10T15:16:00",
+      "data_count": 35343
+    },
+    "lake/Minidot/tahoe_keys_lake": {
+      "state": "dormant",
+      "last_update": "2026-06-10T15:01:00",
+      "data_count": 44471
+    },
+    "lake/Minidot/tallac_lake": {
+      "state": "dormant",
+      "last_update": "2026-06-10T14:31:00",
+      "data_count": 47245
+    },
+    "lake/Hobo/Camp Richardson": {
+      "state": "dormant",
+      "last_update": "2026-06-10T14:45:00",
+      "data_count": 40988
+    },
+    "lake/Hobo/incline_lake": {
+      "state": "dormant",
+      "last_update": "2026-05-30T09:15:00",
+      "data_count": 32780
+    },
+    "lake/Hobo/Lake Forest": {
+      "state": "dormant",
+      "last_update": "2026-06-10T12:45:00",
+      "data_count": 38853
+    },
+    "lake/Hobo/Lakeside": {
+      "state": "dormant",
+      "last_update": "2025-08-08T13:45:00",
+      "data_count": 10841
+    },
+    "lake/Hobo/tahoe_keys_lake": {
+      "state": "dormant",
+      "last_update": "2026-06-10T15:00:00",
+      "data_count": 44069
+    },
+    "lake/Hobo/tallac_lake": {
+      "state": "dormant",
+      "last_update": "2026-06-10T14:30:00",
+      "data_count": 46847
+    },
+    "lake/EXO/4H Camp": {
+      "state": "live",
+      "last_update": "2026-09-18T14:00:00",
+      "data_count": 52539
+    },
+    "lake/EXO/Glenbrook": {
+      "state": "live",
+      "last_update": "2026-09-18T15:00:00",
+      "data_count": 46367
+    },
+    "lake/EXO/Sunnyside": {
+      "state": "live",
+      "last_update": "2026-09-18T13:00:00",
+      "data_count": 38610
+    },
+    "lake/EXO/Blackwood 3": {
+      "state": "dormant",
+      "last_update": "2026-07-09T11:00:00",
+      "data_count": 15451
+    },
+    "lake/EXO/Meeks": {
+      "state": "dormant",
+      "last_update": "2026-07-09T11:30:00",
+      "data_count": 15441
+    },
+    "stream/Stream Chemistry/Blackwood 2": {
+      "state": "dormant",
+      "last_update": "2026-06-18T08:15:00",
+      "data_count": 124620
+    },
+    "stream/Stream Level/Blackwood 2": {
+      "state": "dormant",
+      "last_update": "2026-06-18T08:15:00",
+      "data_count": 124620
+    },
+    "stream/Stream Level/Glenbrook 2": {
+      "state": "live",
+      "last_update": "2026-09-18T03:45:00",
+      "data_count": 39454
+    }
+  }
+}

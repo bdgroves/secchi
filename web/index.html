@@ -230,6 +230,31 @@
   .pin-hidden  { background: transparent; border: 2px dashed var(--muted); }
   .pin-gauge   { background: var(--wet); border-radius: 2px; transform: rotate(45deg); }
 
+  /* Watershed choropleth */
+  .ws-control {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem;
+    margin-top: 0.75rem; font-size: 0.82rem; color: var(--slate);
+  }
+  .ws-control label { color: var(--muted); }
+  .ws-control select {
+    font: inherit; font-size: 0.82rem; padding: 0.2rem 0.4rem;
+    background: var(--paper); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 0;
+  }
+  .ws-control input[type="range"] { width: 7rem; accent-color: var(--wet); }
+  .ws-scale { display: flex; align-items: center; gap: 0.4rem; }
+  .ws-ramp {
+    width: 7rem; height: 0.55rem; border: 1px solid var(--line);
+    background: linear-gradient(to right,
+      #f7fbfd 0%, #cfe3ee 25%, #8dbcd4 50%, #4a8fb0 75%, #1d5a7a 100%);
+  }
+  .ws-ramp[data-dark="1"] {
+    background: linear-gradient(to right,
+      #14303d 0%, #1d5a7a 25%, #4a8fb0 50%, #8dbcd4 75%, #cfe3ee 100%);
+  }
+  .ws-bound { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ws-note { color: var(--muted); font-size: 0.75rem; }
+
   .map-legend {
     display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem;
     margin-top: 0.75rem; font-size: 0.8rem; color: var(--muted);
@@ -298,7 +323,27 @@
     names. The dashed line is the transect: two stations 64 metres apart in
     latitude on opposite shores.
   </p>
+  <p>
+    Shade the 60 stream catchments by any of the climate and landscape
+    variables below. <strong>Annual precipitation</strong> is the one to
+    start with: it runs from about 1,460 mm on the northwest shore down to
+    480 mm on the east, and that threefold gradient is the rain shadow the
+    transect exists to measure.
+  </p>
   <div class="map-wrap"><div id="map"></div></div>
+  <div class="ws-control" id="ws-control" hidden>
+    <label for="ws-var">Catchment shading</label>
+    <select id="ws-var"></select>
+    <span class="ws-scale">
+      <span class="ws-bound" id="ws-min"></span>
+      <span class="ws-ramp" id="ws-ramp"></span>
+      <span class="ws-bound" id="ws-max"></span>
+    </span>
+    <label for="ws-opacity">Opacity</label>
+    <input type="range" id="ws-opacity" min="0" max="100" value="55">
+    <span class="ws-note" id="ws-note"></span>
+  </div>
+
   <div class="map-legend" id="map-legend">
     <span><i class="lg-live"></i>reporting today</span>
     <span><i class="lg-stale"></i>quiet &lt; 30 days</span>
@@ -810,6 +855,127 @@
       ${dl}${flagHtml}`;
   }
 
+  // Variables offered in the shading selector, with readable labels and
+  // units. Kept short deliberately — the full set is 164 columns and most
+  // of them aren't worth a colour ramp.
+  const WS_VARS = [
+    ["PrecipAvg",  "Annual precipitation", "mm"],
+    ["CWDAvg",     "Climatic water deficit", ""],
+    ["TempAvg",    "Mean annual temperature", "°C"],
+    ["TWID8Avg",   "Topographic Wetness Index", ""],
+    ["DWaterAvg",  "Depth to water table", "cm"],
+    ["Meadow",     "Meadow cover", "%", 100],
+    ["ValleyBott", "Valley bottoms", "%", 100],
+    ["SlopeAvg",   "Mean slope", "°"],
+    ["ElevAvg",    "Mean elevation", "m"],
+    ["TreeAvg",    "Tree cover", "%"],
+    ["TotalFire",  "Burned area", "%", 100],
+    ["ImpervAvg",  "Impervious surface", "%"],
+    ["Area_Km",    "Catchment area", "km²"],
+  ];
+
+  // Sequential ramp, light to dark. Reversed in dark mode so "more" still
+  // reads as "stronger" against the background rather than vanishing.
+  const WS_RAMP_LIGHT = ["#f7fbfd","#cfe3ee","#8dbcd4","#4a8fb0","#1d5a7a"];
+  const WS_RAMP_DARK  = ["#14303d","#1d5a7a","#4a8fb0","#8dbcd4","#cfe3ee"];
+
+  function wsColor(value, min, max, dark) {
+    const ramp = dark ? WS_RAMP_DARK : WS_RAMP_LIGHT;
+    if (value == null || !isFinite(value) || max === min) return ramp[0];
+    const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    return ramp[Math.min(ramp.length - 1, Math.floor(t * ramp.length))];
+  }
+
+  async function addWatershedLayer(map, snap, overlays) {
+    const meta = snap.watersheds;
+    if (!meta || !meta.path) return null;
+
+    let fc;
+    try {
+      const res = await fetch(meta.path, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fc = await res.json();
+    } catch (err) {
+      console.warn("watershed layer unavailable:", err.message);
+      return null;
+    }
+
+    const dark = window.matchMedia
+      && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const ranges = meta.ranges || {};
+    // Only offer variables the file actually carries a usable range for.
+    const available = WS_VARS.filter(([key]) => ranges[key]);
+    if (!available.length) return null;
+
+    let current = available[0];
+    let opacity = 0.55;
+
+    const layer = L.geoJSON(fc, {
+      style: () => ({ weight: 0.7, color: "#ffffff", fillOpacity: opacity }),
+      onEachFeature: (feature, lyr) => {
+        const p = feature.properties || {};
+        lyr.bindPopup(() => {
+          const [key, label, unit, scale] = current;
+          const raw = p[key];
+          const val = (typeof raw === "number")
+            ? fmt.format(raw * (scale || 1)) + (unit ? " " + unit : "")
+            : "—";
+          return `<div class="pop-title">${esc(p.Name || "catchment")}</div>
+                  <div class="pop-meta">${esc(label)}</div>
+                  <div class="pop-read"><dt>${esc(label)}</dt><dd>${val}</dd></div>`;
+        });
+        lyr.on("mouseover", () => lyr.setStyle({ weight: 2, color: "#ffffff" }));
+        lyr.on("mouseout", () => lyr.setStyle({ weight: 0.7, color: "#ffffff" }));
+      },
+    });
+
+    function restyle() {
+      const [key, , , scale] = current;
+      const r = ranges[key] || { min: 0, max: 1 };
+      layer.eachLayer((lyr) => {
+        const raw = (lyr.feature.properties || {})[key];
+        lyr.setStyle({
+          fillColor: wsColor(raw, r.min, r.max, dark),
+          fillOpacity: opacity,
+          weight: 0.7,
+          color: "#ffffff",
+        });
+      });
+      const s = scale || 1;
+      document.getElementById("ws-min").textContent = fmt.format(r.min * s);
+      document.getElementById("ws-max").textContent = fmt.format(r.max * s);
+      const unit = current[2];
+      document.getElementById("ws-note").textContent =
+        `${meta.features} catchments${unit ? " · " + unit : ""}`;
+    }
+
+    // Wire the controls.
+    const sel = document.getElementById("ws-var");
+    sel.innerHTML = available
+      .map(([key, label], i) => `<option value="${i}">${esc(label)}</option>`)
+      .join("");
+    sel.addEventListener("change", () => {
+      current = available[Number(sel.value)] || available[0];
+      restyle();
+    });
+
+    const op = document.getElementById("ws-opacity");
+    op.addEventListener("input", () => {
+      opacity = Number(op.value) / 100;
+      restyle();
+    });
+
+    document.getElementById("ws-ramp").dataset.dark = dark ? "1" : "0";
+    document.getElementById("ws-control").hidden = false;
+
+    restyle();
+    // Added beneath the markers so station pins stay clickable.
+    layer.addTo(map);
+    layer.bringToBack();
+    overlays["Catchments"] = layer;
+    return layer;
+  }
+
   function renderMap(snap) {
     const el = document.getElementById("map");
     if (!el || typeof L === "undefined") return;
@@ -877,8 +1043,13 @@
       overlays["Transect"] = lg;
     }
 
-    L.control.layers(bases, overlays, { collapsed: true, position: "topright" }).addTo(map);
-    L.control.scale({ imperial: true, metric: true, position: "bottomleft" }).addTo(map);
+    // The catchment layer loads asynchronously, so the layer control is
+    // built after it resolves — otherwise "Catchments" would be missing
+    // from the list on first paint.
+    addWatershedLayer(map, snap, overlays).finally(() => {
+      L.control.layers(bases, overlays, { collapsed: true, position: "topright" }).addTo(map);
+      L.control.scale({ imperial: true, metric: true, position: "bottomleft" }).addTo(map);
+    });
 
     if (bounds.length) map.fitBounds(bounds, { padding: [34, 34] });
     // Leaflet mis-measures a container that was hidden or resized during

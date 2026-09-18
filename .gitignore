@@ -99,6 +99,7 @@ data/processed/latest_wide.parquet
 # Generated at deploy time by .github/workflows/pages.yml, so local runs
 # don't race the cron for the same path.
 web/assets/latest.json
+web/assets/watersheds.geojson
 
 data/scratch/
 *.tmp
