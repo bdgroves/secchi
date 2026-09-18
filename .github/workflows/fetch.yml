@@ -5,20 +5,20 @@ name: fetch
 #
 # Data model:
 #   data/raw/               working buffer of fetch artifacts, pruned to
-#                           RAW_RETENTION_DAYS. Exists so a transform bug
-#                           can be caught and reprocessed.
+#                           RAW_RETENTION_DAYS.
 #   data/processed/*.parquet  the DURABLE RECORD. Accumulates across runs,
 #                           deduplicated on the source's own record ids.
 #
-# This workflow deliberately does NOT trigger on pushes to src/. It used
-# to, which meant every code change kicked off a data pull and produced a
-# redundant snapshot commit — pushing the tributary config on 2026-09-18
-# produced two snapshots five minutes apart. Code changes are published by
-# pages.yml; only the schedule and manual dispatch should move data.
+# Why this workflow rebases before committing: the parquet files are
+# binary, so git cannot merge them. If the cron commits while a local
+# `pixi run transform` has also written them, the divergent history
+# produces an unresolvable conflict — which is exactly what happened on
+# 2026-09-18 and cost a rebase to untangle. Pulling first, then
+# regenerating, then committing means the cron never pushes a parquet that
+# diverged from the remote.
 
 on:
   schedule:
-    # Every hour on the hour.
     - cron: "0 * * * *"
   workflow_dispatch: {}
 
@@ -47,17 +47,26 @@ jobs:
         run: pixi run ingest-all
 
       - name: Ingest USGS
-        # Non-fatal: a USGS outage or exhausted quota shouldn't cost us the
-        # TEON snapshot, which is the time-sensitive half. USGS has a
-        # 131-year archive and will still be there next hour.
+        # Non-fatal: a USGS outage shouldn't cost us the TEON snapshot,
+        # which is the time-sensitive half.
         continue-on-error: true
         env:
           USGS_API_KEY: ${{ secrets.USGS_API_KEY }}
         run: pixi run usgs
 
+      - name: Take the remote's parquet before regenerating
+        # The parquet is binary and unmergeable, so we never try. Instead:
+        # reset those paths to whatever is on the remote, then let
+        # transform rebuild from data/raw/ — which accumulates and dedupes,
+        # so the result contains both sides' rows regardless of which copy
+        # we started from.
+        run: |
+          git fetch origin main
+          git checkout origin/main -- data/processed/ 2>/dev/null || true
+
       - name: Fold into the parquet record
-        # Must run here, not only at deploy time: raw is about to be pruned,
-        # so anything not accumulated now is lost.
+        # Must run before prune: raw is about to be deleted, so anything
+        # not accumulated now is lost.
         run: pixi run transform
 
       - name: Prune the raw buffer
@@ -67,11 +76,26 @@ jobs:
         run: |
           git config user.name "secchi-bot"
           git config user.email "secchi-bot@users.noreply.github.com"
-          # -A so pruned files are staged as deletions, not left behind.
           git add -A data/ || true
           if git diff --cached --quiet; then
             echo "no data changes"
-          else
-            git commit -m "data: hourly snapshot $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-            git push
+            exit 0
           fi
+          git commit -m "data: hourly snapshot $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          # Rebase onto anything that landed while we were working, then
+          # push. A parquet conflict is impossible here because we took the
+          # remote's copy above and regenerated from raw.
+          for attempt in 1 2 3; do
+            if git push; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push rejected, rebasing and retrying"
+            git pull --rebase -X theirs || {
+              echo "rebase failed; aborting cleanly rather than forcing"
+              git rebase --abort || true
+              exit 1
+            }
+          done
+          echo "could not push after 3 attempts"
+          exit 1

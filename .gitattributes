@@ -1,3 +1,29 @@
-﻿* text=auto eol=lf
+# Line endings
+* text=auto eol=lf
 *.ps1 text eol=crlf
 *.bat text eol=crlf
+
+# ---------------------------------------------------------------------------
+# Parquet: binary, and never mergeable
+# ---------------------------------------------------------------------------
+# These accumulate across runs and are the durable record, so they must be
+# committed (see .gitignore). But git cannot merge binary content, and both
+# a local `pixi run transform` and the hourly cron write them — so any
+# divergent history produces a conflict git has no way to resolve.
+#
+# Marking them binary with `-merge` makes git stop *trying*. It still
+# reports the conflict, but it won't corrupt the file attempting a
+# content merge, and the resolution is unambiguous: take either side, then
+# run `pixi run transform`, which rebuilds from data/raw/ and dedupes on
+# the source's own record ids. Nothing is lost either way.
+#
+# Resolution, for whichever file git names:
+#     git checkout --theirs data/processed/<file>.parquet
+#     git add data/processed/<file>.parquet
+#     git rebase --continue
+#     pixi run transform      # restores any rows the chosen side lacked
+*.parquet binary -merge -diff
+
+# Raw snapshots are JSON with unique filenames per run, so they append
+# rather than conflict. Marked -diff only to keep `git log -p` readable.
+data/raw/**/*.json -diff
