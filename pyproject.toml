@@ -96,6 +96,11 @@ usgs-probe = "python -m secchi.ingest --mode usgs-probe"
 # Query every USGS station inside the Tahoe basin bounding box and report
 # which are active but not yet configured. Beats hand-listing site numbers.
 usgs-discover = "python -m secchi.ingest --mode usgs-discover"
+# Look up the official definition of a USGS parameter code instead of
+# guessing: `pixi run usgs-params -- --codes 70369`
+usgs-params = "python -m secchi.ingest --mode usgs-params"
+# Test whether the field-camera s3:// references resolve over public HTTPS.
+camera-probe = "python -m secchi.ingest --mode camera-probe"
 transform  = "python -m secchi.transform"
 # Delete raw snapshots past RAW_RETENTION_DAYS. Safe only because
 # transform accumulates into data/processed/*.parquet, which is the

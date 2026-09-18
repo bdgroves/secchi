@@ -42,6 +42,7 @@ from secchi.config import (
     USGS_COLLECTIONS,
     USGS_GAUGES,
     USGS_BBOX,
+    USGS_EXTRA_STATISTICS,
     USGS_PAGE_LIMIT,
     USGS_STATISTIC_INSTANTANEOUS,
 )
@@ -233,6 +234,23 @@ class UsgsClient:
             params["statistic_id"] = statistic_id
         return self._items(USGS_COLLECTIONS["time_series_metadata"], params)
 
+    def parameter_codes(self, codes: list[str] | None = None) -> list[dict]:
+        """Resolve USGS parameter codes to names, units and descriptions.
+
+        Exists so an unfamiliar code gets looked up rather than guessed.
+        `70369` turned up at Upper Truckee and neither of us knew what it
+        was; guessing at an API's meaning is how the `63158` error and the
+        sensor-slug bug both happened.
+
+        `skipGeometry` is set because these are definitions, not features —
+        without it the response carries a null geometry per row for nothing.
+        """
+        params: dict[str, Any] = {"skipGeometry": "TRUE"}
+        if codes:
+            params["id"] = ",".join(codes)
+        return self._items(USGS_COLLECTIONS["parameter_codes"], params,
+                           max_features=None if codes else 5000)
+
     def monitoring_location(self, site_number: str) -> dict | None:
         """Site metadata: name, coordinates, drainage area, datum."""
         features = self._items(
@@ -268,7 +286,7 @@ class UsgsClient:
             # The API accepts repeated/comma values for parameter_code.
             params["parameter_code"] = ",".join(parameter_codes)
         if statistic_id:
-            params["statistic_id"] = statistic_id
+            params["statistic_id"] = _statistic_filter(statistic_id)
 
         features = self._items(USGS_COLLECTIONS["latest_continuous"], params)
         return _snapshot(site_number, "latest-continuous", features,
@@ -298,7 +316,7 @@ class UsgsClient:
         if parameter_codes:
             params["parameter_code"] = ",".join(parameter_codes)
         if statistic_id:
-            params["statistic_id"] = statistic_id
+            params["statistic_id"] = _statistic_filter(statistic_id)
 
         features = self._items(USGS_COLLECTIONS["continuous"], params,
                                max_features=max_features)
@@ -310,6 +328,22 @@ class UsgsClient:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _statistic_filter(statistic_id: str) -> str:
+    """The statistic filter for a data request.
+
+    Returns the instantaneous statistic plus any in
+    :data:`USGS_EXTRA_STATISTICS`. Some parameters only exist as a
+    non-instantaneous statistic — fine sediment particle *load* (70372) is
+    published as a daily Sum (00006) because a load is a total, not a spot
+    reading — and a request pinned to 00011 alone silently omits them.
+
+    Mixing statistics is safe here because the transform keys on
+    (parameter, statistic) rather than parameter alone.
+    """
+    wanted = [statistic_id, *(s for s in USGS_EXTRA_STATISTICS if s != statistic_id)]
+    return ",".join(wanted)
+
 
 def _loc_id(site_number: str) -> str:
     """USGS addresses locations as ``USGS-<number>``; accept either form."""

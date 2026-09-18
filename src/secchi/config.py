@@ -42,11 +42,14 @@ SENSOR_TYPE_SLUGS: dict[str, tuple[str, ...]] = {
     "Tree stress and growth": ("tree-stress",),                   # ✓
     "Air Temperature & Relative Humidity": ("air-temperature",),  # ✓
     "Soil Environmental Conditions": ("soil-moisture",),          # ✓
-    # Unconfirmed — no live sensors of these types to probe.
-    "Stream Chemistry": ("stream-chemistry", "stream-chem"),
-    "Precipitation Gauge": ("precipitation", "precipitation-gauge"),
-    "Minidot": ("mini-dot", "minidot", "mini-dot-sensor"),
-    "Hobo": ("hobo", "hobo-sensor"),
+    # Dormant types, resolved by the 2026-09-18 all-types probe. These
+    # have no live sensors but the API still serves their history.
+    "Stream Chemistry": ("stream-chemistry",),                  # ✓
+    "Precipitation Gauge": ("precipitation-gauge",),             # ✓
+    "Hobo": ("hobo-sensor",),                                    # ✓
+    "Minidot": ("minidot-sensor",),                              # ✓
+    # All ten sensor types now resolve. The convention held exactly:
+    # "{name}-sensor" with the display name NOT word-split.
 }
 
 # Display name → stable value stored in snapshots, so the parquet history
@@ -77,6 +80,19 @@ RECORD_META_FIELDS = frozenset({
 # Non-numeric measurement fields. These carry asset references rather than
 # values and are routed to a separate frame (see transform.to_asset_frame),
 # because forcing them into the numeric time series breaks the parquet write.
+#
+# CAMERA IMAGERY IS NOT PUBLICLY REACHABLE. Probed 2026-09-18
+# (`pixi run camera-probe`): every standard S3 HTTPS form returns 403
+# AccessDenied in us-west-2, and us-east-1 returns 301 PermanentRedirect —
+# which incidentally confirms the bucket lives in us-west-2. Anonymous
+# reads are blocked by bucket policy.
+#
+# Note AccessDenied is also what S3 returns for a missing key when
+# s3:ListBucket is denied, so this does NOT prove the objects exist; it
+# proves only that we cannot read them. A snowpack time-lapse needs either
+# a TEON-side proxy endpoint (look for one in DevTools on a camera detail
+# page that actually renders an image) or TEON granting public reads or
+# presigned URLs.
 ASSET_FIELDS = frozenset({"image"})
 
 # Logger diagnostic channels, shared across every sensor type served by the
@@ -304,9 +320,25 @@ USGS_STATISTICS: dict[str, str] = {
     "32400": "observation at 2400",
 }
 
-# The series we ingest. Everything else is a daily aggregate and would
-# collide with the instantaneous value if mixed into one variable.
+# The series we ingest by default. Everything else is a daily aggregate
+# and would collide with the instantaneous value if mixed into one
+# variable — see the statistic_id handling in sources/usgs.py.
 USGS_STATISTIC_INSTANTANEOUS = "00011"
+
+# Parameters that only exist as a non-instantaneous statistic, and so are
+# invisible to a request pinned to 00011.
+#
+# Found 2026-09-18: `70372` (fine sediment particle load) is published as
+# statistic 00006 (Sum), because a load is a daily total rather than a
+# spot reading. Pinning statistic_id=00011 meant the single most
+# regulation-relevant series at the lake's largest tributary would never
+# have been fetched — a silent omission, not an error.
+#
+# These statistics are added to the request alongside 00011. The
+# transform layer already keys on (parameter, statistic), so they cannot
+# collide with instantaneous values, and the card builder labels anything
+# non-instantaneous.
+USGS_EXTRA_STATISTICS: tuple[str, ...] = ("00006",)
 
 # Bounding box for discovery: the Lake Tahoe basin, generously drawn.
 # (minLon, minLat, maxLon, maxLat) — the order OGC API - Features expects.
@@ -388,9 +420,10 @@ USGS_GAUGES: dict[str, dict] = {
         "role": "tributary", "shore": "south",
         "note": "The largest tributary to Lake Tahoe, draining the south "
                 "end of the basin. Carries real-time turbidity.",
-        # 70369 also reported here; not yet identified — resolve against
-        # /collections/parameter-codes/items before configuring it.
-        "parameters": ("00060", "00065", "00010", "63680"),
+        # 70369 is fine sediment particles 0.5–16 µm — the pollutant the
+        # Tahoe TMDL regulates. At the lake's largest tributary, this is
+        # arguably the single most clarity-relevant series in the project.
+        "parameters": ("00060", "00065", "00010", "63680", "70369", "70372"),
     },
     "10336780": {
         "name": "Trout Creek near Tahoe Valley",
@@ -500,6 +533,46 @@ USGS_PARAMETERS: dict[str, dict] = {
               "note": "Directly comparable to the EXO sondes' Do_mgL."},
 
     "00095": {"label": "Conductance",  "units": "µS/cm"},
+    # Fine sediment particle LOAD, as distinct from the concentration in
+    # 70369 below. This is arguably the more regulation-relevant of the
+    # two: the Tahoe TMDL sets its allocations as fine sediment particle
+    # LOADS — particles per year by source category — not concentrations.
+    #
+    # Note the statistic: 00006 (Sum), not 00011 (instantaneous), because
+    # a load is a daily total. See USGS_PARAMETER_STATISTICS for why that
+    # needs special handling.
+    "70372": {"label": "Fine sediment load", "units": "count/day",
+              "note": "Daily load of fine sediment particles 0.5–16 µm. The "
+                      "TMDL expresses its allocations as particle loads, so "
+                      "this is the regulatory currency. Surrogate, computed "
+                      "by regression. Daily sum (statistic 00006), not "
+                      "instantaneous."},
+    # THE REGULATED CLARITY POLLUTANT. Resolved 2026-09-18 via
+    # `usgs-params --codes 70369`; USGS defines it as "Suspended sediment
+    # particles between 0.50 to 16.00 microns, water, unfiltered, computed
+    # by regression equation, counts per liter".
+    #
+    # That size class is not incidental. Lake Tahoe's TMDL identifies
+    # inorganic fine sediment particles <16 µm as the dominant cause of
+    # deep-water clarity loss — roughly two-thirds of the lake's
+    # impairment — and Lake Tahoe Info states the responsible fraction as
+    # 0.5–16 µm, matching this parameter exactly. The lake is Clean Water
+    # Act 303(d)-listed as impaired for nitrogen, phosphorus and sediment
+    # on that basis, and the TMDL requires a 65 % FSP reduction to restore
+    # Secchi depth to 97.4 ft by 2076 (interim: 78 ft by 2031).
+    #
+    # Mechanism: fine sediment particles SCATTER light, algae ABSORB it.
+    # Those are the two processes that set Secchi depth.
+    #
+    # CAVEAT, from the definition itself: "computed by regression
+    # equation". This is a surrogate, almost certainly derived from
+    # turbidity at the same gauge, not a laboratory particle count. It
+    # inherits turbidity's error and its regression is site-specific.
+    "70369": {"label": "Fine sediment", "units": "count/L",
+              "note": "Fine sediment particles 0.5–16 µm — the fraction the "
+                      "Lake Tahoe TMDL regulates as the dominant driver of "
+                      "clarity loss (~2/3 of impairment). Surrogate value, "
+                      "computed by regression rather than counted."},
     "63160": {"label": "Stream level", "units": "ft",
               "note": "Water-surface elevation above NAVD 1988 — already on "
                       "a national datum, so comparable between sites and "

@@ -24,6 +24,7 @@ from pathlib import Path
 from secchi.config import (
     LIVE_EXO_SITES,
     LIVE_WINDOW_HOURS,
+    PROCESSED_DIR,
     RAW_DIR,
     RAW_RETENTION_DAYS,
     USGS_BBOX,
@@ -369,13 +370,104 @@ def discover_usgs(client: UsgsClient) -> int:
     return 0
 
 
-def run_usgs(mode: str) -> int:
+def probe_camera_assets() -> int:
+    """Test whether the field-camera images are reachable over HTTPS.
+
+    Picks the newest asset reference we hold and tries each candidate S3
+    HTTPS form. See secchi.sources.assets for why this is a probe rather
+    than an assumption.
+    """
+    from secchi.sources.assets import report
+
+    # Prefer the accumulated record; fall back to raw if it isn't built yet.
+    refs: list[str] = []
+    parquet = PROCESSED_DIR / "assets.parquet"
+    if parquet.exists():
+        try:
+            import pandas as pd
+            df = pd.read_parquet(parquet)
+            if not df.empty and "ref" in df.columns:
+                df = df.sort_values("timestamp", ascending=False)
+                refs = [r for r in df["ref"].tolist() if isinstance(r, str)]
+        except Exception as exc:
+            log.warning("could not read %s: %s", parquet.name, exc)
+
+    if not refs:
+        for path in sorted((RAW_DIR / "teon" / "field-camera").rglob("*.json"),
+                           reverse=True):
+            try:
+                snap = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            for rec in snap.get("records", []):
+                if isinstance(rec.get("image"), str):
+                    refs.append(rec["image"])
+            if refs:
+                break
+
+    if not refs:
+        log.error("no field-camera asset references found — run an ingest first")
+        return 1
+
+    log.info("probing the newest of %d camera reference(s)", len(refs))
+    return report(refs[0])
+
+
+def lookup_usgs_params(client: UsgsClient, codes: list[str]) -> int:
+    """Print the official definition of one or more parameter codes."""
+    log.info("resolving %d parameter code(s)", len(codes))
+    try:
+        rows = client.parameter_codes(codes)
+    except Exception:
+        log.exception("parameter-code lookup failed")
+        return 1
+
+    if not rows:
+        print(f"\n  No definitions returned for: {', '.join(codes)}")
+        print("  Either the codes don't exist or the query shape is wrong.\n")
+        return 1
+
+    print()
+    for feat in rows:
+        pr = feat.get("properties") or feat
+        code = pr.get("parameter_code") or pr.get("id") or "?"
+        print(f"  {code}  {pr.get('parameter_name') or '(no name)'}")
+        for label, key in (("units", "unit_of_measure"),
+                           ("group", "parameter_group_code"),
+                           ("medium", "medium"),
+                           ("statistical basis", "statistical_basis"),
+                           ("sample fraction", "sample_fraction")):
+            val = pr.get(key)
+            if val:
+                print(f"      {label:18} {val}")
+        desc = pr.get("parameter_description")
+        if desc:
+            # Descriptions are long and comma-heavy; wrap rather than truncate.
+            words, line = desc.split(), ""
+            print("      description")
+            for w in words:
+                if len(line) + len(w) > 68:
+                    print(f"        {line}")
+                    line = w
+                else:
+                    line = f"{line} {w}".strip()
+            if line:
+                print(f"        {line}")
+        print()
+    if client.rate_remaining is not None:
+        print(f"  {client.rate_remaining} requests left this hour\n")
+    return 0
+
+
+def run_usgs(mode: str, codes: list[str] | None = None) -> int:
     """Ingest USGS gauges. Modes: usgs-probe (discovery), usgs (data)."""
     with UsgsClient() as client:
         if mode == "usgs-probe":
             return probe_usgs(client)
         if mode == "usgs-discover":
             return discover_usgs(client)
+        if mode == "usgs-params":
+            return lookup_usgs_params(client, codes or list(USGS_PARAMETERS))
 
         successes = 0
         for site, meta in USGS_GAUGES.items():
@@ -401,12 +493,14 @@ def run_usgs(mode: str) -> int:
         return 0 if successes else 1
 
 
-def run(mode: str = "live-exo") -> int:
+def run(mode: str = "live-exo", codes: list[str] | None = None) -> int:
     if mode == "prune":
         prune_raw()
         return 0
+    if mode == "camera-probe":
+        return probe_camera_assets()
     if mode.startswith("usgs"):
-        return run_usgs(mode)
+        return run_usgs(mode, codes=codes)
 
     with TeonClient() as client:
         # Probe mode is diagnostic only: no snapshots written.
@@ -462,7 +556,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mode",
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
-                 "usgs", "usgs-probe", "usgs-discover", "prune"),
+                 "usgs", "usgs-probe", "usgs-discover", "usgs-params",
+                 "camera-probe", "prune"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -474,8 +569,18 @@ def main(argv: list[str] | None = None) -> int:
             "usgs-probe: ask each configured USGS gauge what it measures. "
             "usgs-discover: find every USGS station in the Tahoe basin and "
             "report which are active but unconfigured. Neither writes data. "
+            "usgs-params: print the official definition of parameter codes "
+            "(--codes 70369), defaulting to everything in USGS_PARAMETERS. "
+            "camera-probe: test whether the field-camera s3:// refs resolve "
+            "over public HTTPS. "
             "prune: delete raw snapshots past the retention window."
         ),
+    )
+    parser.add_argument(
+        "--codes",
+        nargs="+",
+        metavar="CODE",
+        help="Parameter codes for usgs-params, e.g. --codes 70369 63680.",
     )
     args = parser.parse_args(argv)
 
@@ -484,7 +589,7 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
     )
     try:
-        return run(mode=args.mode)
+        return run(mode=args.mode, codes=args.codes)
     except Exception:
         log.exception("ingest failed")
         return 1
