@@ -117,6 +117,11 @@ reference-inspect = "python -m secchi.ingest --mode reference-inspect"
 # .github/workflows/watch.yml, which opens an issue on notable changes so
 # you don't have to keep checking.
 watch = "python -m secchi.ingest --mode watch"
+# Decide from the stored record whether TEON's dissolved-oxygen saturation
+# percentage accounts for Tahoe's altitude. At 1,898 m the barometric
+# pressure is 79.5% of sea level, which is enough to invert the ecological
+# reading — see docs/dissolved-oxygen.md.
+oxygen-check = "python -m secchi.ingest --mode oxygen-check"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.

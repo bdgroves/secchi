@@ -51,7 +51,6 @@ from secchi.config import (
     TREND_SIGNIFICANCE,
     UNIT_CONVERSIONS,
     USGS_DATUMS,
-    WATERSHED_DISPLAY_VARIABLES,
     USGS_PARAMETERS,
     USGS_STATISTIC_INSTANTANEOUS,
     USGS_STATISTICS,
@@ -67,7 +66,12 @@ log = logging.getLogger("secchi.transform")
 _CATEGORY_ORDER = {"lake": 0, "stream": 1, "terrestrial": 2}
 
 # Which variables each dashboard card surfaces, in display order.
-EXO_CARD_VARIABLES = ("Temp", "Chl_a", "Do_percent", "Turbidity")
+# Oxygen is shown BOTH ways on purpose. Concentration (mg/L) and percent
+# saturation answer different questions, and at Tahoe's altitude the
+# relationship between them is not the textbook one — see
+# docs/dissolved-oxygen.md. Showing only the percentage, as this did
+# originally, hides the discrepancy entirely.
+EXO_CARD_VARIABLES = ("Temp", "Do_mgL", "Do_percent", "Chl_a", "Turbidity")
 STATION_CARD_VARIABLES = ("Air_Temp", "RH", "Soil_VWC", "Soil_T")
 # The transect compares meteorology and soil state only. Stream depth and
 # dendrometers are deliberately excluded: they exist at some stations and
@@ -689,6 +693,53 @@ def _readings_for(row: pd.Series, columns, sensor_type: str, fields: Iterable[st
     return readings
 
 
+def _local_do_saturation(readings: dict) -> dict | None:
+    """Oxygen saturation referenced to the lake's actual air pressure.
+
+    TEON publishes ``Do_percent`` against a SEA-LEVEL atmosphere. Confirmed
+    from the data on 2026-09-18 by `pixi run oxygen-check`: across 1,068
+    readings carrying temperature, concentration and percentage together,
+    the sea-level hypothesis fit with a mean error of 0.004 mg/L against
+    1.627 for the altitude-corrected one. 0.004 is the precision of the
+    Weiss formula itself, so this is not close.
+
+    That matters because Lake Tahoe's surface is at ~1,898 m, where air
+    pressure is about 79.5 % of sea level. A reading of 81 % against a
+    sea-level atmosphere is roughly 102 % of what the water can actually
+    hold there — the difference between "oxygen-stressed" and "slightly
+    supersaturated, net photosynthetic". Opposite conclusions.
+
+    This derives the local-pressure figure from concentration and
+    temperature rather than rescaling their percentage, so it depends on
+    their measurements and not on their saturation assumption. Their
+    published value is left untouched; this is added alongside it.
+    """
+    from secchi.analysis.oxygen import do_saturation_local
+
+    mgl = (readings.get("Do_mgL") or {}).get("value")
+    temp = (readings.get("Temp") or {}).get("value")
+    if mgl is None or temp is None:
+        return None
+    if not (0 < float(temp) < 40) or float(mgl) <= 0:
+        return None
+
+    sat = do_saturation_local(float(temp))
+    if sat <= 0:
+        return None
+    pct = float(mgl) / sat * 100
+
+    return {
+        "value": round(pct, 1),
+        "label": "DO sat (local)",
+        "units": "%",
+        "system": "both",
+        "derived_from": "Do_mgL + Temp",
+        "note": "Referenced to air pressure at the lake surface (~1,898 m, "
+                "79.5 % of sea level). TEON's own Do_percent is referenced "
+                "to a sea-level atmosphere — see docs/dissolved-oxygen.md.",
+    }
+
+
 def build_lake_cards(df_wide: pd.DataFrame, df_long: pd.DataFrame | None = None) -> dict:
     """Card payload for the lake EXO sondes."""
     sites: dict[str, dict] = {}
@@ -705,6 +756,9 @@ def build_lake_cards(df_wide: pd.DataFrame, df_long: pd.DataFrame | None = None)
             "observed_at": _iso_local(r["timestamp"]),
             "readings": _readings_for(r, row.columns, "ExoSensor", EXO_CARD_VARIABLES),
         }
+        local_do = _local_do_saturation(sites[site]["readings"])
+        if local_do:
+            sites[site]["readings"]["Do_percent_local"] = local_do
         if df_long is not None:
             series = build_series(df_long, site, "ExoSensor", EXO_CARD_VARIABLES)
             if series:
@@ -1102,68 +1156,12 @@ def build_transect_line(transect: dict | None) -> dict | None:
     }
 
 
-def write_web_watersheds(web_dir: Path = WEB_DIR) -> dict | None:
-    """Write a browser-sized copy of the catchment polygons.
-
-    The cached file is 7.8 MB in Web Mercator with 164 properties per
-    feature. This reprojects it to WGS84 (Leaflet expects lon/lat),
-    simplifies the geometry, trims to the display variables, and writes
-    ``web/assets/watersheds.geojson``.
-
-    Returns a summary for the snapshot, or None if the reference data
-    hasn't been cached yet — the dashboard then just omits the layer
-    rather than failing.
-    """
-    from secchi.sources.reference import load_reference, reproject_geojson
-    from secchi.sources.simplify import simplify_collection
-
-    ref = load_reference()
-    polygons = ref.get("polygons")
-    if not polygons:
-        log.info("no cached catchment polygons — skipping the map layer. "
-                 "Run `pixi run reference` to enable it.")
-        return None
-
-    wgs = reproject_geojson(polygons)
-    reduced = simplify_collection(wgs, list(WATERSHED_DISPLAY_VARIABLES))
-
-    assets = web_dir / "assets"
-    assets.mkdir(parents=True, exist_ok=True)
-    out_path = assets / "watersheds.geojson"
-    # Compact separators: this file is machine-read, and indentation would
-    # add roughly a third to the payload for no benefit.
-    out_path.write_text(json.dumps(reduced, separators=(",", ":")), encoding="utf-8")
-    size_kb = out_path.stat().st_size / 1024
-    log.info("wrote %s (%d features, %.0f KB)", out_path,
-             len(reduced.get("features", [])), size_kb)
-
-    # Per-variable ranges, so the dashboard can scale its colours without
-    # reading every feature twice in JavaScript.
-    ranges: dict[str, dict] = {}
-    for var in WATERSHED_DISPLAY_VARIABLES:
-        vals = []
-        for feat in reduced.get("features", []):
-            v = (feat.get("properties") or {}).get(var)
-            if isinstance(v, (int, float)):
-                vals.append(float(v))
-        if len(vals) >= 2:
-            ranges[var] = {"min": round(min(vals), 4), "max": round(max(vals), 4)}
-
-    return {
-        "path": "assets/watersheds.geojson",
-        "features": len(reduced.get("features", [])),
-        "size_kb": round(size_kb, 1),
-        "ranges": ranges,
-    }
-
-
 def build_dashboard_snapshot(df_wide: pd.DataFrame,
                              df_long: pd.DataFrame,
                              df_assets: pd.DataFrame,
                              df_usgs: pd.DataFrame,
                              inventory: dict | None,
-                             disabled: list[str],
-                             watersheds: dict | None = None) -> dict:
+                             disabled: list[str]) -> dict:
     """Compose the payload the dashboard reads."""
     lake = build_lake_cards(df_wide, df_long)
     stations = build_station_cards(df_wide, df_long)
@@ -1184,7 +1182,6 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "inventory": inv,
         "map": build_map_points(inv, lake, stations, gauges, sorted(disabled)),
         "transect_line": build_transect_line(transect),
-        "watersheds": watersheds,
     }
 
 
@@ -1238,10 +1235,8 @@ def main() -> int:
     visibility = load_latest_json(RAW_DIR, "visibility") or {}
     disabled = visibility.get("disabled", [])
 
-    watersheds = write_web_watersheds()
-
     snapshot = build_dashboard_snapshot(df_wide, df_obs, df_assets, df_usgs,
-                                        inventory, disabled, watersheds)
+                                        inventory, disabled)
     assets_dir = WEB_DIR / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     latest_path = assets_dir / "latest.json"

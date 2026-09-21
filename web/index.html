@@ -97,6 +97,10 @@
                           font-weight: 400; margin-left: 0.15rem; }
   .reading-label { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
   .reading-note { font-size: 0.7rem; color: var(--ember); margin-top: 0.15rem; }
+  /* A value we computed rather than received. Visually distinct from the
+     source's own readings so nobody mistakes one for the other. */
+  .reading-derived { font-size: 0.66rem; color: var(--muted); margin-top: 0.15rem;
+                     font-style: italic; }
 
   /* Transect comparison */
   .transect { border: 1px solid var(--line); margin-top: 1.25rem; }
@@ -365,6 +369,18 @@
   <section id="transect" aria-label="East-west transect comparison"></section>
 
   <h2>Three anchors on the lake</h2>
+  <p class="aside">
+    Oxygen appears three ways on purpose. <strong>DO</strong> is the
+    concentration. <strong>DO sat</strong> is TEON's published saturation
+    percentage, which is referenced to a sea-level atmosphere.
+    <strong>DO sat (local)</strong> is the same water measured against air
+    pressure at the lake surface — 1,898 m, about 79.5 % of sea level.
+    The difference is not cosmetic: 81 % reads as oxygen-stressed water,
+    while 102 % of what the water can actually hold there means
+    photosynthesis is running ahead of respiration. Derived from TEON's
+    own concentration and temperature, so it depends on their measurements
+    rather than their saturation assumption.
+  </p>
   <section class="cards" id="cards" aria-label="Lake sonde readings"></section>
   <p class="offline" id="offline"></p>
 
@@ -438,7 +454,12 @@
 
 <script>
   const LAKE_ORDER = ["Sunnyside", "Glenbrook", "4H Camp"];
-  const LAKE_VARS  = ["Temp", "Chl_a", "Do_percent", "Turbidity"];
+  // Oxygen appears twice deliberately: mg/L is the concentration, % is
+  // relative to what water at that temperature and pressure can hold.
+  // At Tahoe's altitude those diverge in a way worth seeing — see
+  // docs/dissolved-oxygen.md.
+  const LAKE_VARS  = ["Temp", "Do_mgL", "Do_percent", "Do_percent_local",
+                      "Chl_a", "Turbidity"];
   const SHORE_FOR  = { Sunnyside: "west", Glenbrook: "east", "4H Camp": "south" };
   const STATION_VARS = ["Air_Temp", "RH", "Soil_VWC", "Soil_T"];
   const TRANSECT_VARS = ["Air_Temp", "RH", "Soil_VWC", "Soil_T"];
@@ -628,7 +649,12 @@
       .map(v => {
         const r = readings[v];
         const d = inUnits(r);
-        const note = r.note ? `<div class="reading-note">calibration suspect</div>` : "";
+        // Turbidity's note flags a calibration fault; a derived reading's
+        // note explains what we computed. Different things, different
+        // styling, so a value of ours is never read as a value of theirs.
+        const note = r.derived_from
+          ? `<div class="reading-derived">computed from ${esc(r.derived_from)}</div>`
+          : (r.note ? `<div class="reading-note">calibration suspect</div>` : "");
         return `
           <div class="reading">
             <div class="reading-value">${fmt.format(d.value)}<span class="units">${esc(d.units || "")}</span></div>

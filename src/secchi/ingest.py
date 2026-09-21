@@ -600,6 +600,9 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         return probe_camera_assets()
     if mode == "watch":
         return run_watch()
+    if mode == "oxygen-check":
+        from secchi.analysis.oxygen import check_saturation_basis
+        return check_saturation_basis()
     if mode == "reference":
         return fetch_reference_data(force=force)
     if mode == "reference-inspect":
@@ -668,7 +671,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
                  "usgs", "usgs-probe", "usgs-discover", "usgs-params",
                  "camera-probe", "reference", "reference-inspect",
-                 "catchment-join", "watch",
+                 "catchment-join", "watch", "oxygen-check",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -685,6 +688,8 @@ def main(argv: list[str] | None = None) -> int:
             "(--codes 70369), defaulting to everything in USGS_PARAMETERS. "
             "camera-probe: test whether the field-camera s3:// refs resolve "
             "over public HTTPS. "
+            "oxygen-check: decide whether TEON's DO saturation percentage is "
+            "altitude-corrected, from the stored record. "
             "watch: compare the upstream inventory against a stored baseline "
             "and report new sensors, sensors resuming, and data going dark. "
             "reference: cache the watershed polygons and attributes. "
