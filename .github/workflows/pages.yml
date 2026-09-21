@@ -1,14 +1,31 @@
 name: pages
 
-# Builds and publishes the dashboard. Generates web/assets/latest.json at
-# deploy time rather than reading a committed copy, so local runs never
-# race the hourly cron for the same path and the published page is always
-# built by current code.
+# Builds and publishes the dashboard.
 #
-# This workflow does not commit anything. The parquet record is maintained
-# by fetch.yml; a fresh pull here only sharpens the numbers on the page.
+# WHY THIS HAS ITS OWN SCHEDULE
+# -----------------------------
+# The obvious design is for fetch.yml's hourly data commit to trigger this
+# workflow. That does not work: GitHub Actions deliberately does not create
+# new workflow runs from events triggered by the default GITHUB_TOKEN, to
+# prevent recursive loops. So secchi-bot's commits fire nothing, and for a
+# while this page only updated when a human pushed or dispatched by hand.
+#
+# Rather than work around it with a personal access token (which would mean
+# a credential to rotate, and a bot whose pushes can trigger arbitrary
+# workflows), this workflow just runs on its own schedule. It already does
+# its own ingest and transform, so it needs nothing from fetch.yml — the
+# two are independent by design:
+#
+#   fetch.yml  maintains the durable parquet record and prunes raw.
+#   pages.yml  publishes a current view. Commits nothing.
+#
+# Offset 25 minutes past the hour so fetch's commit has landed first, which
+# means the checkout here already carries the freshest parquet and the
+# ingest below only has to top it up.
 
 on:
+  schedule:
+    - cron: "25 * * * *"
   push:
     branches: [main]
     paths:
@@ -47,18 +64,29 @@ jobs:
           cache: true
 
       - name: Pull a fresh TEON snapshot
-        # Non-fatal: falling back to the committed record still ships a
-        # current-ish page rather than failing the deploy.
+        # Non-fatal: falling back to the committed parquet still ships a
+        # current page rather than failing the deploy.
         continue-on-error: true
         run: pixi run ingest-all
 
       - name: Pull a fresh USGS snapshot
+        id: usgs
         continue-on-error: true
         env:
           USGS_API_KEY: ${{ secrets.USGS_API_KEY }}
         run: pixi run usgs
 
-      - name: Build latest.json
+      - name: Note a USGS failure
+        if: always()
+        # Same reasoning as in fetch.yml: failing softly is right, failing
+        # invisibly is not. A zero-feature response returns HTTP 200, so
+        # this is the only place it would otherwise be noticed.
+        run: |
+          if [ "${{ steps.usgs.outcome }}" = "failure" ]; then
+            echo "::warning title=USGS ingest failed during deploy::Page built from the committed parquet instead. Gauge readings may be an hour stale."
+          fi
+
+      - name: Build latest.json and the map layer
         run: pixi run transform
 
       - name: Configure Pages
