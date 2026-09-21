@@ -468,6 +468,49 @@
     try { localStorage.setItem(UNIT_KEY, v); } catch (_) {}
   }
 
+  // Conversion table, mirroring UNIT_CONVERSIONS in config.py. Needed on
+  // the client because two kinds of number are NOT pre-converted
+  // server-side: trend deltas, and the datum comparison lines.
+  const UNIT_CONV = {
+    "°C":    { to: "°F",    factor: 1.8,          offset: 32 },
+    "°F":    { to: "°C",    factor: 0.5555556,    offset: -17.7777778 },
+    "m":     { to: "ft",    factor: 3.280839895 },
+    "ft":    { to: "m",     factor: 0.3048 },
+    "mm":    { to: "in",    factor: 0.0393701 },
+    "in":    { to: "mm",    factor: 25.4 },
+    "cm":    { to: "in",    factor: 0.393701 },
+    "km²":   { to: "mi²",   factor: 0.386102 },
+    "m³/s":  { to: "ft³/s", factor: 35.3146667 },
+    "ft³/s": { to: "m³/s",  factor: 0.0283168 },
+  };
+  // Which system each stored unit belongs to, so we know when to convert.
+  const UNIT_SYSTEM = {
+    "°C": "metric", "m": "metric", "mm": "metric", "cm": "metric",
+    "km²": "metric", "m³/s": "metric",
+    "°F": "imperial", "ft": "imperial", "in": "imperial",
+    "mi²": "imperial", "ft³/s": "imperial",
+  };
+
+  /**
+   * Convert a measurement, or return it unchanged if it's already in the
+   * active system or has no counterpart.
+   *
+   * `isDelta` matters and is easy to get wrong: a *difference* in
+   * temperature converts with the factor alone. 0.34 °C of cooling is
+   * 0.61 °F of cooling, not 32.61 °F. Applying the value formula to a
+   * delta produces a number that looks plausible and is badly wrong.
+   * Units with no offset (ft, m, mm, cm, flow) are unaffected either way.
+   */
+  function convert(value, unit, isDelta) {
+    if (value == null || !isFinite(value)) return { value, units: unit };
+    const system = UNIT_SYSTEM[unit];
+    if (!system || system === UNITS) return { value, units: unit };
+    const c = UNIT_CONV[unit];
+    if (!c) return { value, units: unit };
+    const out = isDelta ? value * c.factor : value * c.factor + (c.offset || 0);
+    return { value: out, units: c.to };
+  }
+
   /** Pick the representation matching the active system. */
   function inUnits(r) {
     if (!r) return null;
@@ -523,7 +566,7 @@
     return { line, fill, lastX: x(n - 1), lastY: y(points[n - 1]) };
   }
 
-  function sparkline(series) {
+  function sparkline(series, unit) {
     if (!series) return "";
 
     // A channel whose every sample sat below its floor is a fault, not a
@@ -551,10 +594,25 @@
     if (t) {
       const arrow = { rising: "\u2197", falling: "\u2198", steady: "\u2192" }[t.direction] || "";
       const word = { rising: "rising", falling: "falling", steady: "steady" }[t.direction] || "";
-      const delta = t.direction === "steady" ? "" : ` ${fmt.format(Math.abs(t.change))}`;
+      // The change is a DIFFERENCE, so it converts with the factor only.
+      const dc = convert(Math.abs(t.change), unit, true);
+      // A converted delta can round away entirely — 0.01 ft of gage height
+      // is 0.003 m, which formats as "0" and makes "falling 0 m" read as a
+      // contradiction. The direction is still real (the trend detector
+      // classified it from the underlying data), the magnitude is just
+      // below display resolution, so show the direction alone.
+      const shown = dc.value != null && isFinite(dc.value)
+        ? fmt.format(dc.value) : "";
+      const vanished = shown === "" || Number(shown.replace(/,/g, "")) === 0;
+      const delta = (t.direction === "steady" || vanished)
+        ? "" : ` ${shown}${dc.units ? " " + dc.units : ""}`;
       const hedge = t.provisional ? "?" : "";
+      // min and max are values, not differences, so they take the offset.
+      const lo = convert(t.min, unit, false);
+      const hi = convert(t.max, unit, false);
       const detail = t.basis === "day-over-day"
-        ? `24 h vs previous 24 h · range ${fmt.format(t.min)}–${fmt.format(t.max)} · ${t.samples} samples`
+        ? `24 h vs previous 24 h · range ${fmt.format(lo.value)}–${fmt.format(hi.value)}`
+          + `${hi.units ? " " + hi.units : ""} · ${t.samples} samples`
         : `trend from ${t.samples} samples, less than 36 h of history`;
       label = `<div class="trend trend-${t.direction}" title="${esc(detail)}">
         ${arrow} ${word}${delta}${hedge}</div>`;
@@ -576,7 +634,7 @@
             <div class="reading-value">${fmt.format(d.value)}<span class="units">${esc(d.units || "")}</span></div>
             <div class="reading-label">${esc(r.label)}</div>
             ${note}
-            ${sparkline(series && series[v])}
+            ${sparkline(series && series[v], r.units)}
           </div>`;
       }).join("");
   }
@@ -691,10 +749,16 @@
           const order = ["natural rim", "legal maximum", "record high", "record low"];
           const keys = order.filter(k => r.vs[k] != null)
             .concat(Object.keys(r.vs).filter(k => !order.includes(k)));
+          // These are differences in the reading's stored unit (feet for
+          // Lake Tahoe). Previously they printed raw, so metric mode showed
+          // "1,898.01 m" with "+4.07 natural rim" underneath it — a foot
+          // value, unlabelled, beside a metre one.
           ctx = `<div class="datum-ctx">` + keys.map(k => {
             const v = r.vs[k];
+            const cv = convert(Math.abs(v), r.units, true);
             const sign = v >= 0 ? "+" : "\u2212";
-            return `<b>${sign}${fmt.format(Math.abs(v))}</b> ${esc(k)}`;
+            return `<b>${sign}${fmt.format(cv.value)}${
+              cv.units ? " " + cv.units : ""}</b> ${esc(k)}`;
           }).join("<br>") + `</div>`;
         }
 
@@ -707,7 +771,7 @@
             <div class="reading-label">${esc(r.label)}</div>
             ${prov}
             ${ctx}
-            ${sparkline(g.series && g.series[seriesKey])}
+            ${sparkline(g.series && g.series[seriesKey], r.units)}
           </div>`;
       }).join("");
       return `
@@ -858,6 +922,10 @@
   // Variables offered in the shading selector, with readable labels and
   // units. Kept short deliberately — the full set is 164 columns and most
   // of them aren't worth a colour ramp.
+  // [key, label, stored unit, percent multiplier]. The stored unit drives
+  // conversion through the same `convert()` used everywhere else, so the
+  // choropleth follows the unit toggle rather than being fixed in metric.
+  // A blank unit means dimensionless (indices, degrees of slope).
   const WS_VARS = [
     ["PrecipAvg",  "Annual precipitation", "mm"],
     ["CWDAvg",     "Climatic water deficit", ""],
@@ -873,6 +941,15 @@
     ["ImpervAvg",  "Impervious surface", "%"],
     ["Area_Km",    "Catchment area", "km²"],
   ];
+
+  /** A catchment attribute in the active unit system. */
+  function wsValue(raw, unit, scale) {
+    if (typeof raw !== "number") return null;
+    // Percent multipliers are applied first: the source stores several of
+    // these as fractions, and a fraction has no unit to convert.
+    const scaled = raw * (scale || 1);
+    return convert(scaled, unit, false);
+  }
 
   // Sequential ramp, light to dark. Reversed in dark mode so "more" still
   // reads as "stronger" against the background rather than vanishing.
@@ -916,9 +993,9 @@
         const p = feature.properties || {};
         lyr.bindPopup(() => {
           const [key, label, unit, scale] = current;
-          const raw = p[key];
-          const val = (typeof raw === "number")
-            ? fmt.format(raw * (scale || 1)) + (unit ? " " + unit : "")
+          const cv = wsValue(p[key], unit, scale);
+          const val = cv
+            ? fmt.format(cv.value) + (cv.units ? " " + cv.units : "")
             : "—";
           return `<div class="pop-title">${esc(p.Name || "catchment")}</div>
                   <div class="pop-meta">${esc(label)}</div>
@@ -933,6 +1010,11 @@
       const [key, , , scale] = current;
       const r = ranges[key] || { min: 0, max: 1 };
       layer.eachLayer((lyr) => {
+        // Deliberately the RAW value against the RAW range: the colour
+        // ramp only needs a 0-1 position, and normalising in stored units
+        // keeps it identical in both systems. Converting first would be
+        // harmless for pure factors but would shift temperature, because
+        // its conversion has an offset.
         const raw = (lyr.feature.properties || {})[key];
         lyr.setStyle({
           fillColor: wsColor(raw, r.min, r.max, dark),
@@ -941,12 +1023,14 @@
           color: "#ffffff",
         });
       });
-      const s = scale || 1;
-      document.getElementById("ws-min").textContent = fmt.format(r.min * s);
-      document.getElementById("ws-max").textContent = fmt.format(r.max * s);
       const unit = current[2];
+      const lo = wsValue(r.min, unit, scale);
+      const hi = wsValue(r.max, unit, scale);
+      document.getElementById("ws-min").textContent = lo ? fmt.format(lo.value) : "";
+      document.getElementById("ws-max").textContent = hi ? fmt.format(hi.value) : "";
+      const shownUnit = (hi && hi.units) || unit;
       document.getElementById("ws-note").textContent =
-        `${meta.features} catchments${unit ? " · " + unit : ""}`;
+        `${meta.features} catchments${shownUnit ? " · " + shownUnit : ""}`;
     }
 
     // Wire the controls.
@@ -968,6 +1052,7 @@
     document.getElementById("ws-ramp").dataset.dark = dark ? "1" : "0";
     document.getElementById("ws-control").hidden = false;
 
+    WS_RESTYLE = restyle;
     restyle();
     // Added beneath the markers so station pins stay clickable.
     layer.addTo(map);
@@ -1058,6 +1143,7 @@
   }
 
   let SNAPSHOT = null;      // cached so a unit switch doesn't refetch
+  let WS_RESTYLE = null;    // set once the catchment layer is built
   let MAP_DRAWN = false;    // Leaflet must only initialise once per container
 
   function wireUnitToggle() {
@@ -1074,6 +1160,9 @@
         b.setAttribute("aria-pressed", String(b.dataset.system === next));
       }
       if (SNAPSHOT) render(SNAPSHOT);
+      // The catchment layer lives outside the render pass (Leaflet is
+      // initialised once), so its labels need re-styling separately.
+      if (typeof WS_RESTYLE === "function") WS_RESTYLE();
     });
   }
 
