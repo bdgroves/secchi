@@ -222,6 +222,60 @@ class TeonClient:
             "records": records[:max_records],
         }
 
+    def iter_sensor_pages(
+        self,
+        sensor_type: str,
+        site: str,
+        page_size: int = 200,
+        max_pages: int = 5000,
+    ) -> Iterator[list[dict[str, Any]]]:
+        """Yield pages of records for one sensor, oldest request first.
+
+        :meth:`fetch_sensor` accumulates every record in memory before
+        returning, which is right for the ~200 the hourly cron wants and
+        wrong for a backfill: Blackwood 2's precipitation gauge holds
+        593,507 records, and holding those as Python dicts would need
+        hundreds of megabytes.
+
+        This yields each page instead, so a caller can flush to disk and
+        keep memory flat regardless of how much history a sensor has.
+
+        Stops on an empty page, on the API's own ``total_pages``, or on
+        ``max_pages`` as a runaway guard.
+        """
+        slug = self.resolve_slug(sensor_type, site)
+        if slug is None:
+            raise KeyError(f"could not resolve a URL slug for sensor type {sensor_type!r}")
+
+        url = f"{self._base}/sensors/{slug}"
+        page = 1
+        total_pages: int | None = None
+
+        while page <= max_pages:
+            resp = self._client.get(
+                url, params={"site": site, "page": page, "page_size": page_size}
+            )
+            if resp.status_code == 404:
+                log.warning("%s @ %s → 404 on page %d", slug, site, page)
+                return
+            resp.raise_for_status()
+            payload = resp.json()
+
+            batch = payload.get("data", [])
+            if not batch:
+                return
+            yield batch
+
+            total_pages = payload.get("total_pages", total_pages)
+            if total_pages is not None and page >= total_pages:
+                return
+            if len(batch) < page_size:
+                return          # short page means the end
+            page += 1
+
+        log.warning("%s @ %s hit the %d-page guard; history may be incomplete",
+                    slug, site, max_pages)
+
     def fetch_many(
         self,
         targets: Iterable[tuple[str, str]],

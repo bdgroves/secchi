@@ -1322,22 +1322,45 @@ def main() -> int:
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Accumulate into the stored record rather than overwriting it, so the
-    # parquet survives raw-snapshot pruning.
-    obs_path = PROCESSED_DIR / "observations.parquet"
-    df_obs = _accumulate(df_obs, obs_path, ["uuid", "site", "variable"])
-    df_obs.to_parquet(obs_path, index=False)
-    log.info("wrote %s (%d rows)", obs_path, len(df_obs))
+    # Accumulate into a PARTITIONED store rather than one file per source.
+    # A monolithic parquet is rewritten whole on every update and git
+    # stores each version as a new blob, so at backfill scale (~150 MB)
+    # the hourly cron would add 3.5 GB/day of history. Partitioned by
+    # month, only the current month churns. See docs/storage.md.
+    from secchi.store import migrate_monolith, read_partitions, write_partitions
 
-    assets_path = PROCESSED_DIR / "assets.parquet"
-    df_assets = _accumulate(df_assets, assets_path, ["uuid", "site", "kind"])
-    df_assets.to_parquet(assets_path, index=False)
-    log.info("wrote %s (%d rows)", assets_path, len(df_assets))
+    obs_root = PROCESSED_DIR / "observations"
+    assets_root = PROCESSED_DIR / "assets"
+    usgs_root = PROCESSED_DIR / "usgs_observations"
 
-    usgs_path = PROCESSED_DIR / "usgs_observations.parquet"
-    df_usgs = _accumulate(df_usgs, usgs_path, ["uuid", "variable", "statistic_id"])
-    df_usgs.to_parquet(usgs_path, index=False)
-    log.info("wrote %s (%d rows)", usgs_path, len(df_usgs))
+    # One-time: split any existing single-file parquet into partitions.
+    # Keeps a .premigration backup rather than destroying its input.
+    for monolith, root, source, keys in (
+        (PROCESSED_DIR / "observations.parquet", obs_root, "teon",
+         ["uuid", "site", "variable"]),
+        (PROCESSED_DIR / "assets.parquet", assets_root, "teon",
+         ["uuid", "site", "kind"]),
+        (PROCESSED_DIR / "usgs_observations.parquet", usgs_root, "usgs",
+         ["uuid", "variable", "statistic_id"]),
+    ):
+        outcome = migrate_monolith(monolith, root, source, keys)
+        if outcome.get("migrated"):
+            log.info("migrated %s -> %s (%d rows)", monolith.name,
+                     root.name, outcome.get("source_rows", 0))
+
+    write_partitions(df_obs, obs_root, "teon", ["uuid", "site", "variable"])
+    write_partitions(df_assets, assets_root, "teon", ["uuid", "site", "kind"])
+    write_partitions(df_usgs, usgs_root, "usgs",
+                     ["uuid", "variable", "statistic_id"])
+
+    # Downstream builders need the FULL record, not just this run's rows —
+    # sparklines and trends read back over 48 hours, and a backfill may
+    # have added years.
+    df_obs = read_partitions(obs_root)
+    df_assets = read_partitions(assets_root)
+    df_usgs = read_partitions(usgs_root)
+    log.info("record now holds %d TEON, %d asset, %d USGS rows",
+             len(df_obs), len(df_assets), len(df_usgs))
 
     df_wide = to_latest_wide(df_obs)
     wide_path = PROCESSED_DIR / "latest_wide.parquet"

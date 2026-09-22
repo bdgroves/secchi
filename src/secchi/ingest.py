@@ -611,7 +611,9 @@ def run_usgs(mode: str, codes: list[str] | None = None) -> int:
 
 
 def run(mode: str = "live-exo", codes: list[str] | None = None,
-        force: bool = False, update_baseline: bool = False) -> int:
+        force: bool = False, update_baseline: bool = False,
+        stage: str | None = None, site: str | None = None,
+        page_size: int = 200, dry_run: bool = False) -> int:
     if mode == "prune":
         prune_raw()
         return 0
@@ -619,6 +621,25 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         return probe_camera_assets()
     if mode == "watch":
         return run_watch(write_baseline=update_baseline)
+    if mode == "backfill":
+        from secchi.backfill import run_backfill
+        return run_backfill(stage or "manual", site=site,
+                            page_size=page_size, dry_run=dry_run)
+    if mode == "store-status":
+        from secchi.store import partition_summary
+        from secchi.config import PROCESSED_DIR
+        total_rows = total_kb = 0
+        for name in ("observations", "usgs_observations", "assets"):
+            rows = partition_summary(PROCESSED_DIR / name)
+            if not rows:
+                continue
+            print(f"\n  {name}")
+            for r in rows:
+                print(f"    {r['partition']:36}{r['rows']:>9,} rows{r['kb']:>9.1f} KB")
+                total_rows += max(0, r["rows"])
+                total_kb += r["kb"]
+        print(f"\n  {total_rows:,} rows across the store, {total_kb/1024:.1f} MB\n")
+        return 0
     if mode == "reference":
         return fetch_reference_data(force=force)
     if mode == "reference-inspect":
@@ -687,7 +708,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
                  "usgs", "usgs-probe", "usgs-discover", "usgs-params",
                  "camera-probe", "reference", "reference-inspect",
-                 "catchment-join", "watch",
+                 "catchment-join", "watch", "backfill", "store-status",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -706,6 +727,9 @@ def main(argv: list[str] | None = None) -> int:
             "over public HTTPS. "
             "watch: compare the upstream inventory against a stored baseline "
             "and report new sensors, sensors resuming, and data going dark. "
+            "backfill: pull a sensor group's full history straight into the "
+            "partitioned store (--stage manual|nearshore|blackwood). "
+            "store-status: list partitions with row counts and sizes. "
             "reference: cache the watershed polygons and attributes. "
             "reference-inspect: report the cached polygon file's CRS, extent "
             "and property keys. "
@@ -714,6 +738,25 @@ def main(argv: list[str] | None = None) -> int:
             "terc-discover: report what the TERC Secchi data package holds. "
             "prune: delete raw snapshots past the retention window."
         ),
+    )
+    parser.add_argument(
+        "--stage",
+        choices=("manual", "nearshore", "blackwood"),
+        help="Which backfill stage to run. manual = the two hand-collected "
+             "lake sondes (~31k records); nearshore = MiniDot + HOBO "
+             "(~480k); blackwood = precipitation + stream chemistry (~718k).",
+    )
+    parser.add_argument(
+        "--site",
+        help="Restrict a backfill to one site.",
+    )
+    parser.add_argument(
+        "--page-size", type=int, default=200,
+        help="Records per request during a backfill (default 200).",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="For `backfill`: report what would be fetched, fetch nothing.",
     )
     parser.add_argument(
         "--update-baseline",
@@ -741,7 +784,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         return run(mode=args.mode, codes=args.codes, force=args.force,
-                   update_baseline=args.update_baseline)
+                   update_baseline=args.update_baseline, stage=args.stage,
+                   site=args.site, page_size=args.page_size,
+                   dry_run=args.dry_run)
     except Exception:
         log.exception("ingest failed")
         return 1

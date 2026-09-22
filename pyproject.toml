@@ -122,6 +122,15 @@ reference-inspect = "python -m secchi.ingest --mode reference-inspect"
 watch = "python -m secchi.ingest --mode watch"
 # Advances the baseline. Only .github/workflows/watch.yml should call this.
 watch-update = "python -m secchi.ingest --mode watch --update-baseline"
+# Pull a sensor group's FULL history straight into the partitioned store,
+# bypassing data/raw/ entirely — routing 1.2M records through the raw
+# buffer would dump ~2 GB of JSON into a 7-day window. Run once, off the
+# cron. Stages in docs/backfill.md.
+#   pixi run backfill --stage manual --dry-run
+#   pixi run backfill --stage manual
+backfill = "python -m secchi.ingest --mode backfill"
+# List every partition with row counts and sizes.
+store-status = "python -m secchi.ingest --mode store-status"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.
