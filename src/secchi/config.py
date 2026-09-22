@@ -95,6 +95,49 @@ RECORD_META_FIELDS = frozenset({
 # presigned URLs.
 ASSET_FIELDS = frozenset({"image"})
 
+
+# ===========================================================================
+# How each sensor's data reaches us
+# ===========================================================================
+# TEON marks only the two EXO sondes with "Manual" in their id, but that
+# string is not the only evidence of hand collection. Two whole fleets are
+# self-logging by INSTRUMENT CLASS:
+#
+#   PME MiniDOT   a battery-powered dissolved-oxygen and temperature
+#                 logger with no radio. Retrieved and downloaded over USB.
+#                 That is the entire product category.
+#   Onset HOBO    the same. A HOBO is a logger you go and collect.
+#
+# Neither is available with telemetry in an underwater deployment, so both
+# are hand-collected whether or not the identifier says so.
+#
+# The dates corroborate it: all twelve instruments across six shared
+# nearshore sites stop on 2026-06-10 — the same day. Twelve simultaneous
+# failures is not plausible; one boat trip is. The manual EXO sondes stop
+# four weeks later, on 2026-07-09, which looks like a second trip.
+#
+# CONFIDENCE: the instrument classes are named verbatim by the API, so
+# "MiniDot means a PME MiniDOT" is solid. That such a logger has no
+# telemetry is general product knowledge rather than something TEON
+# documents. Treated as strong inference, not established fact — and the
+# alternative reading (twelve radios failing on one day) is worse.
+MANUAL_COLLECTION_TYPES: frozenset[str] = frozenset({"Minidot", "Hobo"})
+
+# A site is reported as OFFLINE rather than hand-collected when every
+# sensor type at it has gone dark. That distinction matters:
+#
+#   hand-collected  working instrument, monthly download cycle
+#   offline         the station itself has stopped reporting
+#
+# Blackwood 2 is the offline case. Four of its channels report identical
+# record counts (124,620) — one Campbell logger under four names, the
+# shared-logger pattern seen at every terrestrial station — and its
+# separate precipitation gauge (593,507) stopped five weeks later. A
+# logger failing and a rain gauge failing at different times is a station
+# going down, not a collection schedule.
+OFFLINE_STATION_MIN_TYPES = 2
+
+
 # Logger diagnostic channels, shared across every sensor type served by the
 # same Campbell logger. Recorded but never surfaced on the dashboard.
 DIAGNOSTIC_FIELDS = frozenset({"BattV_Avg", "BattV_Min", "PTemp_C_Avg"})

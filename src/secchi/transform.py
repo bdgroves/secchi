@@ -50,6 +50,8 @@ from secchi.config import (
     SPARKLINE_WINDOW_HOURS,
     TREND_SIGNIFICANCE,
     UNIT_CONVERSIONS,
+    MANUAL_COLLECTION_TYPES,
+    OFFLINE_STATION_MIN_TYPES,
     USGS_DATUMS,
     WATERSHED_DISPLAY_VARIABLES,
     USGS_PARAMETERS,
@@ -997,7 +999,11 @@ def build_inventory_summary(inventory: dict | None) -> list[dict]:
                     "last_update": _iso_local(pd.Timestamp(last_iso)) if last_iso else None,
                     "data_count": s.get("data_count"),
                     "is_live": bool(last_dt and last_dt.timestamp() >= cutoff),
-                    "is_manual": "Manual" in (s.get("id") or ""),
+                    # Two ways a sensor is hand-collected: TEON says so
+                    # in the id, or the instrument class has no telemetry.
+                    # See MANUAL_COLLECTION_TYPES for the reasoning.
+                    "is_manual": ("Manual" in (s.get("id") or "")
+                                  or sensor_type in MANUAL_COLLECTION_TYPES),
                 })
 
     rows.sort(key=lambda r: (
@@ -1155,12 +1161,22 @@ def build_map_points(inventory: list[dict],
             "readings": g.get("readings", {}),
         })
 
-    # A manual sonde with unpulled records is its own state: not broken,
-    # not up to date, and specifically actionable (run a backfill).
+    # Three ways a location can be not-live, and they mean different
+    # things. Conflating them is what made the map call a working
+    # hand-collected sonde "dormant".
     for pt in out:
         if pt.get("is_manual"):
+            pt["collection"] = "by hand"
             gap = (pt.get("records") or 0) - (pt.get("held_records") or 0)
             pt["unpulled_records"] = max(0, gap)
+        elif (not pt.get("is_live")
+              and not pt.get("disabled")
+              and len(pt.get("sensor_types") or []) >= OFFLINE_STATION_MIN_TYPES):
+            # Every sensor type at this location is dark. One instrument
+            # quiet is a channel; the whole station quiet is the station.
+            pt["collection"] = "offline"
+        else:
+            pt["collection"] = "telemetered"
 
     out.sort(key=lambda r: (_CATEGORY_ORDER.get(r["category"], 99), r["site"]))
     return {"points": out}
