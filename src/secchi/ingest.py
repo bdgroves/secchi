@@ -668,6 +668,22 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         print("  These sites are flagged non-public by TEON; the backfill")
         print("  now skips them, so this should not recur.\n")
         return 0
+    if mode == "repair-sensor-types":
+        from secchi.store import repair_sensor_types
+        from secchi.config import SENSOR_TYPE_CANONICAL
+        # Only the raw->canonical direction; canonical values are left be.
+        mapping = {raw: canon for raw, canon in SENSOR_TYPE_CANONICAL.items()
+                   if raw != canon}
+        total = 0
+        for name in ("observations", "assets"):
+            out = repair_sensor_types(PROCESSED_DIR / name, mapping)
+            total += out.get("rows", 0)
+        if total:
+            print(f"\n  rewrote {total:,} row(s) to canonical sensor types.")
+            print("  Run `pixi run transform` to rebuild the dashboard.\n")
+        else:
+            print("\n  nothing to repair — all sensor types are canonical.\n")
+        return 0
     if mode == "drop-undated":
         from secchi.store import drop_partition
         total = 0
@@ -767,6 +783,7 @@ def main(argv: list[str] | None = None) -> int:
                  "camera-probe", "reference", "reference-inspect",
                  "catchment-join", "watch", "backfill", "store-status",
                  "record-shape", "drop-undated", "purge-hidden",
+                 "repair-sensor-types",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -787,6 +804,8 @@ def main(argv: list[str] | None = None) -> int:
             "and report new sensors, sensors resuming, and data going dark. "
             "record-shape: fetch one record per sensor type and report its "
             "field names, including which key carries the timestamp. "
+            "repair-sensor-types: rewrite raw sensor-type values in the "
+            "store to their canonical form. "
             "purge-hidden: remove stored data for any site TEON flags "
             "non-public. "
             "drop-undated: delete the year=0000 partitions holding rows whose "

@@ -260,9 +260,6 @@
   .pin-manual  { background: var(--paper); border: 2px solid var(--wet);
                  box-shadow: 0 0 0 1px rgba(0,0,0,.25), inset 0 0 0 2px var(--paper); }
   .pin-manual-pending { background: var(--ember); border: 2px solid var(--paper); }
-  /* A whole station dark — distinct from one quiet channel and from a
-     working instrument on a monthly download cycle. */
-  .pin-offline { background: var(--muted); border: 2px solid var(--ember); }
   .pin-gauge   { background: var(--wet); border-radius: 2px; transform: rotate(45deg); }
 
   /* Watershed choropleth */
@@ -305,7 +302,6 @@
   .lg-hidden { border: 1px dashed var(--muted); }
   .lg-manual { background: var(--paper); border: 2px solid var(--wet); }
   .lg-manual-pending { background: var(--ember); }
-  .lg-offline { background: var(--muted); border: 2px solid var(--ember); }
   .lg-gauge { background: var(--wet); border-radius: 1px; }
   .lg-transect { width: 1.4rem; height: 0; border-top: 2px dashed var(--ember);
                  border-radius: 0; }
@@ -389,7 +385,6 @@
     <span><i class="lg-hidden"></i>hidden by TEON</span>
     <span><i class="lg-manual"></i>collected by hand</span>
     <span><i class="lg-manual-pending"></i>uploaded, not yet pulled</span>
-    <span><i class="lg-offline"></i>station offline</span>
     <span><i class="lg-gauge"></i>USGS gauge</span>
     <span><i class="lg-transect"></i>transect</span>
   </div>
@@ -830,8 +825,16 @@
              collection will extend this record from
              ${esc(fmtDate(cov && cov.last))}.</div>`;
 
+      // Use the card's OWN variable order, not LAKE_VARS. These sites
+      // carry MiniDOTs and HOBOs whose field names ("Dissolved Oxygen",
+      // "conductivity") aren't EXO names, so filtering through the EXO
+      // list dropped every reading except the ones that happened to
+      // collide — which is why only "DO sat (local)" was rendering.
+      // Falls back to LAKE_VARS for an older payload.
+      const order = c.variable_order
+        || LAKE_VARS.filter(v => c.readings && c.readings[v]);
       const readings = c.readings
-        ? `<div class="readings">${readingCells(c.readings, LAKE_VARS, c.series)}</div>`
+        ? `<div class="readings">${readingCells(c.readings, order, c.series)}</div>`
         : "";
 
       return `
@@ -1022,9 +1025,6 @@
     if (p.is_manual) {
       return (p.unpulled_records > 0) ? "pin-manual-pending" : "pin-manual";
     }
-    // Every sensor type at the location is dark — the station itself,
-    // not one channel. Worth distinguishing from a seasonal quiet spell.
-    if (p.collection === "offline") return "pin-offline";
     const st = ageState(p.last_update);
     return st === "live" ? "pin-live" : st === "stale" ? "pin-stale" : "pin-dormant";
   }
@@ -1062,9 +1062,6 @@
       flags.push(p.unpulled_records > 0
         ? `${fmtInt.format(p.unpulled_records)} records published, not yet pulled`
         : "collected by hand, up to date");
-    }
-    if (p.collection === "offline") {
-      flags.push(`all ${(p.sensor_types || []).length} channels dark — station offline`);
     }
     const flagHtml = flags.map(f => `<span class="pop-flag">${esc(f)}</span>`).join(" ");
 

@@ -51,7 +51,7 @@ from secchi.config import (
     TREND_SIGNIFICANCE,
     UNIT_CONVERSIONS,
     MANUAL_COLLECTION_TYPES,
-    TEON_TIMESTAMP_FIELDS,
+    SENSOR_TYPE_CANONICAL,
     OFFLINE_STATION_MIN_TYPES,
     USGS_DATUMS,
     WATERSHED_DISPLAY_VARIABLES,
@@ -124,7 +124,6 @@ def usgs_to_long(snapshots: Iterable[dict]) -> pd.DataFrame:
     from secchi.sources.usgs import flatten_features
 
     rows: list[dict] = []
-
     for snap in snapshots:
         for obs in flatten_features(snap):
             value = obs.get("value")
@@ -369,33 +368,6 @@ def load_latest_json(raw_dir: Path, subdir: str) -> dict | None:
 # Flattening
 # ---------------------------------------------------------------------------
 
-# Sensor types whose timestamp key has already been resolved, so the
-# lookup is logged once rather than per record.
-_TS_FIELD_SEEN: dict[str, str] = {}
-
-
-def _record_timestamp(rec: dict,
-                      sensor_type: str = "",
-                      seen: dict[str, str] | None = None) -> str | None:
-    """The observation time, whatever this sensor type calls it.
-
-    Tries each name in :data:`TEON_TIMESTAMP_FIELDS`. Hardcoding
-    ``TIMESTAMP`` cost 1,490,116 MiniDot and HOBO rows their timestamps
-    on 2026-09-22 — filed under year=0000, taking 24 MB and answering
-    nothing, because no sparkline, trend or coverage window can be built
-    without a time.
-    """
-    for key in TEON_TIMESTAMP_FIELDS:
-        value = rec.get(key)
-        if value:
-            if seen is not None and sensor_type:
-                seen.setdefault(sensor_type, key)
-            return value
-    if seen is not None and sensor_type:
-        seen.setdefault(sensor_type, "(none found)")
-    return None
-
-
 def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Flatten snapshots into (numeric observations, assets).
 
@@ -410,10 +382,14 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
     asset_rows: list[dict] = []
     skipped_non_numeric: dict[str, int] = {}
 
-    resolved_ts_field: dict[str, str] = {}
-
     for snap in snapshots:
-        sensor_type = snap.get("sensor_type", "")
+        # Canonicalise HERE, the one place every TEON row passes through.
+        # The hourly ingest already passed canonical keys; the backfill
+        # passed raw inventory keys ("EXO" vs "ExoSensor"), so the store
+        # ended up holding the same instrument under two names and every
+        # downstream filter silently missed half its data.
+        raw_type = snap.get("sensor_type", "")
+        sensor_type = SENSOR_TYPE_CANONICAL.get(raw_type, raw_type)
         # TEON reports how many records exist upstream; keep it so asset
         # counts reflect the real archive rather than our ingest page size.
         total_available = snap.get("total_available")
@@ -423,8 +399,7 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
                 "source": "TEON",
                 "site": rec.get("site"),
                 "sensor_type": sensor_type,
-                "timestamp": _record_timestamp(rec, sensor_type,
-                                               resolved_ts_field),
+                "timestamp": rec.get("TIMESTAMP"),
                 "lat": rec.get("latitude"),
                 "lng": rec.get("longitude"),
             }
@@ -452,12 +427,6 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
                     continue
 
                 obs_rows.append({**base, "variable": field, "value": numeric})
-
-    for stype, key in sorted(resolved_ts_field.items()):
-        if key != "TIMESTAMP":
-            log.warning("%s uses %r as its timestamp field, not 'TIMESTAMP' "
-                        "— add it to TEON_TIMESTAMP_FIELDS if missing",
-                        stype, key)
 
     if skipped_non_numeric:
         log.warning("skipped non-numeric values in undeclared fields: %s",
@@ -757,8 +726,14 @@ def _local_do_saturation(readings: dict) -> dict | None:
     """
     from secchi.analysis.oxygen import do_saturation_local
 
-    mgl = (readings.get("Do_mgL") or {}).get("value")
-    temp = (readings.get("Temp") or {}).get("value")
+    # Field names differ by vendor: EXO uses Do_mgL/Temp, MiniDOT uses
+    # "Dissolved Oxygen"/"Temperature". Both compute saturation from a
+    # configured barometric pressure, so both are candidates for the
+    # sea-level referencing problem and both deserve the local figure.
+    mgl = ((readings.get("Do_mgL") or readings.get("Dissolved Oxygen") or {})
+           .get("value"))
+    temp = ((readings.get("Temp") or readings.get("Temperature") or {})
+            .get("value"))
     if mgl is None or temp is None:
         return None
     if not (0 < float(temp) < 40) or float(mgl) <= 0:
@@ -1220,67 +1195,180 @@ def build_map_points(inventory: list[dict],
     return {"points": out}
 
 
+def _sensor_type_key(inventory_row: dict) -> str:
+    """The key the transform stores rows under, from an inventory row.
+
+    Uses the RAW `sensor_type`, not `sensor_type_display`.
+    `_display_type` prettifies for humans — "Minidot" becomes "MiniDot",
+    "Hobo" becomes "HOBO" — while SENSOR_TYPE_CANONICAL is keyed on the
+    raw names. Looking up the prettified form missed every time and fell
+    through to a value matching nothing in the store.
+    """
+    raw = inventory_row.get("sensor_type") or ""
+    if raw in SENSOR_TYPE_CANONICAL:
+        return SENSOR_TYPE_CANONICAL[raw]
+    display = inventory_row.get("sensor_type_display") or raw
+    return SENSOR_TYPE_CANONICAL.get(display, display.replace(" ", ""))
+
+
+# Short, human names for the instrument families, used when two devices
+# at one site report the same quantity.
+INSTRUMENT_SHORT_NAMES = {
+    "MiniDotSensor": "MiniDOT",
+    "HoboSensor": "HOBO",
+    "ExoSensor": "EXO",
+}
+
+
+def _card_variables(sensor_type_key: str) -> tuple[str, ...]:
+    """Which variables a card shows for a given sensor type.
+
+    Derived from SENSOR_VARIABLES rather than hardcoded, because the
+    first version passed "ExoSensor" for every hand-collected site. The
+    six nearshore sites are MiniDOTs and HOBOs whose fields
+    ("Dissolved Oxygen", "conductivity") don't exist in the EXO config,
+    so every reading formatted to None and those cards showed coverage
+    and nothing else.
+    """
+    if sensor_type_key == "ExoSensor":
+        return EXO_CARD_VARIABLES
+    declared = SENSOR_VARIABLES.get(sensor_type_key) or {}
+    return tuple(name for name, meta in declared.items()
+                 if not (meta or {}).get("hidden"))
+
+
 def build_manual_sonde_cards(df_wide: pd.DataFrame,
                              df_long: pd.DataFrame,
                              inventory: list[dict]) -> dict:
-    """Cards for the hand-collected sondes, built around COVERAGE.
+    """Cards for the hand-collected sites, built around COVERAGE.
 
-    These are deliberately not the same shape as a live card. A live card
-    answers "what is the lake doing right now"; these answer two
-    different questions:
+    These are deliberately not the shape of a live card. A live card
+    answers "what is the lake doing right now"; these answer:
 
-      where have we been  — the period of record we actually hold
-      what is outstanding — records published upstream that we haven't
-                            pulled, and therefore what the next
-                            collection would extend from
+      where have we been  — the period of record actually held
+      what is outstanding — records published but not pulled, and so
+                            what the next collection would extend from
 
-    A self-logging sonde's newest reading can be months old and still be
-    perfectly good data. Presenting it in the live-card idiom, next to
-    readings from an hour ago, would imply a currency it doesn't have —
-    so the period of record is the headline and the reading is context.
+    A self-logging instrument's newest reading can be months old and
+    still be perfectly good data. Presenting it in the live-card idiom,
+    beside readings from an hour ago, would imply a currency it hasn't
+    got — so the period of record is the headline.
+
+    One site can carry SEVERAL hand-collected instruments. Each nearshore
+    site has both a MiniDOT and a HOBO, and the first version keyed the
+    inventory by site alone, so `upstream` reflected one instrument while
+    `held` counted rows from both — producing "held 88,214 of 47,226" and
+    a coverage bar past 100 %.
     """
-    manual_sites = {row["site"]: row for row in inventory if row.get("is_manual")}
-    if not manual_sites:
+    # Group by SITE, keeping every hand-collected sensor at it.
+    by_site: dict[str, list[dict]] = {}
+    for row in inventory:
+        if row.get("is_manual"):
+            by_site.setdefault(row["site"], []).append(row)
+    if not by_site:
         return {}
 
     out: dict[str, dict] = {}
-    for site, inv_row in manual_sites.items():
-        held = df_long[(df_long["site"] == site)
-                       & df_long["timestamp"].notna()] if not df_long.empty \
-            else pd.DataFrame()
+    for site, rows in by_site.items():
+        held_rows = df_long[(df_long["site"] == site)
+                            & df_long["timestamp"].notna()] \
+            if not df_long.empty else pd.DataFrame()
 
+        instruments = sorted({(r.get("sensor_type_display")
+                               or r.get("sensor_type") or "?") for r in rows})
         card: dict = {
-            "sensor_type": inv_row.get("sensor_type_display") or "EXO",
+            "instruments": instruments,
+            "sensor_type": " + ".join(instruments),
             "shore": (SITE_METADATA.get(site) or {}).get("shore"),
             "collection": "by hand",
-            "upstream_records": inv_row.get("data_count") or 0,
-            "held_records": int(held["uuid"].nunique()) if not held.empty else 0,
-            "last_upstream": inv_row.get("last_update"),
+            # Sum across every hand-collected instrument at the site, so
+            # this is comparable with the held count below.
+            "upstream_records": sum(r.get("data_count") or 0 for r in rows),
+            "held_records": int(held_rows["uuid"].nunique())
+                            if not held_rows.empty else 0,
+            "last_upstream": max((r.get("last_update") or "") for r in rows) or None,
         }
         card["unpulled_records"] = max(
             0, card["upstream_records"] - card["held_records"])
 
-        if not held.empty:
-            first, last = held["timestamp"].min(), held["timestamp"].max()
+        if not held_rows.empty:
+            first, last = held_rows["timestamp"].min(), held_rows["timestamp"].max()
             card["coverage"] = {
                 "first": _iso_local(first),
                 "last": _iso_local(last),
                 "days": round((last - first).total_seconds() / 86400, 1),
             }
-            # The readings from the most recent record we hold — context
-            # for the coverage, not a claim about current conditions.
-            newest = held[held["timestamp"] == last]
+
+            # Readings from the newest record, per instrument, using each
+            # one's OWN field config rather than assuming EXO.
             readings: dict = {}
-            for _, r in newest.iterrows():
-                formatted = _format_reading("ExoSensor", r["variable"], r["value"])
-                if formatted:
-                    readings[r["variable"]] = formatted
+            series: dict = {}
+            for stype_key in sorted({_sensor_type_key(r) for r in rows}):
+                subset = held_rows[held_rows["sensor_type"] == stype_key]
+                if subset.empty:
+                    continue
+                variables = _card_variables(stype_key)
+                newest = subset[subset["timestamp"] == subset["timestamp"].max()]
+                for _, r in newest.iterrows():
+                    # Only the card variables. Iterating every stored
+                    # variable put Battery on the card despite its
+                    # hidden flag — the flag filters _card_variables and
+                    # nothing was applying it here.
+                    if r["variable"] not in variables:
+                        continue
+                    formatted = _format_reading(stype_key, r["variable"], r["value"])
+                    if formatted:
+                        # A site with two instruments can produce two
+                        # readings labelled "Water temp" — MiniDOT's
+                        # "Temperature" and HOBO's "temperature". Same
+                        # quantity, different device; say which.
+                        formatted = {**formatted, "instrument": stype_key}
+                        readings[r["variable"]] = formatted
+                series.update(build_series(df_long, site, stype_key, variables) or {})
+
             if readings:
-                card["readings"] = readings
+                # The order to render them in. The frontend used to filter
+                # every card through LAKE_VARS — a hardcoded EXO list — so
+                # a MiniDOT's "Dissolved Oxygen" and a HOBO's
+                # "conductivity" were in the payload and never drawn. Only
+                # Do_percent_local appeared, because it happens to be an
+                # EXO variable name.
+                #
+                # Temperature first, then oxygen, then everything else:
+                # the order a limnologist reads them in.
+                def _rank(var: str) -> tuple[int, str]:
+                    low = var.lower()
+                    if "temp" in low:
+                        return (0, var)
+                    if "oxygen" in low or low.startswith("do_"):
+                        return (1, var)
+                    return (2, var)
+
+                card["variable_order"] = sorted(readings, key=_rank)
+
+                # Disambiguate labels that collide across instruments.
+                from collections import Counter
+                label_counts = Counter(r["label"] for r in readings.values())
+                for var, r in readings.items():
+                    if label_counts[r["label"]] > 1:
+                        pretty = INSTRUMENT_SHORT_NAMES.get(
+                            r.get("instrument", ""), r.get("instrument", ""))
+                        r["label"] = f"{r['label']} ({pretty})"
+
                 local_do = _local_do_saturation(readings)
                 if local_do:
-                    card["readings"]["Do_percent_local"] = local_do
-            series = build_series(df_long, site, "ExoSensor", EXO_CARD_VARIABLES)
+                    readings["Do_percent_local"] = local_do
+                    # Sits immediately after the published saturation it
+                    # corrects, not at the end where the comparison is lost.
+                    order = card["variable_order"]
+                    anchor = next((v for v in order
+                                   if "saturation" in v.lower()
+                                   or v == "Do_percent"), None)
+                    if anchor and anchor in order:
+                        order.insert(order.index(anchor) + 1, "Do_percent_local")
+                    else:
+                        order.append("Do_percent_local")
+                card["readings"] = readings
             if series:
                 card["series"] = series
         else:

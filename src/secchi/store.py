@@ -257,6 +257,56 @@ def purge_site(root: Path, site: str) -> dict:
             "partitions_touched": touched}
 
 
+def repair_sensor_types(root: Path, mapping: dict[str, str]) -> dict:
+    """Rewrite non-canonical sensor_type values in place.
+
+    The backfill wrote raw inventory keys ("EXO", "Minidot", "Hobo")
+    while the hourly ingest wrote canonical ones ("ExoSensor",
+    "MiniDotSensor", "HoboSensor"), so the store held the same
+    instrument under two names and every downstream filter missed half
+    its data.
+
+    Rewriting beats re-fetching: three million rows are already correct
+    apart from one column, and a re-run would mean hours of requests to
+    arrive at the same place. Only partitions actually containing a
+    stale value are rewritten.
+    """
+    if not root.exists():
+        return {"repaired": False, "reason": "no store"}
+
+    changed_rows = 0
+    touched = 0
+    seen: dict[str, int] = {}
+
+    for path in sorted(root.rglob(PARTITION_FILE)):
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            log.warning("could not read %s (%s); skipping", path, exc)
+            continue
+        if "sensor_type" not in df.columns:
+            continue
+
+        mask = df["sensor_type"].isin(mapping)
+        n = int(mask.sum())
+        if not n:
+            continue
+        for value in df.loc[mask, "sensor_type"].unique():
+            seen[value] = seen.get(value, 0) + int((df["sensor_type"] == value).sum())
+
+        df.loc[mask, "sensor_type"] = df.loc[mask, "sensor_type"].map(mapping)
+        df.to_parquet(path, index=False)
+        changed_rows += n
+        touched += 1
+
+    for old, count in sorted(seen.items()):
+        log.info("  %s -> %s  (%s rows)", old, mapping[old], f"{count:,}")
+    log.info("repaired %s row(s) across %d partition(s)",
+             f"{changed_rows:,}", touched)
+    return {"repaired": True, "rows": changed_rows, "partitions": touched,
+            "values": seen}
+
+
 def migrate_monolith(monolith: Path,
                      root: Path,
                      source: str,
