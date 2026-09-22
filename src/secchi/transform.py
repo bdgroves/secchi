@@ -1166,6 +1166,77 @@ def build_map_points(inventory: list[dict],
     return {"points": out}
 
 
+def build_manual_sonde_cards(df_wide: pd.DataFrame,
+                             df_long: pd.DataFrame,
+                             inventory: list[dict]) -> dict:
+    """Cards for the hand-collected sondes, built around COVERAGE.
+
+    These are deliberately not the same shape as a live card. A live card
+    answers "what is the lake doing right now"; these answer two
+    different questions:
+
+      where have we been  — the period of record we actually hold
+      what is outstanding — records published upstream that we haven't
+                            pulled, and therefore what the next
+                            collection would extend from
+
+    A self-logging sonde's newest reading can be months old and still be
+    perfectly good data. Presenting it in the live-card idiom, next to
+    readings from an hour ago, would imply a currency it doesn't have —
+    so the period of record is the headline and the reading is context.
+    """
+    manual_sites = {row["site"]: row for row in inventory if row.get("is_manual")}
+    if not manual_sites:
+        return {}
+
+    out: dict[str, dict] = {}
+    for site, inv_row in manual_sites.items():
+        held = df_long[(df_long["site"] == site)
+                       & df_long["timestamp"].notna()] if not df_long.empty \
+            else pd.DataFrame()
+
+        card: dict = {
+            "sensor_type": inv_row.get("sensor_type_display") or "EXO",
+            "shore": (SITE_METADATA.get(site) or {}).get("shore"),
+            "collection": "by hand",
+            "upstream_records": inv_row.get("data_count") or 0,
+            "held_records": int(held["uuid"].nunique()) if not held.empty else 0,
+            "last_upstream": inv_row.get("last_update"),
+        }
+        card["unpulled_records"] = max(
+            0, card["upstream_records"] - card["held_records"])
+
+        if not held.empty:
+            first, last = held["timestamp"].min(), held["timestamp"].max()
+            card["coverage"] = {
+                "first": _iso_local(first),
+                "last": _iso_local(last),
+                "days": round((last - first).total_seconds() / 86400, 1),
+            }
+            # The readings from the most recent record we hold — context
+            # for the coverage, not a claim about current conditions.
+            newest = held[held["timestamp"] == last]
+            readings: dict = {}
+            for _, r in newest.iterrows():
+                formatted = _format_reading("ExoSensor", r["variable"], r["value"])
+                if formatted:
+                    readings[r["variable"]] = formatted
+            if readings:
+                card["readings"] = readings
+                local_do = _local_do_saturation(readings)
+                if local_do:
+                    card["readings"]["Do_percent_local"] = local_do
+            series = build_series(df_long, site, "ExoSensor", EXO_CARD_VARIABLES)
+            if series:
+                card["series"] = series
+        else:
+            card["coverage"] = None
+
+        out[site] = card
+
+    return dict(sorted(out.items()))
+
+
 def build_manual_sondes(inventory: list[dict]) -> list[dict]:
     """The self-logging lake sondes and their current position.
 
@@ -1295,6 +1366,7 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "transect_line": build_transect_line(transect),
         "watersheds": watersheds,
         "manual_sondes": build_manual_sondes(inv),
+        "manual_cards": build_manual_sonde_cards(df_wide, df_long, inv),
     }
 
 

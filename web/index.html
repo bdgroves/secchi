@@ -102,6 +102,28 @@
   .reading-derived { font-size: 0.66rem; color: var(--muted); margin-top: 0.15rem;
                      font-style: italic; }
 
+  /* Hand-collected sondes. A dashed edge because the record is complete
+     up to a point and then simply stops until someone dives — it is not
+     live data and shouldn't borrow the visual language of live data. */
+  .card-manual { border-style: dashed; }
+  .coverage {
+    display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.7rem;
+    margin: 0.5rem 0 0.7rem; font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .coverage dt { color: var(--muted); }
+  .coverage dd { margin: 0; color: var(--ink); }
+  .coverage-gap { color: var(--ember); font-weight: 500; }
+  .coverage-bar {
+    height: 0.35rem; background: var(--ice); border: 1px solid var(--line);
+    margin-top: 0.4rem; position: relative; overflow: hidden;
+  }
+  .coverage-bar i { display: block; height: 100%; background: var(--wet); }
+  .card-note {
+    font-size: 0.78rem; color: var(--muted); margin-top: 0.6rem;
+    line-height: 1.45;
+  }
+
   /* Transect comparison */
   .transect { border: 1px solid var(--line); margin-top: 1.25rem; }
   .transect-row { display: grid; grid-template-columns: 1fr auto 1fr;
@@ -394,6 +416,18 @@
   <section class="cards" id="cards" aria-label="Lake sonde readings"></section>
   <p class="offline" id="offline"></p>
 
+  <h2>Hand-collected sondes</h2>
+  <p>
+    Two of the five lake sondes are self-logging: they store to internal
+    memory and are read by boat and snorkel, roughly monthly. Their
+    records are the <em>most complete</em> in the network — 98.8 % against
+    73.6–96.8 % for the telemetered ones, because there is no radio link
+    to drop packets. What they are not is current. These cards show the
+    period of record we hold rather than a live reading, and what the
+    next collection would extend from.
+  </p>
+  <section class="cards two" id="manual-cards" aria-label="Hand-collected sonde coverage"></section>
+
   <h2>The lake and its outlet</h2>
   <p>
     Lake Tahoe's surface elevation, and the single channel every drop
@@ -552,6 +586,14 @@
   }
 
   const fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+  /** Calendar date. Coverage bounds are dates, not elapsed time — "3
+   *  months ago" is the wrong idiom for the edge of a record. */
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return isNaN(d) ? "—" : d.toLocaleDateString(undefined,
+      { year: "numeric", month: "short", day: "numeric" });
+  }
   const fmtInt = new Intl.NumberFormat();
   const slugify = (s) => (s || "").toLowerCase().replace(/\s+/g, "");
   const esc = (s) => String(s).replace(/[&<>"']/g,
@@ -741,6 +783,62 @@
         ${rows}
       </div>
       ${meta}`;
+  }
+
+  function renderManualCards(cards) {
+    const names = Object.keys(cards || {});
+    if (!names.length) {
+      return `<div class="placeholder-card">No hand-collected sondes in the
+        inventory.</div>`;
+    }
+    return names.map(name => {
+      const c = cards[name];
+      const cov = c.coverage;
+      const gap = c.unpulled_records || 0;
+
+      // How much of what's published do we actually hold? The bar makes
+      // the gap legible at a glance, which a pair of numbers doesn't.
+      const pct = c.upstream_records
+        ? Math.max(0, Math.min(100, 100 * c.held_records / c.upstream_records))
+        : 0;
+
+      const coverage = cov
+        ? `<dl class="coverage">
+             <dt>record from</dt><dd>${esc(fmtDate(cov.first))}</dd>
+             <dt>through</dt><dd>${esc(fmtDate(cov.last))}</dd>
+             <dt>span</dt><dd>${fmt.format(cov.days)} days</dd>
+             <dt>held</dt><dd>${fmtInt.format(c.held_records)} of
+               ${fmtInt.format(c.upstream_records)} records</dd>
+           </dl>
+           <div class="coverage-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`
+        : `<dl class="coverage">
+             <dt>held</dt><dd>nothing yet</dd>
+             <dt>upstream</dt><dd>${fmtInt.format(c.upstream_records)} records</dd>
+           </dl>
+           <div class="coverage-bar"><i style="width:0%"></i></div>`;
+
+      const note = gap > 0
+        ? `<div class="card-note"><span class="coverage-gap">${fmtInt.format(gap)}
+             records published that we haven't pulled.</span>
+             Run <code>pixi run backfill --stage manual</code> to bring them in.</div>`
+        : `<div class="card-note">Up to date with everything published. The next
+             collection will extend this record from
+             ${esc(fmtDate(cov && cov.last))}.</div>`;
+
+      const readings = c.readings
+        ? `<div class="readings">${readingCells(c.readings, LAKE_VARS, c.series)}</div>`
+        : "";
+
+      return `
+        <article class="card card-manual">
+          <h3>${esc(name)}</h3>
+          <p class="observed">${esc(c.shore || "")}${c.shore ? " shore · " : ""}
+            collected by hand</p>
+          ${coverage}
+          ${readings}
+          ${note}
+        </article>`;
+    }).join("");
   }
 
   function renderGauges(gauges, roles) {
@@ -1261,6 +1359,8 @@
         : `<div class="placeholder-card">No station data ingested yet. Run an
            <code>all-live</code> ingest to populate this section.</div>`;
 
+      $("manual-cards").innerHTML = renderManualCards(snap.manual_cards);
+
       // USGS gauges, split by role — ten flat cards would swamp the page.
       $("gauges-lake").innerHTML = renderGauges(snap.gauges, ["lake", "outlet"]);
       $("gauges-trib").innerHTML = renderGauges(snap.gauges, ["tributary"]);
@@ -1357,7 +1457,7 @@
       $("cards").innerHTML = LAKE_ORDER
         .map(n => renderEmptyCard(n, "Waiting on ingest.")).join("");
       for (const id of ["transect", "stations", "gauges-lake", "gauges-trib",
-                        "cameras", "inventory"]) {
+                        "cameras", "inventory", "manual-cards"]) {
         $(id).innerHTML = "";
       }
     }
