@@ -152,6 +152,11 @@ repair-sensor-types = "python -m secchi.ingest --mode repair-sensor-types"
 # sea level or to pressure at the lake surface. MiniDOT gets it right;
 # the EXO sondes appear not to. See docs/dissolved-oxygen.md.
 oxygen-check = "python -m secchi.ingest --mode oxygen-check"
+# The question the project was built around: do two stations 64 m apart
+# in latitude, on opposite shores, respond differently to the same storm?
+# Detects wetting events in the soil moisture record itself, since the
+# network's only rain gauge has been dark since August.
+transect = "python -m secchi.ingest --mode transect"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.

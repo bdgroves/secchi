@@ -668,6 +668,9 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         print("  These sites are flagged non-public by TEON; the backfill")
         print("  now skips them, so this should not recur.\n")
         return 0
+    if mode == "transect":
+        from secchi.analysis.transect import report as transect_report
+        return transect_report()
     if mode == "oxygen-check":
         from secchi.analysis.oxygen import check_saturation_basis
         return check_saturation_basis()
@@ -786,7 +789,7 @@ def main(argv: list[str] | None = None) -> int:
                  "camera-probe", "reference", "reference-inspect",
                  "catchment-join", "watch", "backfill", "store-status",
                  "record-shape", "drop-undated", "purge-hidden",
-                 "repair-sensor-types", "oxygen-check",
+                 "repair-sensor-types", "oxygen-check", "transect",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -807,6 +810,8 @@ def main(argv: list[str] | None = None) -> int:
             "and report new sensors, sensors resuming, and data going dark. "
             "record-shape: fetch one record per sensor type and report its "
             "field names, including which key carries the timestamp. "
+            "transect: compare how the two transect stations respond to "
+            "the same wetting events. "
             "oxygen-check: test whether each instrument family's DO "
             "saturation is referenced to sea level or to lake pressure. "
             "repair-sensor-types: rewrite raw sensor-type values in the "
