@@ -371,8 +371,22 @@ def discover_usgs(client: UsgsClient) -> int:
     return 0
 
 
-def run_watch(write_baseline: bool = True) -> int:
+def run_watch(write_baseline: bool = False) -> int:
     """Check what changed upstream and report it.
+
+    ``write_baseline`` defaults to FALSE, so a local run is read-only.
+    Two reasons, both learned the hard way:
+
+    1. Both CI and a local run were writing data/reference/
+       watch_baseline.json, which produced a git conflict the moment they
+       landed between pulls.
+
+    2. More subtly: a local run that advanced the baseline would CONSUME
+       the change. Run `watch` locally, see the Meeks upload, and CI then
+       compares against the new baseline, finds nothing, and never opens
+       the issue. Looking for the notification would destroy it.
+
+    Only CI advances the baseline, via --update-baseline.
 
     Exit code carries the signal so a workflow can branch on it without
     parsing output:
@@ -396,6 +410,8 @@ def run_watch(write_baseline: bool = True) -> int:
     baseline = load_baseline()
 
     if baseline is None:
+        # The first run always writes, regardless — there is nothing to
+        # consume and nothing to conflict with.
         save_baseline(state)
         live = sum(1 for v in state["sensors"].values() if v["state"] == "live")
         log.info("no baseline existed — established one: %d sensors, %d live, "
@@ -412,6 +428,9 @@ def run_watch(write_baseline: bool = True) -> int:
 
     if write_baseline:
         save_baseline(state)
+    elif changes:
+        print("  (baseline not advanced — this was a read-only check. "
+              "CI updates it.)\n")
 
     notable = [c for c in changes if c["severity"] == "notable"]
     if notable:
@@ -592,17 +611,14 @@ def run_usgs(mode: str, codes: list[str] | None = None) -> int:
 
 
 def run(mode: str = "live-exo", codes: list[str] | None = None,
-        force: bool = False) -> int:
+        force: bool = False, update_baseline: bool = False) -> int:
     if mode == "prune":
         prune_raw()
         return 0
     if mode == "camera-probe":
         return probe_camera_assets()
     if mode == "watch":
-        return run_watch()
-    if mode == "oxygen-check":
-        from secchi.analysis.oxygen import check_saturation_basis
-        return check_saturation_basis()
+        return run_watch(write_baseline=update_baseline)
     if mode == "reference":
         return fetch_reference_data(force=force)
     if mode == "reference-inspect":
@@ -671,7 +687,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("live-exo", "all-live", "all-sensors", "probe", "probe-live",
                  "usgs", "usgs-probe", "usgs-discover", "usgs-params",
                  "camera-probe", "reference", "reference-inspect",
-                 "catchment-join", "watch", "oxygen-check",
+                 "catchment-join", "watch",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -688,8 +704,6 @@ def main(argv: list[str] | None = None) -> int:
             "(--codes 70369), defaulting to everything in USGS_PARAMETERS. "
             "camera-probe: test whether the field-camera s3:// refs resolve "
             "over public HTTPS. "
-            "oxygen-check: decide whether TEON's DO saturation percentage is "
-            "altitude-corrected, from the stored record. "
             "watch: compare the upstream inventory against a stored baseline "
             "and report new sensors, sensors resuming, and data going dark. "
             "reference: cache the watershed polygons and attributes. "
@@ -700,6 +714,13 @@ def main(argv: list[str] | None = None) -> int:
             "terc-discover: report what the TERC Secchi data package holds. "
             "prune: delete raw snapshots past the retention window."
         ),
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="For `watch`: advance the stored baseline. CI uses this; a "
+             "local run should not, or it consumes the change before CI "
+             "can report it.",
     )
     parser.add_argument(
         "--force",
@@ -719,7 +740,8 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s :: %(message)s",
     )
     try:
-        return run(mode=args.mode, codes=args.codes, force=args.force)
+        return run(mode=args.mode, codes=args.codes, force=args.force,
+                   update_baseline=args.update_baseline)
     except Exception:
         log.exception("ingest failed")
         return 1

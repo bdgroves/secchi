@@ -51,11 +51,14 @@ jobs:
 
       - name: Check for upstream changes
         id: check
+        # watch-update, not watch: CI is the only writer of the baseline.
+        # A local `pixi run watch` is read-only, so it can neither conflict
+        # with this commit nor consume a change before it's reported.
         # Exit 2 means notable changes, 0 means none. Anything else is a
         # real failure, so don't swallow it.
         run: |
           set +e
-          pixi run watch > watch-report.txt 2>&1
+          pixi run watch-update > watch-report.txt 2>&1
           code=$?
           set -e
           cat watch-report.txt

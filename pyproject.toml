@@ -116,12 +116,12 @@ reference-inspect = "python -m secchi.ingest --mode reference-inspect"
 # ones going quiet, TEON visibility flags lifting. Run hourly by
 # .github/workflows/watch.yml, which opens an issue on notable changes so
 # you don't have to keep checking.
+# Read-only: reports what changed upstream, does NOT advance the stored
+# baseline. Safe to run locally as often as you like — it can't consume a
+# change before CI reports it, and it can't conflict with CI's commit.
 watch = "python -m secchi.ingest --mode watch"
-# Decide from the stored record whether TEON's dissolved-oxygen saturation
-# percentage accounts for Tahoe's altitude. At 1,898 m the barometric
-# pressure is 79.5% of sea level, which is enough to invert the ecological
-# reading — see docs/dissolved-oxygen.md.
-oxygen-check = "python -m secchi.ingest --mode oxygen-check"
+# Advances the baseline. Only .github/workflows/watch.yml should call this.
+watch-update = "python -m secchi.ingest --mode watch --update-baseline"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.
