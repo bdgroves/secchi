@@ -1408,10 +1408,10 @@
         text.textContent = "No live observations available.";
       }
 
-      // Built from the inventory rather than hardcoded. The previous
-      // version named both sites, their shore and the date they stopped
-      // — all baked into the HTML, and all of it wrong the moment a
-      // retrieval happened.
+      // Built from the inventory, one entry per SITE. An earlier version
+      // emitted one per sensor, so every nearshore site appeared twice
+      // (it has both a MiniDOT and a HOBO) and all fourteen were called
+      // EXO sites, which only two are.
       const manual = snap.manual_sondes || [];
       if (manual.length) {
         const pts = (snap.map && snap.map.points) || [];
@@ -1421,21 +1421,20 @@
         };
         const parts = manual.map(m => {
           const gap = gapFor(m.site);
+          const kit = (m.instruments || []).join(" + ");
           const when = m.last_update ? timeAgo(m.last_update) : "never";
           const tail = gap > 0
-            ? ` — <strong>${fmtInt.format(gap)} records published that we haven't pulled yet</strong>`
+            ? ` — <strong>${fmtInt.format(gap)} records not yet pulled</strong>`
             : ` — newest record ${esc(when)}`;
-          return `<em>${esc(m.site)}</em>${m.shore ? ` (${esc(m.shore)} shore)` : ""}${tail}`;
+          return `<em>${esc(m.site)}</em>${kit ? ` (${esc(kit)})` : ""}${tail}`;
         });
         const anyPending = manual.some(m => gapFor(m.site) > 0);
         $("offline").innerHTML =
-          `${manual.length === 2 ? "Two" : manual.length} EXO sites are `
-          + `<strong>self-logging</strong>: they store to memory and are read `
-          + `by hand, roughly monthly, by boat and snorkel. Not broken — `
-          + `just on a different clock. ${parts.join(". ")}.`
-          + (anyPending
-              ? ` A backfill is needed to bring that history in.`
-              : ``);
+          `${manual.length} sites are read <strong>by hand</strong>: the `
+          + `instruments store to memory and are collected roughly monthly, `
+          + `by boat and snorkel. Not broken — just on a different clock. `
+          + `${parts.join(". ")}.`
+          + (anyPending ? ` A backfill would bring the rest in.` : ``);
       } else {
         $("offline").innerHTML = "";
       }

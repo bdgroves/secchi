@@ -1380,26 +1380,37 @@ def build_manual_sonde_cards(df_wide: pd.DataFrame,
 
 
 def build_manual_sondes(inventory: list[dict]) -> list[dict]:
-    """The self-logging lake sondes and their current position.
+    """One entry per hand-collected SITE, not per sensor.
 
-    Replaces a hardcoded sentence in the dashboard that named both sites,
-    their shore and the date they stopped — "stopped reporting on
-    2026-07-09 pending physical retrieval". Every part of that was baked
-    into the HTML and would have stayed frozen at that date forever,
-    including after a retrieval made it false.
+    Keyed per inventory row, this produced "Camp Richardson — newest
+    record 3 mo ago. Camp Richardson — newest record 3 mo ago." because
+    each nearshore site carries both a MiniDOT and a HOBO. It also
+    called all fourteen of them EXO sites, which only two are.
     """
-    out = []
+    by_site: dict[str, dict] = {}
     for row in inventory:
         if not row.get("is_manual"):
             continue
-        out.append({
-            "site": row.get("site"),
+        site = row.get("site")
+        instrument = (row.get("sensor_type_display")
+                      or row.get("sensor_type") or "?")
+        entry = by_site.setdefault(site, {
+            "site": site,
             "shore": row.get("shore"),
-            "last_update": row.get("last_update"),
-            "records": row.get("data_count"),
-            "sensor_type": row.get("sensor_type_display") or row.get("sensor_type"),
+            "instruments": [],
+            "last_update": None,
+            "records": 0,
         })
-    out.sort(key=lambda r: r["site"] or "")
+        if instrument not in entry["instruments"]:
+            entry["instruments"].append(instrument)
+        entry["records"] += row.get("data_count") or 0
+        last = row.get("last_update")
+        if last and (entry["last_update"] is None or last > entry["last_update"]):
+            entry["last_update"] = last
+
+    out = sorted(by_site.values(), key=lambda r: r["site"] or "")
+    for entry in out:
+        entry["instruments"].sort()
     return out
 
 

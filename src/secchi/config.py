@@ -249,14 +249,20 @@ SENSOR_VARIABLES: dict[str, dict[str, dict]] = {
         "Temperature":                  {"label": "Water temp", "units": "°C"},
         "Dissolved Oxygen":             {"label": "DO",         "units": "mg/L",
                                          "clip_low": 0.0},
-        # Very likely sea-level referenced, exactly as TEON's EXO
-        # Do_percent turned out to be — a MiniDOT computes saturation from
-        # temperature and a configured pressure, and at 1,898 m an
-        # unconfigured default is 79.5% out. Not yet confirmed for this
-        # fleet: run `pixi run oxygen-check` once the backfill lands and
-        # these rows have timestamps. See docs/dissolved-oxygen.md.
-        "Dissolved Oxygen Saturation":  {"label": "DO sat",     "units": "%",
-                                         "note": "saturation reference unverified"},
+        # VERIFIED CORRECT, 2026-09-22. I expected this to carry the same
+        # sea-level referencing as TEON's EXO Do_percent. It doesn't.
+        # Across all six nearshore sites the MiniDOT's own figure agrees
+        # with a saturation computed independently from its concentration
+        # and temperature at lake pressure, to within 0.4 points:
+        #
+        #   Camp Richardson  102.96 published / 102.6 computed
+        #   tallac_lake      103.78 / 103.4      Lakeside  99.91 / 99.4
+        #
+        # So the MiniDOTs are altitude-corrected and the EXO sondes are
+        # not — within the same network. That rules out a deliberate
+        # sea-level convention and points at EXO configuration.
+        # See docs/dissolved-oxygen.md.
+        "Dissolved Oxygen Saturation":  {"label": "DO sat",     "units": "%"},
         "Battery":                      {"label": "Battery",    "units": "V",
                                          "hidden": True},
     },
