@@ -40,10 +40,11 @@ from secchi.sources.teon import TeonClient
 
 log = logging.getLogger("secchi.backfill")
 
-# Rows held in memory before flushing to disk. 20,000 observations is a
-# few MB — small enough to be safe on any machine, large enough that a
-# 600,000-record sensor doesn't cause thousands of tiny writes.
-CHUNK_ROWS = 20_000
+# Rows held in memory before flushing. Raised from 20,000 now that a
+# flush is a plain append rather than a whole-partition rewrite —
+# 100,000 rows is a few tens of MB, and fewer, larger part files make
+# compaction cheaper too.
+CHUNK_ROWS = 100_000
 
 # Page size to request. TEON has served 50 reliably; larger values are
 # untested, so the default stays conservative and `--page-size` allows
@@ -298,7 +299,7 @@ def run_backfill(stage_name: str,
                  page_size: int = DEFAULT_BACKFILL_PAGE_SIZE,
                  dry_run: bool = False) -> int:
     """Run one backfill stage."""
-    from secchi.store import write_partitions
+    from secchi.store import append_partitions, compact_partitions
 
     stage = STAGES.get(stage_name)
     if not stage:
@@ -309,9 +310,16 @@ def run_backfill(stage_name: str,
     root = PROCESSED_DIR / "observations"
 
     def writer(df: pd.DataFrame) -> None:
+        """Append without reading. Compaction happens once, at the end.
+
+        The read-merge-write path is quadratic for a backfill: the
+        precipitation gauge's 1,780,521 observations meant 89 flushes
+        each rewriting everything accumulated, 80 million row writes for
+        1.8 million rows, and it filled the disk mid-run.
+        """
         if df is None or df.empty:
             return
-        write_partitions(df, root, "teon", ["uuid", "site", "variable"])
+        append_partitions(df, root, "teon")
 
     print(f"\n  stage: {stage.name}")
     print(f"  {stage.note}\n")
@@ -336,6 +344,15 @@ def run_backfill(stage_name: str,
             results.append(backfill_sensor(
                 client, t["_sensor_type"], t["site"],
                 t.get("data_count") or 0, page_size, writer, dry_run))
+
+    # One compaction pass for everything the run appended. Merges the
+    # part files per partition and deduplicates, so the store ends in
+    # the same shape the hourly cron expects.
+    print("\n  compacting...")
+    out = compact_partitions(root, ["uuid", "site", "variable"])
+    if out.get("compacted"):
+        print(f"  merged {out['compacted']} partition(s), "
+              f"{out['rows']:,} rows, removed {out['files_removed']} part file(s)")
 
     print()
     print(f"  {'sensor':22}{'site':20}{'pages':>7}{'records':>10}"

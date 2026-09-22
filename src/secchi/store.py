@@ -42,6 +42,10 @@ log = logging.getLogger("secchi.store")
 
 PARTITION_FILE = "part.parquet"
 
+# Files a partition may contain. Append mode writes "part-<n>.parquet"
+# alongside the canonical "part.parquet"; compaction merges them back.
+PARTITION_GLOB = "part*.parquet"
+
 
 def partition_path(root: Path, source: str, year: int, month: int) -> Path:
     """Hive-style path for one partition."""
@@ -76,7 +80,7 @@ def read_partitions(root: Path,
     """
     if not root.exists():
         return pd.DataFrame()
-    files = sorted(root.rglob(PARTITION_FILE))
+    files = sorted(root.rglob(PARTITION_GLOB))
     if not files:
         return pd.DataFrame()
     frames = []
@@ -88,6 +92,104 @@ def read_partitions(root: Path,
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
+
+
+def append_partitions(df: pd.DataFrame,
+                      root: Path,
+                      source: str) -> dict:
+    """Write rows as NEW part files, without reading what's there.
+
+    :func:`write_partitions` reads the existing partition, concatenates,
+    deduplicates and writes it all back. That's right for the hourly
+    cron, which adds a few thousand rows to a partition of similar size.
+
+    It is quadratic for a backfill. The precipitation gauge holds
+    1,780,521 observations; flushing every 20,000 rows meant 89 flushes,
+    each rewriting everything accumulated so far — **80 million row
+    writes for 1.8 million rows of data, a 45x amplification.** About
+    2 GB written to store 45 MB, and it filled the disk mid-run.
+
+    So: append without reading, then compact once at the end. Two passes
+    over the data instead of ninety.
+    """
+    if df.empty:
+        return {"partitions_touched": 0, "rows_written": 0}
+
+    keyed = _partition_keys(df, source)
+    touched = 0
+    written = 0
+
+    for (year, month), group in keyed.groupby(["_year", "_month"], sort=True):
+        target = partition_path(root, source, int(year), int(month))
+        target.mkdir(parents=True, exist_ok=True)
+
+        # A counter rather than a uuid, so the files sort predictably and
+        # a half-finished run is legible on disk.
+        existing = len(list(target.glob("part-*.parquet")))
+        path = target / f"part-{existing + 1:05d}.parquet"
+
+        chunk = group.drop(columns=["_year", "_month", "_source"])
+        chunk.to_parquet(path, index=False)
+        touched += 1
+        written += len(chunk)
+
+    return {"partitions_touched": touched, "rows_written": written}
+
+
+def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
+    """Merge every partition's part files into one, deduplicating.
+
+    The other half of append-then-compact. Only partitions holding more
+    than one file are touched, so running it twice costs almost nothing.
+    """
+    if not root.exists():
+        return {"compacted": 0, "rows": 0}
+
+    compacted = 0
+    total_rows = 0
+    removed_files = 0
+
+    # Directories holding at least one part file.
+    dirs = {f.parent for f in root.rglob(PARTITION_GLOB)}
+    for target in sorted(dirs):
+        files = sorted(target.glob(PARTITION_GLOB))
+        if len(files) <= 1:
+            # Already a single file; nothing to merge. Rename it to the
+            # canonical name if a bare append created part-00001 only.
+            if len(files) == 1 and files[0].name != PARTITION_FILE:
+                files[0].replace(target / PARTITION_FILE)
+            continue
+
+        frames = []
+        for f in files:
+            try:
+                frames.append(pd.read_parquet(f))
+            except Exception as exc:
+                log.warning("could not read %s (%s); skipping", f, exc)
+        if not frames:
+            continue
+
+        merged = pd.concat(frames, ignore_index=True)
+        merged = merged.drop_duplicates(subset=dedupe_on).reset_index(drop=True)
+        if "timestamp" in merged.columns:
+            merged = merged.sort_values("timestamp").reset_index(drop=True)
+
+        # Write the canonical file first, then remove the parts, so an
+        # interruption leaves duplicates rather than a hole.
+        merged.to_parquet(target / PARTITION_FILE, index=False)
+        for f in files:
+            if f.name != PARTITION_FILE:
+                f.unlink()
+                removed_files += 1
+
+        compacted += 1
+        total_rows += len(merged)
+
+    if compacted:
+        log.info("compacted %d partition(s) to %s rows, removed %d part file(s)",
+                 compacted, f"{total_rows:,}", removed_files)
+    return {"compacted": compacted, "rows": total_rows,
+            "files_removed": removed_files}
 
 
 def write_partitions(df: pd.DataFrame,
@@ -154,7 +256,7 @@ def partition_summary(root: Path) -> list[dict]:
     if not root.exists():
         return []
     out = []
-    for f in sorted(root.rglob(PARTITION_FILE)):
+    for f in sorted(root.rglob(PARTITION_GLOB)):
         rel = f.relative_to(root)
         try:
             # Row count from the file's own metadata — no need to read
@@ -228,7 +330,7 @@ def purge_site(root: Path, site: str) -> dict:
     removed = 0
     touched = 0
     emptied = 0
-    for path in sorted(root.rglob(PARTITION_FILE)):
+    for path in sorted(root.rglob(PARTITION_GLOB)):
         try:
             df = pd.read_parquet(path)
         except Exception as exc:
@@ -278,7 +380,7 @@ def repair_sensor_types(root: Path, mapping: dict[str, str]) -> dict:
     touched = 0
     seen: dict[str, int] = {}
 
-    for path in sorted(root.rglob(PARTITION_FILE)):
+    for path in sorted(root.rglob(PARTITION_GLOB)):
         try:
             df = pd.read_parquet(path)
         except Exception as exc:
@@ -320,7 +422,7 @@ def migrate_monolith(monolith: Path,
     """
     if not monolith.exists():
         return {"migrated": False, "reason": "no monolithic file to migrate"}
-    if root.exists() and any(root.rglob(PARTITION_FILE)):
+    if root.exists() and any(root.rglob(PARTITION_GLOB)):
         return {"migrated": False, "reason": "partitions already exist"}
 
     df = pd.read_parquet(monolith)
