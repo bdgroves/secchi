@@ -631,9 +631,16 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
     if mode == "purge-hidden":
         # Remove data for any site TEON has flagged non-public. Needed
         # after a backfill that predated the visibility check.
-        from secchi.sources.teon import TeonClient
+        #
+        # NOTE: TeonClient is imported at module level and must NOT be
+        # re-imported here. A local import is an assignment, and Python
+        # makes a name local to the WHOLE function if it's assigned
+        # anywhere in it — so a local `import TeonClient` in this branch
+        # shadowed the module-level one for every OTHER branch, and the
+        # hourly cron died with UnboundLocalError. The module still
+        # imported, the tests still passed, and `purge-hidden` itself
+        # still worked; only the paths that never reach this line broke.
         from secchi.store import purge_site
-        from secchi.config import PROCESSED_DIR
         with TeonClient() as client:
             try:
                 hidden = client.disabled_sites()
@@ -663,7 +670,6 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         return 0
     if mode == "drop-undated":
         from secchi.store import drop_partition
-        from secchi.config import PROCESSED_DIR
         total = 0
         for name, src in (("observations", "teon"),
                           ("usgs_observations", "usgs"),
@@ -679,7 +685,6 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         return 0
     if mode == "store-status":
         from secchi.store import partition_summary
-        from secchi.config import PROCESSED_DIR
         total_rows = total_kb = 0
         for name in ("observations", "usgs_observations", "assets"):
             rows = partition_summary(PROCESSED_DIR / name)
