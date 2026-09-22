@@ -1037,11 +1037,29 @@ def _slugify_site(site: str) -> str:
     return (site or "").lower().replace(" ", "")
 
 
+def count_held_records(df_long: pd.DataFrame) -> dict[str, int]:
+    """Unique records actually in our store, keyed by site.
+
+    The map's colour comes from TEON's inventory, which reports what
+    EXISTS upstream. The data comes from ingest, which only targets live
+    sensors. Those two can disagree badly: when a manual sonde is
+    retrieved and uploaded, the inventory jumps by thousands of records
+    while we have pulled none of them.
+
+    Without this the pin would turn green on the strength of data we
+    don't have — worse than leaving it grey, because it looks answered.
+    """
+    if df_long.empty or "uuid" not in df_long.columns:
+        return {}
+    return (df_long.groupby("site")["uuid"].nunique().to_dict())
+
+
 def build_map_points(inventory: list[dict],
                      lake: dict,
                      stations: dict,
                      gauges: dict,
-                     disabled: list[str]) -> dict:
+                     disabled: list[str],
+                     held: dict[str, int] | None = None) -> dict:
     """Everything with a coordinate, shaped for the map layer.
 
     One entry per physical location rather than per sensor, because the
@@ -1075,6 +1093,10 @@ def build_map_points(inventory: list[dict],
             "is_live": False,
             "is_manual": False,
             "disabled": _slugify_site(site) in disabled_set,
+            # Records upstream vs records we hold. A gap means there is
+            # data published that we haven't ingested — which is exactly
+            # the state a manual sonde enters the moment it's uploaded.
+            "held_records": (held or {}).get(site, 0),
         })
         stype = row.get("sensor_type_display") or row.get("sensor_type")
         if stype and stype not in pt["sensor_types"]:
@@ -1133,8 +1155,39 @@ def build_map_points(inventory: list[dict],
             "readings": g.get("readings", {}),
         })
 
+    # A manual sonde with unpulled records is its own state: not broken,
+    # not up to date, and specifically actionable (run a backfill).
+    for pt in out:
+        if pt.get("is_manual"):
+            gap = (pt.get("records") or 0) - (pt.get("held_records") or 0)
+            pt["unpulled_records"] = max(0, gap)
+
     out.sort(key=lambda r: (_CATEGORY_ORDER.get(r["category"], 99), r["site"]))
     return {"points": out}
+
+
+def build_manual_sondes(inventory: list[dict]) -> list[dict]:
+    """The self-logging lake sondes and their current position.
+
+    Replaces a hardcoded sentence in the dashboard that named both sites,
+    their shore and the date they stopped — "stopped reporting on
+    2026-07-09 pending physical retrieval". Every part of that was baked
+    into the HTML and would have stayed frozen at that date forever,
+    including after a retrieval made it false.
+    """
+    out = []
+    for row in inventory:
+        if not row.get("is_manual"):
+            continue
+        out.append({
+            "site": row.get("site"),
+            "shore": row.get("shore"),
+            "last_update": row.get("last_update"),
+            "records": row.get("data_count"),
+            "sensor_type": row.get("sensor_type_display") or row.get("sensor_type"),
+        })
+    out.sort(key=lambda r: r["site"] or "")
+    return out
 
 
 def build_transect_line(transect: dict | None) -> dict | None:
@@ -1237,9 +1290,11 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "gauges": gauges,
         "disabled": sorted(disabled),
         "inventory": inv,
-        "map": build_map_points(inv, lake, stations, gauges, sorted(disabled)),
+        "map": build_map_points(inv, lake, stations, gauges, sorted(disabled),
+                                count_held_records(df_long)),
         "transect_line": build_transect_line(transect),
         "watersheds": watersheds,
+        "manual_sondes": build_manual_sondes(inv),
     }
 
 

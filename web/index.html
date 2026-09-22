@@ -232,6 +232,12 @@
   .pin-stale   { background: var(--ember); }
   .pin-dormant { background: var(--muted); }
   .pin-hidden  { background: transparent; border: 2px dashed var(--muted); }
+  /* Self-logging sondes. Not broken and not live — collected by hand on a
+     monthly cycle. Rendering them the same grey as a failed sensor was
+     actively misleading. */
+  .pin-manual  { background: var(--paper); border: 2px solid var(--wet);
+                 box-shadow: 0 0 0 1px rgba(0,0,0,.25), inset 0 0 0 2px var(--paper); }
+  .pin-manual-pending { background: var(--ember); border: 2px solid var(--paper); }
   .pin-gauge   { background: var(--wet); border-radius: 2px; transform: rotate(45deg); }
 
   /* Watershed choropleth */
@@ -272,6 +278,8 @@
   .lg-stale { background: var(--ember); }
   .lg-dormant { background: var(--muted); }
   .lg-hidden { border: 1px dashed var(--muted); }
+  .lg-manual { background: var(--paper); border: 2px solid var(--wet); }
+  .lg-manual-pending { background: var(--ember); }
   .lg-gauge { background: var(--wet); border-radius: 1px; }
   .lg-transect { width: 1.4rem; height: 0; border-top: 2px dashed var(--ember);
                  border-radius: 0; }
@@ -353,6 +361,8 @@
     <span><i class="lg-stale"></i>quiet &lt; 30 days</span>
     <span><i class="lg-dormant"></i>dormant</span>
     <span><i class="lg-hidden"></i>hidden by TEON</span>
+    <span><i class="lg-manual"></i>collected by hand</span>
+    <span><i class="lg-manual-pending"></i>uploaded, not yet pulled</span>
     <span><i class="lg-gauge"></i>USGS gauge</span>
     <span><i class="lg-transect"></i>transect</span>
   </div>
@@ -902,6 +912,13 @@
   function pinClass(p) {
     if (p.source === "USGS") return "pin-gauge";
     if (p.disabled) return "pin-hidden";
+    // A self-logging sonde is never "dormant" — it works fine, it's just
+    // read by hand once a month. Two states of its own:
+    //   pending  TEON has published records we haven't ingested yet
+    //   manual   we hold everything currently published
+    if (p.is_manual) {
+      return (p.unpulled_records > 0) ? "pin-manual-pending" : "pin-manual";
+    }
     const st = ageState(p.last_update);
     return st === "live" ? "pin-live" : st === "stale" ? "pin-stale" : "pin-dormant";
   }
@@ -935,7 +952,11 @@
 
     const flags = [];
     if (p.disabled) flags.push("hidden by TEON");
-    if (p.is_manual) flags.push("manual retrieval");
+    if (p.is_manual) {
+      flags.push(p.unpulled_records > 0
+        ? `${fmtInt.format(p.unpulled_records)} records published, not yet pulled`
+        : "collected by hand, up to date");
+    }
     const flagHtml = flags.map(f => `<span class="pop-flag">${esc(f)}</span>`).join(" ");
 
     return `
@@ -1279,9 +1300,37 @@
         text.textContent = "No live observations available.";
       }
 
-      $("offline").innerHTML =
-        `Two more EXO sites — <em>Blackwood 3</em> and <em>Meeks</em>, both west-shore — `
-        + `are manual sondes and stopped reporting on 2026-07-09 pending physical retrieval.`;
+      // Built from the inventory rather than hardcoded. The previous
+      // version named both sites, their shore and the date they stopped
+      // — all baked into the HTML, and all of it wrong the moment a
+      // retrieval happened.
+      const manual = snap.manual_sondes || [];
+      if (manual.length) {
+        const pts = (snap.map && snap.map.points) || [];
+        const gapFor = (site) => {
+          const pt = pts.find(x => x.site === site);
+          return pt ? (pt.unpulled_records || 0) : 0;
+        };
+        const parts = manual.map(m => {
+          const gap = gapFor(m.site);
+          const when = m.last_update ? timeAgo(m.last_update) : "never";
+          const tail = gap > 0
+            ? ` — <strong>${fmtInt.format(gap)} records published that we haven't pulled yet</strong>`
+            : ` — newest record ${esc(when)}`;
+          return `<em>${esc(m.site)}</em>${m.shore ? ` (${esc(m.shore)} shore)` : ""}${tail}`;
+        });
+        const anyPending = manual.some(m => gapFor(m.site) > 0);
+        $("offline").innerHTML =
+          `${manual.length === 2 ? "Two" : manual.length} EXO sites are `
+          + `<strong>self-logging</strong>: they store to memory and are read `
+          + `by hand, roughly monthly, by boat and snorkel. Not broken — `
+          + `just on a different clock. ${parts.join(". ")}.`
+          + (anyPending
+              ? ` A backfill is needed to bring that history in.`
+              : ``);
+      } else {
+        $("offline").innerHTML = "";
+      }
 
     }
   }
