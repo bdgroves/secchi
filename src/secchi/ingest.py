@@ -628,6 +628,39 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
     if mode == "record-shape":
         from secchi.probe_shape import probe_record_shapes
         return probe_record_shapes()
+    if mode == "purge-hidden":
+        # Remove data for any site TEON has flagged non-public. Needed
+        # after a backfill that predated the visibility check.
+        from secchi.sources.teon import TeonClient
+        from secchi.store import purge_site
+        from secchi.config import PROCESSED_DIR
+        with TeonClient() as client:
+            try:
+                hidden = client.disabled_sites()
+            except Exception:
+                log.exception("could not read the site-visibility list")
+                return 1
+            inventory = list(client.iter_inventory())
+
+        def slug(x: str) -> str:
+            return (x or "").lower().replace(" ", "").replace("_", "").replace("-", "")
+
+        hidden_slugs = {slug(h) for h in hidden}
+        sites = sorted({r["site"] for r in inventory
+                        if slug(r["site"]) in hidden_slugs})
+        if not sites:
+            print("\n  no hidden sites in the inventory.\n")
+            return 0
+
+        total = 0
+        for name in ("observations", "assets"):
+            for site_name in sites:
+                out = purge_site(PROCESSED_DIR / name, site_name)
+                total += out.get("rows_removed", 0)
+        print(f"\n  removed {total:,} row(s) for {', '.join(sites)}.")
+        print("  These sites are flagged non-public by TEON; the backfill")
+        print("  now skips them, so this should not recur.\n")
+        return 0
     if mode == "drop-undated":
         from secchi.store import drop_partition
         from secchi.config import PROCESSED_DIR
@@ -728,7 +761,7 @@ def main(argv: list[str] | None = None) -> int:
                  "usgs", "usgs-probe", "usgs-discover", "usgs-params",
                  "camera-probe", "reference", "reference-inspect",
                  "catchment-join", "watch", "backfill", "store-status",
-                 "record-shape", "drop-undated",
+                 "record-shape", "drop-undated", "purge-hidden",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -749,10 +782,12 @@ def main(argv: list[str] | None = None) -> int:
             "and report new sensors, sensors resuming, and data going dark. "
             "record-shape: fetch one record per sensor type and report its "
             "field names, including which key carries the timestamp. "
+            "purge-hidden: remove stored data for any site TEON flags "
+            "non-public. "
             "drop-undated: delete the year=0000 partitions holding rows whose "
             "timestamp could not be parsed. "
             "backfill: pull a sensor group's full history straight into the "
-            "partitioned store (--stage manual|nearshore|blackwood). "
+            "partitioned store; see --stage. "
             "store-status: list partitions with row counts and sizes. "
             "reference: cache the watershed polygons and attributes. "
             "reference-inspect: report the cached polygon file's CRS, extent "
@@ -763,12 +798,18 @@ def main(argv: list[str] | None = None) -> int:
             "prune: delete raw snapshots past the retention window."
         ),
     )
+    # Derived from backfill.STAGES rather than restated here. A hardcoded
+    # copy is how `--stage live` came to be rejected while the stage
+    # itself existed — the same drift the record-shape probe had with its
+    # own candidate list. Two places to edit is one place too many.
+    from secchi.backfill import STAGES as _BACKFILL_STAGES
+
     parser.add_argument(
         "--stage",
-        choices=("manual", "nearshore", "blackwood"),
-        help="Which backfill stage to run. manual = the two hand-collected "
-             "lake sondes (~31k records); nearshore = MiniDot + HOBO "
-             "(~480k); blackwood = precipitation + stream chemistry (~718k).",
+        choices=tuple(_BACKFILL_STAGES),
+        help="Which backfill stage to run. "
+             + " ".join(f"{name}: {st.note.split('.')[0]}."
+                        for name, st in _BACKFILL_STAGES.items()),
     )
     parser.add_argument(
         "--site",

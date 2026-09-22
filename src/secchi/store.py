@@ -208,6 +208,55 @@ def drop_partition(root: Path, source: str, year: int, month: int) -> dict:
     return {"dropped": True, "rows": rows, "kb": round(kb, 1)}
 
 
+def purge_site(root: Path, site: str) -> dict:
+    """Remove every row for one site from every partition.
+
+    Written because a `live` backfill pulled 52,875 records from 4H Camp,
+    the site TEON flags non-public via /site-visibility/disabled. The
+    dashboard honoured the flag; the backfill never checked it.
+
+    The data was fetched from a public endpoint and isn't secret, but the
+    observatory asked that it not be published and this store is
+    committed to a public repository. Honouring the request means
+    removing it, not just declining to display it.
+
+    Only partitions actually containing the site are rewritten.
+    """
+    if not root.exists():
+        return {"purged": False, "reason": "no store"}
+
+    removed = 0
+    touched = 0
+    emptied = 0
+    for path in sorted(root.rglob(PARTITION_FILE)):
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            log.warning("could not read %s (%s); skipping", path, exc)
+            continue
+        if "site" not in df.columns:
+            continue
+        mask = df["site"] == site
+        n = int(mask.sum())
+        if not n:
+            continue
+
+        kept = df[~mask]
+        removed += n
+        touched += 1
+        if kept.empty:
+            path.unlink()
+            emptied += 1
+        else:
+            kept.to_parquet(path, index=False)
+
+    log.info("purged %s: %d row(s) from %d partition(s)%s",
+             site, removed, touched,
+             f", {emptied} partition(s) now empty and removed" if emptied else "")
+    return {"purged": True, "site": site, "rows_removed": removed,
+            "partitions_touched": touched}
+
+
 def migrate_monolith(monolith: Path,
                      root: Path,
                      source: str,

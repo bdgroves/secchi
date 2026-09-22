@@ -63,6 +63,11 @@ class BackfillStage:
     sensor_types: tuple[str, ...]
     note: str
     manual_only: bool = False
+    # The mirror of manual_only. The `live` stage wants exactly the
+    # sensors the hand-collected stages exclude: telemetered instruments
+    # whose history we've never pulled because the cron only ever takes
+    # the newest 200 records.
+    telemetered_only: bool = False
 
 
 STAGES: dict[str, BackfillStage] = {
@@ -78,6 +83,17 @@ STAGES: dict[str, BackfillStage] = {
         sensor_types=("Minidot", "Hobo"),
         note="Six shared nearshore sites, paired DO and temperature. "
              "~480k records. Needs the partitioned store.",
+    ),
+    "live": BackfillStage(
+        name="live",
+        sensor_types=("EXO", "Air Temperature & Relative Humidity",
+                      "Soil Environmental Conditions", "Tree stress and growth",
+                      "Stream Level"),
+        telemetered_only=True,
+        note="History for the sensors that ARE reporting. ~427k records. "
+             "The hourly cron only ever fetched the newest 200 per sensor, "
+             "so everything before we started running is missing — including "
+             "both live lake sondes and the entire transect.",
     ),
     "blackwood": BackfillStage(
         name="blackwood",
@@ -100,23 +116,100 @@ class SensorResult:
 
 
 def _is_manual(sensor: dict) -> bool:
-    return "Manual" in (sensor.get("id") or "")
+    """Hand-collected, by TEON's label or by instrument class.
+
+    Mirrors the transform's rule so the two can't disagree about which
+    fleet a sensor belongs to — a `live` stage that accidentally included
+    MiniDot would re-fetch half a million records for nothing.
+    """
+    from secchi.config import MANUAL_COLLECTION_TYPES
+    return ("Manual" in (sensor.get("id") or "")
+            or sensor.get("_sensor_type") in MANUAL_COLLECTION_TYPES)
+
+
+def _slugify_site(site: str) -> str:
+    """Match TEON's own site-slug form, used by /site-visibility/disabled."""
+    return (site or "").lower().replace(" ", "").replace("_", "").replace("-", "")
 
 
 def select_targets(client: TeonClient,
                    stage: BackfillStage,
                    site: str | None = None) -> list[dict]:
-    """Inventory rows this stage should pull."""
+    """Inventory rows this stage should pull.
+
+    Excludes sites TEON has flagged non-public. That check was missing
+    from the first version and a `live` backfill pulled 52,875 records
+    from 4H Camp — a site the observatory explicitly asked not be
+    published. The dashboard honoured the flag; the backfill didn't even
+    look at it.
+
+    Also collapses shared loggers. At every terrestrial station the soil,
+    air-temperature, tree-stress and stream-level endpoints are
+    projections of ONE Campbell table with identical record ids and
+    identical row counts. Fetching all of them means fetching the same
+    logger two or three times: 684,366 of 1,410,562 records in the first
+    live run — 49 % — were duplicates of each other. The store deduped
+    them correctly; the cost was in requests and time.
+    """
+    try:
+        disabled = {_slugify_site(d) for d in client.disabled_sites()}
+    except Exception:
+        log.warning("could not read the site-visibility list; "
+                    "refusing to backfill rather than risk a hidden site")
+        return []
+
     targets = []
+    skipped_hidden: list[str] = []
     for s in client.iter_inventory():
+        if _slugify_site(s["site"]) in disabled:
+            skipped_hidden.append(f"{s['_sensor_type']} @ {s['site']}")
+            continue
         if s["_sensor_type"] not in stage.sensor_types:
             continue
         if stage.manual_only and not _is_manual(s):
             continue
+        if stage.telemetered_only and _is_manual(s):
+            continue
         if site and s["site"] != site:
             continue
         targets.append(s)
-    return targets
+
+    if skipped_hidden:
+        log.info("skipping %d sensor(s) at site(s) TEON has flagged "
+                 "non-public: %s", len(skipped_hidden),
+                 ", ".join(sorted(skipped_hidden)))
+
+    # Collapse shared loggers: at one site, endpoints reporting an
+    # identical record count are the same table under different names.
+    # Keep one, and note which endpoints it stands in for.
+    by_site: dict[str, list[dict]] = {}
+    for t in targets:
+        by_site.setdefault(t["site"], []).append(t)
+
+    collapsed: list[dict] = []
+    for site_name, rows in by_site.items():
+        by_count: dict[int, list[dict]] = {}
+        for r in rows:
+            by_count.setdefault(r.get("data_count") or 0, []).append(r)
+        for count, group in by_count.items():
+            if len(group) > 1 and count > 0:
+                keep = group[0]
+                keep = {**keep, "_shares_logger_with":
+                        [g["_sensor_type"] for g in group[1:]]}
+                log.info("%s: %s share one logger (%s records); fetching once",
+                         site_name,
+                         " / ".join(g["_sensor_type"] for g in group),
+                         f"{count:,}")
+                collapsed.append(keep)
+            else:
+                collapsed.extend(group)
+
+    saved = sum(t.get("data_count") or 0 for t in targets) \
+        - sum(t.get("data_count") or 0 for t in collapsed)
+    if saved:
+        log.info("shared-logger collapse avoids re-fetching %s records", f"{saved:,}")
+
+    return collapsed
 
 
 def backfill_sensor(client: TeonClient,

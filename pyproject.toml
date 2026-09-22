@@ -131,13 +131,16 @@ watch-update = "python -m secchi.ingest --mode watch --update-baseline"
 backfill = "python -m secchi.ingest --mode backfill"
 # List every partition with row counts and sizes.
 store-status = "python -m secchi.ingest --mode store-status"
-# Fetch one record per sensor type and report its field names. Run this
-# BEFORE any backfill of a sensor type you haven't pulled before — a
-# hardcoded timestamp key cost 1.49M rows their timestamps on 2026-09-22.
+# Fetch one record per sensor type and report its field names. Run before
+# backfilling a sensor type you haven't pulled before.
 record-shape = "python -m secchi.ingest --mode record-shape"
 # Delete the year=0000 partitions holding rows whose timestamp wouldn't
 # parse. Use after fixing the field name, then re-run the backfill.
 drop-undated = "python -m secchi.ingest --mode drop-undated"
+# Remove stored data for any site TEON flags non-public. Needed after a
+# backfill that predated the visibility check; the backfill now skips
+# them, so this should not recur. See docs/respecting-the-flag.md.
+purge-hidden = "python -m secchi.ingest --mode purge-hidden"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.
