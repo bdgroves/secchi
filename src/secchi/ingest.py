@@ -625,6 +625,25 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         from secchi.backfill import run_backfill
         return run_backfill(stage or "manual", site=site,
                             page_size=page_size, dry_run=dry_run)
+    if mode == "record-shape":
+        from secchi.probe_shape import probe_record_shapes
+        return probe_record_shapes()
+    if mode == "drop-undated":
+        from secchi.store import drop_partition
+        from secchi.config import PROCESSED_DIR
+        total = 0
+        for name, src in (("observations", "teon"),
+                          ("usgs_observations", "usgs"),
+                          ("assets", "teon")):
+            out = drop_partition(PROCESSED_DIR / name, src, 0, 0)
+            if out.get("dropped"):
+                total += max(0, out.get("rows", 0))
+        if total:
+            print(f"\n  dropped {total:,} undated row(s). Re-run the affected "
+                  f"backfill once\n  the timestamp field is configured.\n")
+        else:
+            print("\n  no undated partitions to drop.\n")
+        return 0
     if mode == "store-status":
         from secchi.store import partition_summary
         from secchi.config import PROCESSED_DIR
@@ -709,6 +728,7 @@ def main(argv: list[str] | None = None) -> int:
                  "usgs", "usgs-probe", "usgs-discover", "usgs-params",
                  "camera-probe", "reference", "reference-inspect",
                  "catchment-join", "watch", "backfill", "store-status",
+                 "record-shape", "drop-undated",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -727,6 +747,10 @@ def main(argv: list[str] | None = None) -> int:
             "over public HTTPS. "
             "watch: compare the upstream inventory against a stored baseline "
             "and report new sensors, sensors resuming, and data going dark. "
+            "record-shape: fetch one record per sensor type and report its "
+            "field names, including which key carries the timestamp. "
+            "drop-undated: delete the year=0000 partitions holding rows whose "
+            "timestamp could not be parsed. "
             "backfill: pull a sensor group's full history straight into the "
             "partitioned store (--stage manual|nearshore|blackwood). "
             "store-status: list partitions with row counts and sizes. "

@@ -172,6 +172,42 @@ def partition_summary(root: Path) -> list[dict]:
     return out
 
 
+def drop_partition(root: Path, source: str, year: int, month: int) -> dict:
+    """Delete one partition.
+
+    Exists for the undated bucket. On 2026-09-22 a nearshore backfill
+    filed 1,490,116 rows under ``year=0000`` because the timestamp key
+    differed by sensor type — 24 MB of rows that can't be plotted,
+    ordered or windowed. Once the key is fixed the right move is to drop
+    that partition and re-run the backfill, not to try repairing rows
+    that never had a usable time.
+    """
+    target = partition_path(root, source, year, month)
+    path = target / PARTITION_FILE
+    if not path.exists():
+        return {"dropped": False, "reason": "partition does not exist"}
+
+    try:
+        import pyarrow.parquet as pq
+        rows = pq.ParquetFile(path).metadata.num_rows
+    except Exception:
+        rows = -1
+    kb = path.stat().st_size / 1024
+
+    path.unlink()
+    # Tidy the now-empty directories, but never above `root`.
+    for parent in (target, target.parent):
+        try:
+            if parent != root and not any(parent.iterdir()):
+                parent.rmdir()
+        except OSError:
+            break
+
+    log.info("dropped %s (%s rows, %.1f KB)",
+             target.relative_to(root), f"{rows:,}" if rows >= 0 else "?", kb)
+    return {"dropped": True, "rows": rows, "kb": round(kb, 1)}
+
+
 def migrate_monolith(monolith: Path,
                      root: Path,
                      source: str,

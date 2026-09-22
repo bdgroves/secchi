@@ -123,6 +123,65 @@ ASSET_FIELDS = frozenset({"image"})
 # alternative reading (twelve radios failing on one day) is worse.
 MANUAL_COLLECTION_TYPES: frozenset[str] = frozenset({"Minidot", "Hobo"})
 
+
+# ===========================================================================
+# Timestamp field names
+# ===========================================================================
+# EXO records carry the observation time in "TIMESTAMP". The transform
+# hardcoded that key, and on 2026-09-22 a nearshore backfill filed
+# 1,490,116 MiniDot and HOBO rows under year=0000 because their records
+# apparently call it something else.
+#
+# The failure was silent in this project's characteristic way: the
+# backfill reported success, the rows were written, nothing raised. It
+# only surfaced because year=0000 exists as a deliberate bucket for
+# unparseable timestamps rather than dropping them.
+#
+# So: a list, tried in order, with the resolved key logged. Run
+# `pixi run record-shape` to see what each sensor type actually uses and
+# add any missing name here.
+TEON_TIMESTAMP_FIELDS: tuple[str, ...] = (
+    "TIMESTAMP",        # confirmed: EXO, and the terrestrial Campbell loggers
+    "timestamp",
+    "Timestamp",
+    "TimeStamp",
+    "time",
+    "Time",
+    "datetime",
+    "DateTime",
+    "date_time",
+    "measurement_time",
+    "observed_at",
+    "recorded_at",
+    "sample_time",
+    # Confirmed 2026-09-22 by `pixi run record-shape`:
+    #   Hobo    -> "timestamp"              (already above)
+    #   Minidot -> "Pacific Standard Time"
+    #
+    # That second one is not a typo. A PME MiniDOT's own export writes the
+    # TIMEZONE as the header of its time column, and TEON's loader kept the
+    # header verbatim. The field NAME is a timezone; the VALUE is the
+    # timestamp. Hence the daylight-saving question recorded below.
+    "Pacific Standard Time",
+    "Pacific Daylight Time",
+    "UTC",
+    "GMT",
+)
+
+# MiniDOT's time column is called "Pacific Standard Time" — PST, not
+# "Pacific Time". If those records carry a FIXED -08:00 offset year-round,
+# parsing them as America/Los_Angeles (which shifts for daylight saving)
+# puts every summer reading an hour out.
+#
+# UNCONFIRMED. Settling it needs records either side of a DST boundary;
+# the fleet ran through March 2026, so the backfill should contain one.
+# Recorded here so the question stays visible rather than being silently
+# decided by the default.
+#
+# Until checked, MiniDot rows follow TEON_TIMEZONE like everything else —
+# at worst an hour out in summer, at best exactly right.
+MINIDOT_TIMESTAMP_IS_FIXED_PST: bool | None = None
+
 # A site is reported as OFFLINE rather than hand-collected when every
 # sensor type at it has gone dark. That distinction matters:
 #
@@ -181,6 +240,33 @@ SENSOR_VARIABLES: dict[str, dict[str, dict]] = {
                                   "note": "Always null — lab-only field, not sonde-measured."},
     },
 
+    # PME MiniDOT. Field names confirmed 2026-09-22 by `record-shape`.
+    # Note the shape: Title Case WITH SPACES, unlike the Campbell-style
+    # Air_Temp / BattV_Avg used everywhere else. These come straight from
+    # the MiniDOT's own export, header text and all — which is also why
+    # its timestamp column is called "Pacific Standard Time".
+    "MiniDotSensor": {
+        "Temperature":                  {"label": "Water temp", "units": "°C"},
+        "Dissolved Oxygen":             {"label": "DO",         "units": "mg/L",
+                                         "clip_low": 0.0},
+        # Very likely sea-level referenced, exactly as TEON's EXO
+        # Do_percent turned out to be — a MiniDOT computes saturation from
+        # temperature and a configured pressure, and at 1,898 m an
+        # unconfigured default is 79.5% out. Not yet confirmed for this
+        # fleet: run `pixi run oxygen-check` once the backfill lands and
+        # these rows have timestamps. See docs/dissolved-oxygen.md.
+        "Dissolved Oxygen Saturation":  {"label": "DO sat",     "units": "%",
+                                         "note": "saturation reference unverified"},
+        "Battery":                      {"label": "Battery",    "units": "V",
+                                         "hidden": True},
+    },
+    # Onset HOBO conductivity logger. Lowercase field names — a third
+    # naming convention in one API.
+    "HoboSensor": {
+        "temperature":                  {"label": "Water temp",   "units": "°C"},
+        "conductivity":                 {"label": "Conductivity", "units": "µS/cm",
+                                         "clip_low": 0.0},
+    },
     "AirTemperatureRelativeHumidity": {
         "Air_Temp": {"label": "Air temp",  "units": "°C"},
         "RH":       {"label": "Humidity",  "units": "%"},
