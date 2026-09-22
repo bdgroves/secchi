@@ -141,6 +141,17 @@ drop-undated = "python -m secchi.ingest --mode drop-undated"
 # backfill that predated the visibility check; the backfill now skips
 # them, so this should not recur. See docs/respecting-the-flag.md.
 purge-hidden = "python -m secchi.ingest --mode purge-hidden"
+# Rewrite raw sensor-type values in the store to their canonical form.
+# The backfill wrote "EXO"/"Minidot"/"Hobo" while the hourly ingest wrote
+# "ExoSensor"/"MiniDotSensor"/"HoboSensor", so the same instrument was
+# stored under two names and every downstream filter missed one of them.
+# to_frames now canonicalises on the way in; this fixes what's already
+# stored. One-time.
+repair-sensor-types = "python -m secchi.ingest --mode repair-sensor-types"
+# Test whether each instrument family's DO saturation is referenced to
+# sea level or to pressure at the lake surface. MiniDOT gets it right;
+# the EXO sondes appear not to. See docs/dissolved-oxygen.md.
+oxygen-check = "python -m secchi.ingest --mode oxygen-check"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.

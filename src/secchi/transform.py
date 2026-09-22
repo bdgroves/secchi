@@ -51,6 +51,7 @@ from secchi.config import (
     TREND_SIGNIFICANCE,
     UNIT_CONVERSIONS,
     MANUAL_COLLECTION_TYPES,
+    TEON_TIMESTAMP_FIELDS,
     SENSOR_TYPE_CANONICAL,
     OFFLINE_STATION_MIN_TYPES,
     USGS_DATUMS,
@@ -368,6 +369,33 @@ def load_latest_json(raw_dir: Path, subdir: str) -> dict | None:
 # Flattening
 # ---------------------------------------------------------------------------
 
+# Sensor types whose timestamp key has already been resolved, so the
+# lookup is logged once rather than per record.
+_TS_FIELD_SEEN: dict[str, str] = {}
+
+
+def _record_timestamp(rec: dict,
+                      sensor_type: str = "",
+                      seen: dict[str, str] | None = None) -> str | None:
+    """The observation time, whatever this sensor type calls it.
+
+    Tries each name in :data:`TEON_TIMESTAMP_FIELDS`. Hardcoding
+    ``TIMESTAMP`` cost 1,490,116 MiniDot and HOBO rows their timestamps
+    on 2026-09-22 — filed under year=0000, taking 24 MB and answering
+    nothing, because no sparkline, trend or coverage window can be built
+    without a time.
+    """
+    for key in TEON_TIMESTAMP_FIELDS:
+        value = rec.get(key)
+        if value:
+            if seen is not None and sensor_type:
+                seen.setdefault(sensor_type, key)
+            return value
+    if seen is not None and sensor_type:
+        seen.setdefault(sensor_type, "(none found)")
+    return None
+
+
 def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Flatten snapshots into (numeric observations, assets).
 
@@ -381,6 +409,7 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
     obs_rows: list[dict] = []
     asset_rows: list[dict] = []
     skipped_non_numeric: dict[str, int] = {}
+    resolved_ts_field: dict[str, str] = {}
 
     for snap in snapshots:
         # Canonicalise HERE, the one place every TEON row passes through.
@@ -399,7 +428,8 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
                 "source": "TEON",
                 "site": rec.get("site"),
                 "sensor_type": sensor_type,
-                "timestamp": rec.get("TIMESTAMP"),
+                "timestamp": _record_timestamp(rec, sensor_type,
+                                               resolved_ts_field),
                 "lat": rec.get("latitude"),
                 "lng": rec.get("longitude"),
             }
@@ -427,6 +457,12 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
                     continue
 
                 obs_rows.append({**base, "variable": field, "value": numeric})
+
+    for stype, key in sorted(resolved_ts_field.items()):
+        if key != "TIMESTAMP":
+            log.warning("%s uses %r as its timestamp field, not 'TIMESTAMP' "
+                        "— add it to TEON_TIMESTAMP_FIELDS if missing",
+                        stype, key)
 
     if skipped_non_numeric:
         log.warning("skipped non-numeric values in undeclared fields: %s",

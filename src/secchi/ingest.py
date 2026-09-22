@@ -668,6 +668,9 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         print("  These sites are flagged non-public by TEON; the backfill")
         print("  now skips them, so this should not recur.\n")
         return 0
+    if mode == "oxygen-check":
+        from secchi.analysis.oxygen import check_saturation_basis
+        return check_saturation_basis()
     if mode == "repair-sensor-types":
         from secchi.store import repair_sensor_types
         from secchi.config import SENSOR_TYPE_CANONICAL
@@ -783,7 +786,7 @@ def main(argv: list[str] | None = None) -> int:
                  "camera-probe", "reference", "reference-inspect",
                  "catchment-join", "watch", "backfill", "store-status",
                  "record-shape", "drop-undated", "purge-hidden",
-                 "repair-sensor-types",
+                 "repair-sensor-types", "oxygen-check",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -804,6 +807,8 @@ def main(argv: list[str] | None = None) -> int:
             "and report new sensors, sensors resuming, and data going dark. "
             "record-shape: fetch one record per sensor type and report its "
             "field names, including which key carries the timestamp. "
+            "oxygen-check: test whether each instrument family's DO "
+            "saturation is referenced to sea level or to lake pressure. "
             "repair-sensor-types: rewrite raw sensor-type values in the "
             "store to their canonical form. "
             "purge-hidden: remove stored data for any site TEON flags "
