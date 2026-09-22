@@ -76,13 +76,33 @@ jobs:
             const fs = require('fs');
             const body = fs.readFileSync('watch-report.txt', 'utf8');
             const today = new Date().toISOString().slice(0, 10);
-            await github.rest.issues.create({
+            // Assigning the issue notifies the repo owner regardless of
+            // their watch settings, and puts it in their "Assigned to me"
+            // list. Without this, GitHub's default for a repo you own is
+            // "Participating and @mentions" — and a bot-opened issue
+            // mentions nobody, so it would arrive silently.
+            //
+            // Wrapped because assignment fails if the login is wrong or
+            // lacks access, and a failed assignment must not lose the
+            // issue itself.
+            const issue = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `Upstream change detected — ${today}`,
               body: body.slice(0, 60000),
               labels: ['upstream-change'],
             });
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.data.number,
+                assignees: [context.repo.owner],
+              });
+            } catch (err) {
+              core.warning(`Issue #${issue.data.number} created but could not `
+                + `be assigned: ${err.message}`);
+            }
 
       - name: Commit the updated baseline
         run: |

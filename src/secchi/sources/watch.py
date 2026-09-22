@@ -46,6 +46,12 @@ BASELINE_FILE = "watch_baseline.json"
 # missed hourly run.
 DORMANT_AFTER_DAYS = 30
 
+# How many new records on a non-live sensor count as an upload rather than
+# noise. A manual sonde retrieval delivers thousands at once — Blackwood 3
+# and Meeks each hold about 15,450 records for a single deployment — so
+# this is set well above any plausible trickle and well below a real batch.
+DORMANT_UPLOAD_THRESHOLD = 50
+
 
 def _snapshot_state(teon_inventory: dict, disabled: set[str]) -> dict:
     """Reduce the inventory to the facts worth watching.
@@ -87,8 +93,11 @@ def _snapshot_state(teon_inventory: dict, disabled: set[str]) -> dict:
                 sensors[key] = {
                     "state": state,
                     "last_update": last,
-                    # Record count is kept for the report text but is not
-                    # compared, for the reason in the docstring.
+                    # Record count IS compared, but only for sensors that
+                    # aren't live — see diff_state. For a live sensor it
+                    # changes every hour and would drown the report; for a
+                    # dormant one it should never move at all, so a jump is
+                    # the signature of a manual download being uploaded.
                     "data_count": s.get("data_count"),
                 }
 
@@ -162,6 +171,45 @@ def diff_state(old: dict, new: dict) -> list[dict]:
     for key in sorted(set(old_sensors) - set(new_sensors)):
         changes.append({"severity": "info", "kind": "sensor removed",
                         "detail": key})
+
+    # A dormant sensor whose record suddenly grows has had data uploaded.
+    # This is the specific thing to watch for with Blackwood 3 and Meeks:
+    # they are self-logging sondes that publish nothing until someone
+    # snorkels out, retrieves them and uploads. When that lands, two months
+    # of 15-minute data appear at once.
+    #
+    # State alone can miss it. If the uploaded records end before the
+    # dormancy threshold, the sensor stays "dormant" and a state-only diff
+    # reports nothing — which is exactly the silent failure this project
+    # keeps producing. Record count catches it regardless.
+    for key in sorted(set(old_sensors) & set(new_sensors)):
+        was_state = old_sensors[key].get("state")
+        old_count = old_sensors[key].get("data_count")
+        new_count = new_sensors[key].get("data_count")
+        if old_count is None or new_count is None:
+            continue
+        # Only for sensors that WERE not live. A live sensor's count moves
+        # every hour and comparing it would make every run a change.
+        if was_state == "live":
+            continue
+        growth = new_count - old_count
+        if growth >= DORMANT_UPLOAD_THRESHOLD:
+            changes.append({
+                "severity": "notable",
+                "kind": "dormant sensor received an upload",
+                "detail": key,
+                "note": f"record count {old_count:,} -> {new_count:,} "
+                        f"(+{growth:,}), newest {new_sensors[key].get('last_update')}",
+            })
+        elif growth < 0:
+            # Records disappearing is worth knowing about too — a reload,
+            # a correction, or a bug upstream.
+            changes.append({
+                "severity": "info",
+                "kind": "record count decreased",
+                "detail": key,
+                "note": f"{old_count:,} -> {new_count:,}",
+            })
 
     # State transitions. Waking up is the one worth interrupting someone
     # for — it means data that was unreachable is now flowing.
