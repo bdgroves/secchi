@@ -32,6 +32,7 @@ in place with a glob — no import step, no server.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Iterable
@@ -45,6 +46,32 @@ PARTITION_FILE = "part.parquet"
 # Files a partition may contain. Append mode writes "part-<n>.parquet"
 # alongside the canonical "part.parquet"; compaction merges them back.
 PARTITION_GLOB = "part*.parquet"
+
+
+def _write_atomic(df: pd.DataFrame, path: Path) -> None:
+    """Write a parquet file atomically.
+
+    ``DataFrame.to_parquet`` writes in place. When the disk filled during
+    a backfill on 2026-09-22, that left a TRUNCATED part.parquet and took
+    everything previously in those partitions with it — about 13 % of the
+    nearshore record, 28,535 rows across three sites.
+
+    Writing to a sibling temp file and replacing only on success means a
+    failed write leaves the old file untouched. ``Path.replace`` is
+    atomic on the same filesystem, on Windows as well as POSIX.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        df.to_parquet(tmp, index=False)
+        tmp.replace(path)
+    finally:
+        # A failed write leaves the temp file behind; clear it so the
+        # next run doesn't trip over a partial.
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def partition_path(root: Path, source: str, year: int, month: int) -> Path:
@@ -129,7 +156,7 @@ def append_partitions(df: pd.DataFrame,
         path = target / f"part-{existing + 1:05d}.parquet"
 
         chunk = group.drop(columns=["_year", "_month", "_source"])
-        chunk.to_parquet(path, index=False)
+        _write_atomic(chunk, path)
         touched += 1
         written += len(chunk)
 
@@ -148,6 +175,7 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
     compacted = 0
     total_rows = 0
     removed_files = 0
+    skipped = 0
 
     # Directories holding at least one part file.
     dirs = {f.parent for f in root.rglob(PARTITION_GLOB)}
@@ -161,12 +189,29 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
             continue
 
         frames = []
+        unreadable: list[Path] = []
         for f in files:
             try:
                 frames.append(pd.read_parquet(f))
             except Exception as exc:
-                log.warning("could not read %s (%s); skipping", f, exc)
+                log.error("could not read %s (%s)", f, exc)
+                unreadable.append(f)
         if not frames:
+            continue
+
+        if unreadable:
+            # REFUSE to compact. The previous version skipped an
+            # unreadable file and then deleted it along with the rest,
+            # turning a truncated file into a permanently lost one.
+            #
+            # Leaving the partition alone keeps whatever is still
+            # readable and makes the damage visible, which is the right
+            # trade when the alternative is silent loss.
+            log.error("refusing to compact %s: %d unreadable file(s). "
+                      "Re-run the backfill for this period — the store "
+                      "deduplicates, so it is safe.",
+                      target.relative_to(root), len(unreadable))
+            skipped += 1
             continue
 
         merged = pd.concat(frames, ignore_index=True)
@@ -176,7 +221,7 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
 
         # Write the canonical file first, then remove the parts, so an
         # interruption leaves duplicates rather than a hole.
-        merged.to_parquet(target / PARTITION_FILE, index=False)
+        _write_atomic(merged, target / PARTITION_FILE)
         for f in files:
             if f.name != PARTITION_FILE:
                 f.unlink()
@@ -188,8 +233,11 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
     if compacted:
         log.info("compacted %d partition(s) to %s rows, removed %d part file(s)",
                  compacted, f"{total_rows:,}", removed_files)
+    if skipped:
+        log.error("%d partition(s) left uncompacted because of unreadable "
+                  "files — see the errors above", skipped)
     return {"compacted": compacted, "rows": total_rows,
-            "files_removed": removed_files}
+            "files_removed": removed_files, "skipped": skipped}
 
 
 def write_partitions(df: pd.DataFrame,
@@ -239,7 +287,7 @@ def write_partitions(df: pd.DataFrame,
         if "timestamp" in merged.columns:
             merged = merged.sort_values("timestamp").reset_index(drop=True)
 
-        merged.to_parquet(path, index=False)
+        _write_atomic(merged, path)
         touched += 1
         total_rows += len(merged)
         total_added += max(0, len(merged) - before)
@@ -350,7 +398,7 @@ def purge_site(root: Path, site: str) -> dict:
             path.unlink()
             emptied += 1
         else:
-            kept.to_parquet(path, index=False)
+            _write_atomic(kept, path)
 
     log.info("purged %s: %d row(s) from %d partition(s)%s",
              site, removed, touched,
@@ -397,7 +445,7 @@ def repair_sensor_types(root: Path, mapping: dict[str, str]) -> dict:
             seen[value] = seen.get(value, 0) + int((df["sensor_type"] == value).sum())
 
         df.loc[mask, "sensor_type"] = df.loc[mask, "sensor_type"].map(mapping)
-        df.to_parquet(path, index=False)
+        _write_atomic(df, path)
         changed_rows += n
         touched += 1
 
