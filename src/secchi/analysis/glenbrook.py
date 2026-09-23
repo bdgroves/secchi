@@ -415,15 +415,24 @@ def report() -> int:
             print("    connection from shared weather, and the raster work")
             print("    would be the next step.")
     print()
-    print("    The absolute time constants are approximate — daily")
-    print("    resampling and the baseline estimate both bias them, and on")
-    print("    synthetic data with known values the fit recovered the")
-    print("    ordering but not the magnitudes. The RATIO is what the")
-    print("    conclusion rests on.\n")
-    print("    Caveat: this is observational. A shared drainage rate is")
-    print("    consistent with a hydrological connection and does not")
-    print("    prove one — two sites can drain alike for unrelated")
-    print("    reasons. The controls are what make it more than a")
-    print("    correlation, and the rate is what makes it more than")
-    print("    'everything responds to rain'.\n")
+    # Only the caveats that apply to the conclusion actually drawn.
+    # Printing the recession caveats unconditionally left the output
+    # contradicting itself — explaining how to read a ratio it had just
+    # declined to report.
+    if trustworthy:
+        print("    The absolute time constants are approximate — daily")
+        print("    resampling and the baseline estimate both bias them, and")
+        print("    on synthetic data the fit recovered the ordering but not")
+        print("    the magnitudes. The RATIO is what the conclusion rests on.\n")
+        print("    Caveat: this is observational. A shared drainage rate is")
+        print("    consistent with a hydrological connection and does not")
+        print("    prove one. The controls are what make it more than a")
+        print("    correlation, and the rate more than 'everything responds")
+        print("    to rain'.\n")
+    else:
+        print("    Caveat: the day-to-day correlations above are weak in")
+        print("    absolute terms (0.11 to 0.26). They are worth reporting")
+        print("    only as a direction, and the direction happens to point")
+        print("    away from a stream connection. Do not read them as a")
+        print("    measurement of anything.\n")
     return 0
