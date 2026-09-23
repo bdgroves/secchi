@@ -430,8 +430,13 @@ def report() -> int:
         print("    correlation, and the rate more than 'everything responds")
         print("    to rain'.\n")
     else:
+        # Range computed from this run. It used to be typed in, and went
+        # stale the first time the record changed.
+        shown = [x for x in [r.get("r_delta")]
+                 + [c.get("r_delta") for c in ctl.values()] if x is not None]
+        lo, hi = (min(shown), max(shown)) if shown else (0.0, 0.0)
         print("    Caveat: the day-to-day correlations above are weak in")
-        print("    absolute terms (0.11 to 0.26). They are worth reporting")
+        print(f"    absolute terms ({lo:.2f} to {hi:.2f}). They are worth reporting")
         print("    only as a direction, and the direction happens to point")
         print("    away from a stream connection. Do not read them as a")
         print("    measurement of anything.\n")

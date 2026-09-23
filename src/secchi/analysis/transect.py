@@ -355,15 +355,49 @@ def report() -> int:
                   f"{e_total * VWC_DISPLAY_SCALE:.0f} points, all events)")
             print(f"    catchment precip ratio 2.12")
 
-        # Lag. Storms cross the basin west to east, so a positive mean lag
-        # is an independent check that these are shared systems rather
-        # than coincidental local wetting.
+        # DIRECTION is the robust part: which shore wetted first. That is
+        # a sign, and survives the detector's coarse timing.
+        #
+        # The lag in HOURS is not. Detection runs on daily means, and a
+        # storm that began the previous evening is stamped at 00:00 of
+        # the detection day, so many onsets sit at midnight and many lags
+        # come out at exactly 24 h. Earlier versions reported a mean lag
+        # of +3.7 h and then +11.7 h and called it the sturdiest finding;
+        # the first was truncated by a 12-hour matching window, the second
+        # inflated by midnight stamps. Neither was a travel time.
+        #
+        # So the hour figure is reported only for pairs where BOTH onsets
+        # were resolved to a real hour, with its spread and count, and a
+        # warning when that's too thin to read as anything.
         lags = [(e.start - w.start).total_seconds() / 3600
                 for w, e in result.matched]
         if lags:
-            ahead = sum(1 for l in lags if l > 0)
-            print(f"\n    mean lag, west to east {sum(lags)/len(lags):+.1f} h"
-                  f"   ({ahead} of {len(lags)} reached the west first)")
+            west_first = sum(1 for l in lags if l > 0)
+            east_first = sum(1 for l in lags if l < 0)
+            same = len(lags) - west_first - east_first
+            print(f"\n    reached the west shore first   {west_first} of {len(lags)}"
+                  f"   (east first {east_first}, same hour {same})")
+
+            def _midnight(ts):
+                return ts.hour == 0 and ts.minute == 0
+            resolved = sorted(
+                (e.start - w.start).total_seconds() / 3600
+                for w, e in result.matched
+                if not _midnight(w.start) and not _midnight(e.start))
+            if resolved:
+                mid = resolved[len(resolved) // 2] if len(resolved) % 2 else \
+                    (resolved[len(resolved) // 2 - 1] + resolved[len(resolved) // 2]) / 2
+                spread = resolved[-1] - resolved[0]
+                print(f"    lag, both onsets resolved      median {mid:+.1f} h, "
+                      f"range {resolved[0]:+.0f} to {resolved[-1]:+.0f} h, "
+                      f"n = {len(resolved)}")
+                if len(resolved) < 10 or spread > 12:
+                    print("      Too few or too spread to read as a storm travel")
+                    print("      time. Detection runs on daily means, so most")
+                    print("      onsets can only be placed to the day, not the hour.")
+            else:
+                print("    lag in hours: no pair has both onsets resolved to a")
+                print("      real hour, so only the direction is meaningful.")
         print()
 
     if result.west_only or result.east_only:
