@@ -157,6 +157,10 @@ oxygen-check = "python -m secchi.ingest --mode oxygen-check"
 # Detects wetting events in the soil moisture record itself, since the
 # network's only rain gauge has been dark since August.
 transect = "python -m secchi.ingest --mode transect"
+# Why does Glenbrook 2 read 42% soil moisture when every other station
+# reads 3.4-11.5%? It's the only terrestrial station with its own stream
+# sensor, so we can test whether its soil drains at the creek's rate.
+glenbrook = "python -m secchi.ingest --mode glenbrook"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.

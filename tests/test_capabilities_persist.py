@@ -39,6 +39,7 @@ REQUIRED_MODES = {
     "camera-probe", "record-shape", "reference-inspect", "terc-discover",
     # Reference data and analysis
     "reference", "catchment-join", "oxygen-check", "transect",
+    "glenbrook",
     # The store
     "backfill", "store-status", "drop-undated", "purge-hidden",
     "repair-sensor-types",
@@ -51,6 +52,7 @@ REQUIRED_MODES = {
 REQUIRED_ENTRY_POINTS = [
     ("secchi.analysis.oxygen", "check_saturation_basis"),
     ("secchi.analysis.transect", "analyse"),
+    ("secchi.analysis.glenbrook", "analyse"),
     ("secchi.store", "write_partitions"),
     ("secchi.store", "repair_sensor_types"),
     ("secchi.backfill", "run_backfill"),
@@ -69,6 +71,7 @@ REQUIRED_TRANSFORM_FUNCTIONS = {
     "count_held_records",
     "_local_do_saturation",
     "_record_timestamp",
+    "build_upload_alert",
 }
 
 

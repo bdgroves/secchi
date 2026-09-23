@@ -34,7 +34,8 @@ from secchi.config import (
     USGS_GAUGES,
     USGS_PARAMETERS,
 )
-from secchi.sources.teon import TeonClient, _parse_teon_ts, slugify_site
+from secchi.sources.teon import (TeonClient, VisibilityUnavailable,
+                                 _parse_teon_ts, slugify_site)
 from secchi.sources.usgs import UsgsClient, UsgsRateLimited
 
 log = logging.getLogger("secchi.ingest")
@@ -171,7 +172,14 @@ def probe_slugs(client: TeonClient, live_only: bool = False) -> int:
     """
     # Sites TEON hides return 404 on the time-series endpoint even when the
     # slug is correct, so they must not be used as probe representatives.
-    disabled = client.disabled_sites()
+    # A probe writes nothing, so proceeding without the list only risks a
+    # misleading 404 in the report — say so rather than failing.
+    try:
+        disabled = client.disabled_sites()
+    except VisibilityUnavailable as exc:
+        log.warning("%s — probing anyway; a hidden site may show a "
+                    "spurious 404", exc)
+        disabled = set()
 
     inventory = list(client.iter_inventory())
     cutoff = datetime.now(timezone.utc) - timedelta(hours=LIVE_WINDOW_HOURS)
@@ -668,6 +676,9 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         print("  These sites are flagged non-public by TEON; the backfill")
         print("  now skips them, so this should not recur.\n")
         return 0
+    if mode == "glenbrook":
+        from secchi.analysis.glenbrook import report as glenbrook_report
+        return glenbrook_report()
     if mode == "transect":
         from secchi.analysis.transect import report as transect_report
         return transect_report()
@@ -750,7 +761,23 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
 
         # 2) Respect TEON's own visibility flags — the frontend hides some
         #    sites (as of Sep 2026, "4H Camp" for lake/EXO), and so should we.
-        disabled = client.disabled_sites()
+        #
+        #    disabled_sites() RAISES rather than returning an empty set when
+        #    it can't reach the endpoint. The old behaviour logged "assuming
+        #    nothing hidden" and carried on, so every TEON timeout silently
+        #    ingested 4H Camp.
+        #
+        #    Skip the TEON ingest rather than failing the run — USGS and the
+        #    transform are unaffected. A skipped hour costs nothing; the
+        #    parquet accumulates and the next run catches up.
+        try:
+            disabled = client.disabled_sites()
+        except VisibilityUnavailable as exc:
+            log.error("%s", exc)
+            log.error("SKIPPING the TEON ingest this run: without the "
+                      "visibility list we cannot tell which sites are "
+                      "non-public. USGS and transform will still run.")
+            return 0
         write_visibility(disabled)
         if disabled:
             log.info("visibility: %d site slug(s) disabled by TEON: %s",
@@ -789,7 +816,7 @@ def main(argv: list[str] | None = None) -> int:
                  "camera-probe", "reference", "reference-inspect",
                  "catchment-join", "watch", "backfill", "store-status",
                  "record-shape", "drop-undated", "purge-hidden",
-                 "repair-sensor-types", "oxygen-check", "transect",
+                 "repair-sensor-types", "oxygen-check", "transect", "glenbrook",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -810,6 +837,8 @@ def main(argv: list[str] | None = None) -> int:
             "and report new sensors, sensors resuming, and data going dark. "
             "record-shape: fetch one record per sensor type and report its "
             "field names, including which key carries the timestamp. "
+            "glenbrook: test whether Glenbrook 2's soil moisture drains "
+            "with its own stream, which would explain why it reads 42%. "
             "transect: compare how the two transect stations respond to "
             "the same wetting events. "
             "oxygen-check: test whether each instrument family's DO "

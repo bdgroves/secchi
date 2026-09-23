@@ -119,6 +119,26 @@
     margin-top: 0.4rem; position: relative; overflow: hidden;
   }
   .coverage-bar i { display: block; height: 100%; background: var(--wet); }
+  /* New hand-collected data upstream. Deliberately not styled as an
+     error — a dive happened and there is fresh data to fetch, which is
+     the best news this page can carry. */
+  .upload-alert {
+    border: 1px solid var(--wet); border-left: 4px solid var(--wet);
+    background: var(--ice); padding: 0.85rem 1.1rem; margin: 1.2rem 0;
+    font-size: 0.9rem; line-height: 1.5;
+  }
+  .upload-alert h3 {
+    margin: 0 0 0.35rem; font-size: 0.95rem; font-weight: 600;
+    color: var(--ink); letter-spacing: 0.01em;
+  }
+  .upload-alert ul { margin: 0.45rem 0 0.6rem; padding-left: 1.1rem; }
+  .upload-alert li { margin: 0.15rem 0; }
+  .upload-alert code {
+    background: var(--paper); border: 1px solid var(--line);
+    padding: 0.1rem 0.35rem; font-size: 0.85em;
+  }
+  .upload-alert .since { color: var(--muted); }
+
   .card-note {
     font-size: 0.78rem; color: var(--muted); margin-top: 0.6rem;
     line-height: 1.45;
@@ -365,6 +385,8 @@
     transect exists to measure.
   </p>
   <div class="map-wrap"><div id="map"></div></div>
+  <div class="upload-alert" id="upload-alert" hidden></div>
+
   <div class="ws-control" id="ws-control" hidden>
     <label for="ws-var">Catchment shading</label>
     <select id="ws-var"></select>
@@ -1369,6 +1391,34 @@
 
       $("manual-cards").innerHTML = renderManualCards(snap.manual_cards);
 
+      // Fresh hand-collected data upstream. Hidden entirely when there
+      // is none, so it never becomes furniture the eye skips over.
+      const alert = snap.upload_alert;
+      const alertEl = $("upload-alert");
+      if (alert && alert.sites && alert.sites.length) {
+        const plural = alert.sites.length === 1 ? "site has" : "sites have";
+        const rows = alert.sites.map(s => {
+          const kit = (s.instruments || []).join(" + ");
+          const since = s.held_through
+            ? ` <span class="since">— we hold through ${esc(fmtDate(s.held_through))}</span>`
+            : "";
+          return `<li><strong>${esc(s.site)}</strong>`
+               + `${kit ? ` (${esc(kit)})` : ""}: `
+               + `${fmtInt.format(s.records)} new records${since}</li>`;
+        }).join("");
+        alertEl.innerHTML =
+          `<h3>New hand-collected data available</h3>`
+          + `<p>${alert.sites.length} ${plural} published `
+          + `${fmtInt.format(alert.total_records)} records we haven't pulled. `
+          + `Someone has been out to the instruments.</p>`
+          + `<ul>${rows}</ul>`
+          + `<p>Run <code>${esc(alert.command)}</code> to bring them in.</p>`;
+        alertEl.hidden = false;
+      } else {
+        alertEl.hidden = true;
+        alertEl.innerHTML = "";
+      }
+
       // USGS gauges, split by role — ten flat cards would swamp the page.
       $("gauges-lake").innerHTML = renderGauges(snap.gauges, ["lake", "outlet"]);
       $("gauges-trib").innerHTML = renderGauges(snap.gauges, ["tributary"]);
@@ -1408,10 +1458,10 @@
         text.textContent = "No live observations available.";
       }
 
-      // Built from the inventory, one entry per SITE. An earlier version
-      // emitted one per sensor, so every nearshore site appeared twice
-      // (it has both a MiniDOT and a HOBO) and all fourteen were called
-      // EXO sites, which only two are.
+      // Built from the inventory rather than hardcoded. The previous
+      // version named both sites, their shore and the date they stopped
+      // — all baked into the HTML, and all of it wrong the moment a
+      // retrieval happened.
       const manual = snap.manual_sondes || [];
       if (manual.length) {
         const pts = (snap.map && snap.map.points) || [];
@@ -1421,20 +1471,21 @@
         };
         const parts = manual.map(m => {
           const gap = gapFor(m.site);
-          const kit = (m.instruments || []).join(" + ");
           const when = m.last_update ? timeAgo(m.last_update) : "never";
           const tail = gap > 0
-            ? ` — <strong>${fmtInt.format(gap)} records not yet pulled</strong>`
+            ? ` — <strong>${fmtInt.format(gap)} records published that we haven't pulled yet</strong>`
             : ` — newest record ${esc(when)}`;
-          return `<em>${esc(m.site)}</em>${kit ? ` (${esc(kit)})` : ""}${tail}`;
+          return `<em>${esc(m.site)}</em>${m.shore ? ` (${esc(m.shore)} shore)` : ""}${tail}`;
         });
         const anyPending = manual.some(m => gapFor(m.site) > 0);
         $("offline").innerHTML =
-          `${manual.length} sites are read <strong>by hand</strong>: the `
-          + `instruments store to memory and are collected roughly monthly, `
-          + `by boat and snorkel. Not broken — just on a different clock. `
-          + `${parts.join(". ")}.`
-          + (anyPending ? ` A backfill would bring the rest in.` : ``);
+          `${manual.length === 2 ? "Two" : manual.length} EXO sites are `
+          + `<strong>self-logging</strong>: they store to memory and are read `
+          + `by hand, roughly monthly, by boat and snorkel. Not broken — `
+          + `just on a different clock. ${parts.join(". ")}.`
+          + (anyPending
+              ? ` A backfill is needed to bring that history in.`
+              : ``);
       } else {
         $("offline").innerHTML = "";
       }

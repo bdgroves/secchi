@@ -1415,6 +1415,43 @@ def build_manual_sonde_cards(df_wide: pd.DataFrame,
     return dict(sorted(out.items()))
 
 
+def build_upload_alert(manual_cards: dict) -> dict | None:
+    """A banner payload when a hand-collected site has unpulled records.
+
+    This is the thing worth being told about. The instruments store to
+    memory and are read by boat and snorkel roughly monthly; when
+    someone dives, two months of 15-minute data appears upstream at
+    once. Until it's backfilled the dashboard is showing a record that
+    stops before the data does.
+
+    The watcher already opens a GitHub issue. This puts the same fact on
+    the page, because a coverage bar at 87 % three sections down is easy
+    to miss and this is good news, not a fault.
+
+    Returns None when everything is current, so the banner disappears
+    rather than lingering as furniture.
+    """
+    pending = []
+    for site, card in (manual_cards or {}).items():
+        gap = card.get("unpulled_records") or 0
+        if gap > 0:
+            pending.append({
+                "site": site,
+                "records": gap,
+                "instruments": card.get("instruments") or [],
+                "held_through": (card.get("coverage") or {}).get("last"),
+            })
+    if not pending:
+        return None
+
+    pending.sort(key=lambda r: -r["records"])
+    return {
+        "sites": pending,
+        "total_records": sum(r["records"] for r in pending),
+        "command": "pixi run backfill --stage manual",
+    }
+
+
 def build_manual_sondes(inventory: list[dict]) -> list[dict]:
     """One entry per hand-collected SITE, not per sensor.
 
@@ -1556,6 +1593,8 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "watersheds": watersheds,
         "manual_sondes": build_manual_sondes(inv),
         "manual_cards": build_manual_sonde_cards(df_wide, df_long, inv),
+        "upload_alert": build_upload_alert(
+            build_manual_sonde_cards(df_wide, df_long, inv)),
     }
 
 

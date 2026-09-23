@@ -2,7 +2,7 @@
 
 ### A modern Secchi disk for Lake Tahoe
 
-**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 6.8 million observations, twenty months, updating hourly and watching itself
+**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 7.5 million observations, twenty months, updating hourly and watching itself
 
 ---
 
@@ -14,9 +14,9 @@ Angelo Secchi lowered a white plate over the side of a yacht in the Mediterranea
 
 That's the instrument. A plate on a rope.
 
-One hundred and sixty-one years later it is still the world standard for lake transparency, and it is still how Lake Tahoe's clarity gets reported every year. Twenty-two metres in the 1960s. About twenty-one now.
+One hundred and sixty-one years later it is still the world standard for lake transparency, and it is still how Lake Tahoe's clarity gets reported every year.
 
-On **September 15, 2026**, the University of Nevada, Reno switched on the [Tahoe Environmental Observatory Network](https://tahoeenvironmentalobservatorynetwork.org/) — sondes in the water, loggers in the forest, cameras on the ridgelines. I saw it in the alumni newsletter and went to look at the API.
+On **September 15, 2026**, the University of Nevada, Reno switched on the [Tahoe Environmental Observatory Network](https://tahoeenvironmentalobservatorynetwork.org/). I saw it in the alumni newsletter and went to look at the API.
 
 There was no documentation. There still isn't.
 
@@ -24,11 +24,9 @@ There was no documentation. There still isn't.
 
 ## What this found
 
-Two things worth the whole build, both of which required assembling a record nobody had assembled.
-
 ### 1. Half of TEON's oxygen saturation is referenced to the wrong atmosphere
 
-Lake Tahoe's surface sits at **1,898 m**, where air pressure is about **79.5 %** of sea level. Oxygen saturation depends on pressure, so a percentage referenced to sea level is wrong by roughly twenty points — enough to invert the reading.
+Lake Tahoe's surface sits at **1,898 m**, where air pressure is about **79.5 %** of sea level. Saturation depends on pressure, so a percentage referenced to sea level is wrong by roughly twenty points — enough to invert the reading.
 
 Tested across **374,942 paired readings**, ten instruments, twenty months:
 
@@ -39,81 +37,87 @@ Tested across **374,942 paired readings**, ten instruments, twenty months:
 
 0.004 mg/L is the precision of the Weiss (1970) formula itself.
 
-**The MiniDOTs are altitude-corrected. The EXO sondes are not.** Every one of the ten sites agrees with its instrument family:
+**The MiniDOTs are altitude-corrected. The EXO sondes are not.** Every one of the ten sites agrees with its instrument family — EXO reading 80–85 % where the water is really at 101–107 %, MiniDOT agreeing with the corrected figure to within half a point.
 
-| Instrument | Site | Published | At lake pressure |
-|---|---|---|---|
-| EXO | Sunnyside | 80.4 % | **101 %** |
-| EXO | Glenbrook | 80.6 % | **101 %** |
-| EXO | Blackwood 3 | 83.4 % | **105 %** |
-| EXO | Meeks | 84.9 % | **107 %** |
-| MiniDOT | Lake Forest | 101.6 % | 101 % |
-| MiniDOT | tallac_lake | 103.8 % | 103 % |
+I expected both fleets to share the error, and being wrong made it stronger: one fleet right and one wrong, in the same network, rules out a deliberate sea-level convention. The MiniDOTs are the control, and they prove the correction is achievable in TEON's own pipeline.
 
-I expected both fleets to share the error, and being wrong made the finding stronger. One fleet right and one wrong, in the same network, rules out a deliberate sea-level convention — that would have been applied to both. The MiniDOTs are the control, and they prove the correction is achievable in TEON's own pipeline.
-
-It also validates the arithmetic against hardware: six devices doing this sum internally agree with ours to a fraction of a point.
-
-Reported to TEON. `pixi run oxygen-check`.
+Reported upstream. `pixi run oxygen-check`.
 
 ### 2. Forty-three sensors are thirteen devices
 
 At every forest station, the soil, air-temperature, tree-stress *and* stream-level endpoints return **projections of one Campbell logger table** — identical record UUIDs, identical battery voltage, identical row counts.
 
-The arithmetic is exact. A full pull grabs 4,600 records; deduplicating on the source's own IDs collapses it to **1,600**. The live network is **2 lake sondes + 6 forest loggers + 5 cameras**.
+A full pull grabs 4,600 records; deduplicating collapses it to **1,600**. The live network is 2 lake sondes, 6 forest loggers and 5 cameras.
 
-Worth knowing before anyone writes a paper about forty-three independent measurement sites — and it later saved half a backfill, once the fetch path learned to collapse them too.
+It later saved half a backfill, once the fetch path learned to collapse them too.
 
 ---
 
 ## Same storm, two watersheds
 
-The question the project was built around.
+Homewood and Glenbrook 5 sit **64 metres apart in latitude** on opposite shores. Their catchments receive **2.12×** different annual precipitation — basin-wide the gradient reaches **3.03×**.
 
-Homewood and Glenbrook 5 sit **64 metres apart in latitude** on opposite shores. Both upland hillslope stations. One faces the Pacific; one sits in the lee of the Carson Range.
+`pixi run transect` detects wetting events in the soil moisture itself, matches them across stations, and compares response.
 
-TEON's watershed layer — 60 catchments, 164 attributes each — puts numbers on it:
+**The sturdiest result: a west-to-east lag of +3.7 to +4.3 hours**, with six of seven shared events reaching the west shore first. It survived four versions of the detector because no threshold enters it — only which station moved first. Storms arrive from the Pacific and cross the basin.
 
-```
-Homewood      (Madden Creek)      1,463 mm/yr
-Glenbrook 5   (Glenbrook Creek)     689 mm/yr
-                                   ──────────
-                                       2.12×
-```
+**The ratios are provisional, and I got them wrong three times.** 3.31× from averaging ratios (wrong operation for a multiplicative quantity). 2.82× from counting the diurnal cycle as storms. 1.29× after matching at the wrong resolution. Every correction moved toward the null.
 
-Basin-wide the gradient reaches **3.03×**, 1,459 mm at Watson Creek down to 482 mm at Deadman Point. The map shades all sixty catchments by any of thirteen variables.
+Four methodological choices each moved the headline by more than the effect being measured, which means the data is under-determining the question. The honest range is somewhere between 1.3× and 2× against a climatological 2.12×.
 
-For most of the build this question was unanswerable: the two stations had a week of shared history and there had been no rain. Backfilling the telemetered fleet took it to **375 days**, covering a full winter.
+**What would settle it:** the 593,507 precipitation records now in the store, at a west-shore site, covering the same winter. That converts *"did both stations wet at the same time?"* — inferring storms from responses, where all four bugs lived — into *"how much did each wet after this much rain?"*
 
-`pixi run transect` detects wetting events in the soil moisture itself — soil wets fast and dries slowly, so the asymmetry is the signal — matches them across stations by onset time, and compares magnitude. It reports how strongly each shore responds to a shared event, and how many events only one shore saw at all.
+---
 
-**Why not use rainfall?** Because we can't. Blackwood 2 holds the network's only precipitation gauge, it has been dark since August, and the USGS store only covers September. Detecting events in the response rather than the forcing is the compromise, and the module says so rather than implying otherwise.
+## Glenbrook 2: still unexplained
+
+One station reads far wetter than its neighbours on the same hillslope, in the same catchment, a few hundred metres away.
+
+**And the number I kept quoting was wrong.** I said 42 % against 3.4 % — a 12× gap — throughout earlier versions of this document. That compared a wet site to dry sites on one late-summer day. Over the full 354-day record:
+
+| | 354-day mean |
+|---|---|
+| Glenbrook 2 | 46.0 % |
+| Glenbrook 4 | 15.6 % |
+| Glenbrook 5 | 10.9 % |
+
+**2.9× to 4.2×**, not 12×. Still the wettest station by a wide margin; the headline was an artifact of when I happened to look.
+
+Glenbrook 2 is the only terrestrial station with its own stream sensor, which made a cheap test look possible: does its soil drain at the creek's rate, or its own? Three attempts, none of which worked:
+
+| Attempt | Result |
+|---|---|
+| Correlate soil against stream | Useless — everything correlates during a storm |
+| Correlate during recession only | Useless — any two smooth declines correlate |
+| Compare recession **rate** | Invalid on this record |
+
+The third failed in an instructive way. It returned 2.9, 3.2, 3.1 and 2.9 days for a stream and three soils at completely different moisture levels. Four independent signals within 0.3 days of each other is the method measuring its own window: with recession runs about six days long, `tau ≈ run_length / log_range` returns ~3 days whatever the real drainage rate. Synthetic data with 30-day recessions separated a connected site from hillslope controls cleanly; real Tahoe storms arrive closer together.
+
+`_recession_tau` now refuses to report when the runs are too short to contain the constant.
+
+What the record *does* support is weak evidence **against** a stream connection: day-to-day, Glenbrook 2 tracks the creek (r = 0.107) *less* closely than the controls do (0.259, 0.256).
+
+So: unexplained. Sampling the source rasters at each station point — soil depth, texture, aspect — is the honest next step, and it's real GIS work rather than another query.
 
 ---
 
 ## The API had to be guessed
 
-**Slugs are truncated to the leading concept.** `Air Temperature & Relative Humidity` is `/sensors/air-temperature`. `Soil Environmental Conditions` is, for reasons known only to the backend, `/sensors/soil-moisture`.
+**Slugs are truncated to the leading concept.** `Air Temperature & Relative Humidity` is `/sensors/air-temperature`. `Soil Environmental Conditions` is `/sensors/soil-moisture`.
 
-**Timestamps have three different field names.** EXO and the Campbell loggers use `TIMESTAMP`. HOBO uses `timestamp`. And MiniDOT uses **`Pacific Standard Time`** — a PME MiniDOT's export writes the *timezone* as the header of its time column, and TEON's loader kept it verbatim.
+**Timestamps have three field names.** EXO and the Campbell loggers use `TIMESTAMP`. HOBO uses `timestamp`. MiniDOT uses **`Pacific Standard Time`** — its export writes the *timezone* as the header of its time column and TEON's loader kept it verbatim. Assuming one name cost **1,490,116 rows** their timestamps.
 
-Assuming one name cost **1,490,116 rows** their timestamps in a single backfill. They landed in a `year=0000` partition that exists precisely so undated rows are filed rather than dropped, which is the only reason it was noticeable.
+**Measurements have four conventions.** `Air_Temp`, `Do_mgL`, `conductivity`, `Dissolved Oxygen Saturation`.
 
-**Measurements have four naming conventions.** Campbell's `Air_Temp`, EXO's `Do_mgL`, HOBO's `conductivity`, MiniDOT's `Dissolved Oxygen Saturation`.
+**And TEON publishes a visibility flag** at `/site-visibility/disabled`. Both the dashboard and the ingest honour it, and if the endpoint can't be read they fetch nothing rather than guessing.
 
-**And TEON publishes a visibility flag.** `/site-visibility/disabled` marks 4H Camp non-public. The dashboard honours it; so does the backfill, and if that endpoint can't be read the backfill fetches nothing rather than guessing.
-
-`pixi run record-shape` exists so the next consumer doesn't have to discover all this the way we did.
+`pixi run record-shape` exists so the next consumer doesn't discover this the way we did.
 
 ---
 
 ## The ones you have to swim out to
 
-Fourteen instruments across eight sites are self-logging — stored to memory, retrieved by boat and snorkel, roughly monthly.
-
-TEON labels only two of them. The other twelve are MiniDOTs and HOBOs, which have no telemetry as a product category. All twelve stop on **2026-06-10**, the same day. Twelve simultaneous radio failures isn't plausible; one boat trip is.
-
-Their records are the best in the network:
+Fourteen instruments across eight sites are self-logging — read by boat and snorkel, roughly monthly. TEON labels only two; the rest are MiniDOTs and HOBOs, which have no telemetry as a product category, and all twelve stop on **2026-06-10**, the same day.
 
 | Sonde | Telemetry | Complete |
 |---|---|---|
@@ -122,29 +126,27 @@ Their records are the best in the network:
 | Glenbrook | live | 96.8 % |
 | Sunnyside | live | 73.6 % |
 
-Both manual sondes are short by **exactly 191 records** — 47.75 hours. An identical gap on two separate instruments is one service visit, not packet loss.
+Both manual sondes are short by **exactly 191 records** — 47.75 hours. One service visit, not packet loss.
 
-**The counter-intuitive part, measured:** telemetry buys *timeliness*, not *completeness*. Sunnyside has lost over a quarter of its record to the radio.
+**Telemetry buys timeliness, not completeness.** Sunnyside has lost over a quarter of its record to the radio.
 
-The dashboard gives them coverage cards rather than live cards — period of record held, what's outstanding, what the next collection would extend from — because a reading twelve weeks old is perfectly good data presented dishonestly if it sits in the live idiom.
+They get coverage cards rather than live cards — period of record held, what's outstanding — and when new data appears upstream a **banner** goes up on the page saying how many records and which command fetches them. The watcher opens a GitHub issue at the same time.
 
 ---
 
 ## pH 1.8, or: we've seen this movie
 
-Faults found, all live on the dashboard **with the caveats attached**:
-
 **pH is dead fleetwide.** Glenbrook returns `0`. Sunnyside returns `null`.
 
-**Sunnyside reads negative turbidity** — −2.109 FNU with a standard deviation of 0.042 across 48 readings. Too tight for noise; a mis-set zero point. The USGS gauge on Blackwood Creek reads +0.3 FNU from a different instrument and a different agency.
+**Sunnyside reads negative turbidity** — −2.109 FNU, σ 0.042, across 48 readings. A mis-set zero point. USGS on Blackwood Creek reads +0.3 FNU from a different instrument and agency.
 
-**A soil pH of 1.79** at Cave Rock in TEON's watershed layer. That is approximately battery acid and does not occur in Sierra granite — nodata cells averaged in as zeros. *Dante's Peak* had an acidified lake too.
+**A soil pH of 1.79** at Cave Rock in TEON's watershed layer. Approximately battery acid; nodata averaged in as zeros.
 
-**A Topographic Wetness Index of 833.9** against a 5–55 range everywhere else. Marlette Creek, whose catchment contains Marlette Lake.
+**A Topographic Wetness Index of 833.9** against a 5–55 range. Marlette Creek, whose catchment contains a lake.
 
-**A camera filed a frame from the future** — six hours ahead of the snapshot containing it. Loggers on Pacific wall-clock, cameras on UTC.
+**A camera filed a frame from the future** — six hours ahead of the snapshot containing it.
 
-Cataloguing these *is* the work. It's also much easier from outside, with no obligation to stand behind the numbers, than it is to operate the network. All of it has been reported back.
+Cataloguing these *is* the work, and it's much easier from outside than operating the network. All reported back.
 
 ---
 
@@ -157,89 +159,81 @@ data/processed/observations/
     source=teon/year=2026/month=09/part.parquet    the only file that churns
 ```
 
-**6.8 million observations, January 2025 to now, 20 monthly partitions.**
+**7,503,063 observations, January 2025 to now.** Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments.
 
-Hive-partitioned because a parquet is rewritten whole on every update and git stores each version as a new blob. At 150 MB, hourly, that's 3.5 GB/day of history. Partitioned, historical months freeze and only the current one churns.
+Hive-partitioned because a parquet is rewritten whole on every update and git stores each version as a new blob. Historical months freeze; only the current one churns.
 
-Four backfill stages, each fetching straight to parquet rather than through the raw buffer — an EXO record is ~2 KB of JSON and the full fleet would dump 2 GB into a directory sized for seven days.
+Backfills **append then compact** rather than read-merge-write. The first design was quadratic: 1.78 million observations meant 89 flushes each rewriting everything accumulated — **80 million row writes, 45× amplification, ~2 GB to store 45 MB** — and it filled the disk mid-run.
 
-`pixi run store-status` lists it. DuckDB queries it in place with a glob.
+All writes are **atomic**. That failed run left a truncated partition and took **28,535 rows** of nearshore history with it. Writes now go to a temp file and replace on success; compaction refuses to touch a partition it can't fully read.
 
 ---
 
 ## It watches itself
 
-Three workflows: **fetch** hourly, **pages** at :25, **watch** every six hours.
+**fetch** hourly, **pages** at :25, **watch** every six hours.
 
 `pages` has its own schedule rather than triggering off fetch's commit, because GitHub deliberately does not create workflow runs from events triggered by the default `GITHUB_TOKEN`. That coupling looked right and never once fired.
 
-`watch` diffs the inventory against a baseline and opens a GitHub issue on anything notable — a sensor resuming, a new sensor type, a visibility flag lifting, or a dormant sonde's record count jumping, which is the signature of a manual retrieval being uploaded.
-
-Local runs are **read-only**. A local check that advanced the baseline would *consume* the change: you'd see the upload, the baseline would move, and CI would find nothing and never open the issue.
+`watch` opens a GitHub issue on anything notable — a sensor resuming, a new sensor type, a dormant sonde's record count jumping. Local runs are **read-only**: a local check that advanced the baseline would *consume* the change before CI could report it.
 
 ---
 
 ## The bugs were mostly mine
 
-Worth a section, because the pattern is the most portable thing here.
-
-Nineteen errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash:
+Twenty-six errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
-| Sensor-slug map keyed on the wrong names | Skipped all 23 sensors, **zero HTTP requests made** |
-| `63158` for the outlet's elevation | Silently absent column |
-| `statistic_id=00011` alone | Hid the TMDL load parameter |
+| Sensor-slug map keyed on wrong names | Skipped all 23 sensors, **zero HTTP requests** |
 | `statistic_id=00011,00006` | **HTTP 200, zero features, every gauge** |
-| Bounding box instead of a watershed | 14 gauges draining to the Carson River |
 | Web Mercator polygons vs WGS84 points | 0 of 28 stations matched, no error |
 | 48-hour slope on a diurnal signal | Air temperature "rising 4.85" |
-| A fully-clipped channel | Confident flat line at zero |
-| Four string replaces that matched nothing | Printed "tasks added" |
+| Six string replaces that matched nothing | Printed success |
 | `GITHUB_TOKEN` pushes don't trigger workflows | Green cron, hours-old page |
-| Three features deleted by stale-base copies | A whole map layer vanished |
-| A presence check on the whole file | Assertion passed, import missing |
-| Trend deltas printed in source units | `61.5 °F` with `falling 0.34` (°C) |
-| Two writers on one baseline file | Merge conflict, and a consumed notification |
+| **Four** stale-base copies deleting features | A map layer, a timestamp parser, four CLI modes |
 | A local import shadowing a module one | **`UnboundLocalError`, cron down for hours** |
-| Backfill wrote non-canonical sensor types | **98.9 % of the record invisible to the dashboard** |
-| Hardcoded `TIMESTAMP` field | 1,490,116 rows with no usable time |
-| Cards filtered through an EXO variable list | Readings present in the payload, never drawn |
-| Backfill ignored the visibility flag | Fetched a site TEON asked not be published |
+| Backfill wrote non-canonical sensor types | **98.9 % of the record invisible** |
+| Quadratic write amplification | **Filled the disk mid-backfill** |
+| Non-atomic writes | **28,535 rows lost** |
+| Fail-open defeating a fail-closed guard | A safety check that could never fire |
+| Correlation as a discriminator, twice | Numbers that couldn't separate anything |
+| Recession fit measuring its own window | Four signals, all ~3 days |
+| A ratio quoted from one day's reading | 12× that was really 2.9–4.2× |
 
 ### The pattern
 
-Almost all of them are **something reporting success while doing nothing**. A query returning zero rows is indistinguishable from one that was never going to match. A green workflow is indistinguishable from a deployed page. A name in a file is indistinguishable from an imported one.
+Almost all of them are **something reporting success while doing nothing**. Zero rows looks like no data. A green workflow looks like a deployed page. A name in a file looks like an imported one. A high correlation looks like a relationship.
 
-Three rules fell out, all in `docs/`:
+Four rules fell out, all in `docs/`:
 
 - **When a query narrows results, check the count, not the syntax.**
 - **Check the thing you care about, not a proxy that correlates with it.**
 - **Before committing a generated file, ask who else writes it.**
+- **A safety check is only as strong as the weakest layer that can answer it.**
 
-And three test files that encode them. `test_capabilities_persist.py` is the interesting one: every *other* test checks internal consistency, and a consistent **subset** of the feature set passes all of them — so deleting a feature and its task together was invisible. It's a plain list of what must exist, and it caught a third deletion on its first run.
+And three test files. `test_capabilities_persist.py` is the one that earns its place: every *other* test checks internal consistency, and a consistent **subset** of the feature set passes all of them. It's a plain list of what must exist, and it has caught two separate deletions — including four CLI modes in a bundle I was about to call finished.
 
-Nine probe commands exist for the same reason. They're a few dozen lines each and they've caught eight real bugs. The alternative isn't fewer bugs; it's the same bugs, shipped, producing numbers that look fine.
+Nine probe commands exist for the same reason. A few dozen lines each; eight real bugs between them.
 
 ---
 
 ## By the numbers
 
 ```
-   6,849,022   observations stored, Jan 2025 to now
+   7,503,063   observations stored, Jan 2025 to now
      374,942   paired readings behind the oxygen finding
-   1,490,116   rows that once landed with no timestamp, and were recovered
-      68,000×  compression of the polygon layer, 7.8 MB -> 114 KB
+   1,490,116   rows that once landed with no timestamp, recovered
+      28,535   rows lost to a non-atomic write, recovered
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          19   of my own bugs caught before or shortly after shipping
+          26   of my own bugs caught before or shortly after shipping
           13   actual physical devices
-           8   data-quality faults found upstream, all reported back
+           8   data-quality faults found upstream, all reported
         3.03×  rain-shadow gradient across the basin
-        2.12×  the same gradient across two stations 64 m apart
-     0.00 km   reprojection error, verified against published centroids
     0.004 mg/L the EXO fit to a sea-level atmosphere
+     0.00 km   reprojection error, against published centroids
            0   pH readings worth anything
 ```
 
@@ -247,26 +241,22 @@ Nine probe commands exist for the same reason. They're a few dozen lines each an
 
 ## Running it
 
-[pixi](https://pixi.sh) handles the environment.
-
 ```bash
 pixi install
 pixi run pipeline     # ingest both agencies, rebuild, prune
-pixi run serve        # http://localhost:8000
+pixi run serve
 ```
 
 | Task | What it does |
 |---|---|
-| `pipeline` | ingest-all → usgs → transform → prune |
 | `backfill --stage …` | full history for one fleet, straight to parquet |
 | `transect` | do the two shores respond differently to the same storm |
+| `glenbrook` | why is one station four times wetter than its neighbours |
 | `oxygen-check` | which atmosphere each instrument family references |
 | `record-shape` | field names per sensor type — **run before any new backfill** |
 | `catchment-join` | assign stations to catchments |
 | `watch` | report upstream changes (read-only) |
 | `store-status` | partitions, row counts, sizes |
-| `probe` / `usgs-probe` / `usgs-discover` | resolve endpoints, write nothing |
-| `reference-inspect` / `camera-probe` | CRS and extent / imagery reachability |
 
 Needs a free [USGS API key](https://api.waterdata.usgs.gov/signup/) in `USGS_API_KEY`.
 
@@ -274,14 +264,14 @@ Needs a free [USGS API key](https://api.waterdata.usgs.gov/signup/) in `USGS_API
 
 ## What the disk can't see yet
 
-- **3,468 camera frames** in a bucket named *Snow photos*, back to November 2025. `camera-probe` proved it refuses anonymous reads. A winter of snowpack from five angles, one email away.
-- **718,127 records** at Blackwood 2 — precipitation and stream chemistry. The precipitation gauge is the forcing variable the transect most wants. The station has been dark since June, which is worth someone noticing.
-- **Why Glenbrook 2 is wet.** 42 % soil moisture against 3.5 % at neighbouring upland stations. The catchment join gives it and Glenbrook 5 identical attributes, so catchment means can't explain it — that needs the source rasters sampled at each station point.
+- **3,468 camera frames** in a bucket named *Snow photos*, back to November 2025. The bucket refuses anonymous reads. A winter of snowpack from five angles, one email away.
+- **Why Glenbrook 2 is wet.** Needs rasters sampled at each station point.
+- **The transect against rainfall.** The precipitation record is now in the store; the analysis hasn't been rebuilt on it.
 - **Ground truth for a clarity model.** TERC's Secchi record is in the [EDI repository](https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340), versioned and DOI-bearing, back to 1968. Their 2025 report shows why any model must be **seasonal**: winter clarity is stable, summer is degrading, and 2025's summer average of 53.4 ft was the fifth poorest on record.
 
-TERC also began, in 2025, assembling decades of clarity-driver data alongside Secchi depth — the same analysis this project's nowcast idea sketches, by the people with the instruments, the fifty-eight-year record and the funding.
+TERC — which *is* UC Davis, not a separate organisation — also began in 2025 assembling decades of clarity-driver data alongside Secchi depth. That's the same analysis this project's nowcast idea sketches, by the people with the instruments, the fifty-eight-year record and the funding.
 
-So this isn't a novel scientific result. What it is: a fast, public, reproducible view over data otherwise scattered across two agencies and several undocumented endpoints, with its own problems stated on the face of it. That has real value, and it's a different kind than the science.
+So this isn't a novel scientific result. What it is: a fast, public, reproducible view over data otherwise scattered across two agencies and several undocumented endpoints, with its own problems stated on the face of it.
 
 ---
 

@@ -36,6 +36,14 @@ from secchi.config import (
 log = logging.getLogger("secchi.sources.teon")
 
 
+class VisibilityUnavailable(RuntimeError):
+    """The site-visibility list could not be read.
+
+    Its own type so callers can fail closed on this specifically,
+    rather than catching everything and hoping.
+    """
+
+
 class TeonClient:
     """Thin wrapper around ``httpx.Client`` scoped to the TEON backend."""
 
@@ -97,23 +105,43 @@ class TeonClient:
     # Visibility
     # ------------------------------------------------------------------
 
-    def disabled_sites(self) -> set[str]:
-        """Return the set of site slugs TEON asks the frontend to hide.
+    def disabled_sites(self, strict: bool = True) -> set[str]:
+        """Site slugs TEON asks the frontend to hide.
 
-        The upstream payload is a list of ``"{site_slug}|{category}|{display_type}"``
-        strings — for example ``"4hcamp|lake|EXO"``. We surface just the site
-        slugs here; the ingest layer matches those against its target sites
-        after slugifying (:func:`slugify_site`). If TEON later needs
-        per-sensor-type suppression at a shared site, refactor to expose
-        the full triples.
+        The upstream payload is a list of ``"{site_slug}|{category}|
+        {display_type}"`` strings — ``"4hcamp|lake|EXO"``. Only the site
+        slugs are surfaced; callers match them after slugifying.
+
+        **RAISES by default when the list can't be fetched.**
+
+        This used to swallow the error and return an empty set, logging
+        "assuming nothing hidden". That defeated a fail-closed guard in
+        the backfill: the `except` block never fired, because there was
+        no exception — only a cheerful report that nothing was hidden.
+        A TEON timeout on 2026-09-22 produced exactly that, and the
+        hourly ingest had the same hole.
+
+        "I could not determine what is hidden" is not "nothing is
+        hidden". The cost of failing closed is a skipped run; the cost
+        of failing open is ingesting data the observatory asked us not
+        to hold. Not symmetric, so the default isn't either.
+
+        ``strict=False`` is available for a caller where an empty set is
+        genuinely safe. Nothing in this project currently qualifies.
         """
         url = f"{self._base}{TEON_ENDPOINTS['site_visibility']}"
         try:
             resp = self._client.get(url)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            log.warning("could not fetch visibility list — assuming nothing hidden: %s", exc)
+            if strict:
+                raise VisibilityUnavailable(
+                    f"could not fetch the site-visibility list: {exc}"
+                ) from exc
+            log.warning("could not fetch visibility list, and strict=False "
+                        "— proceeding as though nothing is hidden: %s", exc)
             return set()
+
         entries = resp.json().get("disabled", [])
         slugs: set[str] = set()
         for entry in entries:
@@ -121,10 +149,6 @@ class TeonClient:
             if parts:
                 slugs.add(parts[0])
         return slugs
-
-    # ------------------------------------------------------------------
-    # Time series
-    # ------------------------------------------------------------------
 
     def resolve_slug(self, sensor_type: str, site: str) -> str | None:
         """Find the working URL slug for a sensor type, trying candidates.
