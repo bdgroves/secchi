@@ -676,6 +676,9 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         print("  These sites are flagged non-public by TEON; the backfill")
         print("  now skips them, so this should not recur.\n")
         return 0
+    if mode == "station-health":
+        from secchi.analysis.station_health import report as health_report
+        return health_report()
     if mode == "glenbrook":
         from secchi.analysis.glenbrook import report as glenbrook_report
         return glenbrook_report()
@@ -817,6 +820,7 @@ def main(argv: list[str] | None = None) -> int:
                  "catchment-join", "watch", "backfill", "store-status",
                  "record-shape", "drop-undated", "purge-hidden",
                  "repair-sensor-types", "oxygen-check", "transect", "glenbrook",
+                 "station-health",
                  "terc-discover", "prune"),
         default="live-exo",
         help=(
@@ -837,6 +841,8 @@ def main(argv: list[str] | None = None) -> int:
             "and report new sensors, sensors resuming, and data going dark. "
             "record-shape: fetch one record per sensor type and report its "
             "field names, including which key carries the timestamp. "
+            "station-health: logger supply voltage per station — was a "
+            "failure a flat battery, and is any station heading that way. "
             "glenbrook: test whether Glenbrook 2's soil moisture drains "
             "with its own stream, which would explain why it reads 42%. "
             "transect: compare how the two transect stations respond to "

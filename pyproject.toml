@@ -161,6 +161,10 @@ transect = "python -m secchi.ingest --mode transect"
 # reads 3.4-11.5%? It's the only terrestrial station with its own stream
 # sensor, so we can test whether its soil drains at the creek's rate.
 glenbrook = "python -m secchi.ingest --mode glenbrook"
+# Logger supply voltage per station. Two terrestrial stations have gone
+# dark; this says whether the battery was failing first, and flags any
+# station showing the same decline now.
+station-health = "python -m secchi.ingest --mode station-health"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.
