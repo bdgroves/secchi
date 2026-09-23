@@ -2,7 +2,7 @@
 
 ### A modern Secchi disk for Lake Tahoe
 
-**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 7.5 million observations, twenty months, updating hourly and watching itself
+**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 8.6 million observations, twenty-seven months, updating hourly and watching itself
 
 ---
 
@@ -49,7 +49,7 @@ At every forest station, the soil, air-temperature, tree-stress *and* stream-lev
 
 A full pull grabs 4,600 records; deduplicating collapses it to **1,600**. The live network is 2 lake sondes, 6 forest loggers and 5 cameras.
 
-It later saved half a backfill, once the fetch path learned to collapse them too.
+**But shared rows are not shared columns**, and I learned that the expensive way. Each endpoint is a *projection* of the logger table: soil returns soil moisture and temperature, air returns air temperature and humidity, tree returns the dendrometers. They share only record IDs and a couple of housekeeping fields. A backfill that fetched one endpoint and treated it as standing in for the rest silently discarded every forest station's air temperature, humidity and tree-stress history. The first query run in the new SQL shell showed air temperature at Homewood covering 7.5 days while soil covered a year.
 
 ---
 
@@ -58,6 +58,8 @@ It later saved half a backfill, once the fetch path learned to collapse them too
 Homewood and Glenbrook 5 sit **64 metres apart in latitude** on opposite shores. Their catchments receive **2.12×** different annual precipitation — basin-wide the gradient reaches **3.03×**.
 
 `pixi run transect` detects wetting events in the soil moisture itself, matches them across stations, and compares response.
+
+The overlap is about a year because Homewood is the youngest forest station, reporting only since September 2025.
 
 **The sturdiest result: a west-to-east lag of +3.7 to +4.3 hours**, with six of seven shared events reaching the west shore first. It survived four versions of the detector because no threshold enters it — only which station moved first. Storms arrive from the Pacific and cross the basin.
 
@@ -159,7 +161,9 @@ data/processed/observations/
     source=teon/year=2026/month=09/part.parquet    the only file that churns
 ```
 
-**7,503,063 observations, January 2025 to now.** Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments.
+**8,609,633 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
+
+`pixi run query` opens a SQL shell over all of it, reading the parquet in place. A filtered aggregate over the whole store answers in under a tenth of a second.
 
 Hive-partitioned because a parquet is rewritten whole on every update and git stores each version as a new blob. Historical months freeze; only the current one churns.
 
@@ -181,7 +185,7 @@ All writes are **atomic**. That failed run left a truncated partition and took *
 
 ## The bugs were mostly mine
 
-Twenty-six errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Twenty-eight errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -200,6 +204,8 @@ Twenty-six errors shipped or nearly shipped. Every one produced **plausible-look
 | Correlation as a discriminator, twice | Numbers that couldn't separate anything |
 | Recession fit measuring its own window | Four signals, all ~3 days |
 | A ratio quoted from one day's reading | 12× that was really 2.9–4.2× |
+| Collapsed endpoints that shared rows but not columns | **Air temperature, humidity and tree-stress history discarded** |
+| A fifth stale-base copy, this time of the backfill | The quadratic writer that filled the disk, silently back |
 
 ### The pattern
 
@@ -221,14 +227,14 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
 ## By the numbers
 
 ```
-   7,503,063   observations stored, Jan 2025 to now
+   8,609,633   observations stored, Jun 2024 to now
      374,942   paired readings behind the oxygen finding
    1,490,116   rows that once landed with no timestamp, recovered
       28,535   rows lost to a non-atomic write, recovered
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          26   of my own bugs caught before or shortly after shipping
+          28   of my own bugs caught before or shortly after shipping
           13   actual physical devices
            8   data-quality faults found upstream, all reported
         3.03×  rain-shadow gradient across the basin
@@ -254,6 +260,7 @@ pixi run serve
 | `glenbrook` | why is one station four times wetter than its neighbours |
 | `oxygen-check` | which atmosphere each instrument family references |
 | `record-shape` | field names per sensor type — **run before any new backfill** |
+| `query` | SQL over the whole store, in place — see `docs/querying.md` |
 | `catchment-join` | assign stations to catchments |
 | `watch` | report upstream changes (read-only) |
 | `store-status` | partitions, row counts, sizes |

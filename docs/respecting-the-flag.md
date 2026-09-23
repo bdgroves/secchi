@@ -39,28 +39,22 @@ you not to.
 across every partition, rewriting only the partitions that actually
 contain it.
 
-## While fixing it, a second thing
+## A correction to what was here
 
-The same run fetched **684,366 duplicate records — 49 % of 1,410,562**.
+This section used to say the same run "fetched 684,366 duplicate records
+— 49 % of 1,410,562", because a forest station's soil, air, tree and
+stream-level endpoints share record ids and row counts. The fix was to
+collapse them: fetch one, treat it as standing in for the rest.
 
-At every terrestrial station the soil, air-temperature, tree-stress and
-stream-level endpoints are projections of ONE Campbell logger table, with
-identical record ids and identical row counts. The backfill fetched each
-endpoint separately, so Blackwood 2's single logger was pulled three
-times over.
+**That was wrong, and it lost data.** The endpoints share *rows*, not
+*columns*. Soil returns soil moisture and temperature; air returns air
+temperature and humidity; tree returns the dendrometers. Collapsing them
+discarded every forest station's air temperature, humidity and
+tree-stress history. See [`endpoint-projections.md`](endpoint-projections.md).
 
-The store deduplicated them correctly — storage was never wrong. The cost
-was in requests and time: roughly 1,400 of 6,000 pages fetched twice or
-three times.
-
-`select_targets` now collapses them: at one site, endpoints reporting an
-identical record count are the same table, so one is fetched and noted as
-standing in for the others. Endpoints with a *different* count are kept
-separately — Glenbrook 2's stream level reports 39,838 against the
-logger's 40,978, so it's treated as its own device.
-
-That's the shared-logger finding from the very first day, finally applied
-to the fetch path rather than just the analysis.
+The collapse has been removed. The backfill now skips sensors already
+complete in the store instead, which recovers most of the saving without
+throwing anything away.
 
 ## What to run
 

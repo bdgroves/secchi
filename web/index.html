@@ -1406,28 +1406,47 @@
 
       $("manual-cards").innerHTML = renderManualCards(snap.manual_cards);
 
-      // Fresh hand-collected data upstream. Hidden entirely when there
-      // is none, so it never becomes furniture the eye skips over.
+      // Published records we haven't pulled. Two kinds share one banner:
+      // a hand-collected site that has just been visited and uploaded,
+      // and a telemetered station whose backlog is older than the hourly
+      // job can reach (typically after an outage). Each entry carries its
+      // own backfill command, so the banner never names the wrong stage.
+      // Hidden entirely when everything is current.
       const alert = snap.upload_alert;
       const alertEl = $("upload-alert");
       if (alert && alert.sites && alert.sites.length) {
-        const plural = alert.sites.length === 1 ? "site has" : "sites have";
-        const rows = alert.sites.map(s => {
+        const manual = alert.sites.filter(s => s.kind === "manual");
+        const backlog = alert.sites.filter(s => s.kind === "backlog");
+        const heading = manual.length && backlog.length
+          ? "New data available to pull"
+          : backlog.length ? "A station has a backlog to pull"
+          : "New hand-collected data available";
+
+        const row = s => {
           const kit = (s.instruments || []).join(" + ");
-          const since = s.held_through
-            ? ` <span class="since">— we hold through ${esc(fmtDate(s.held_through))}</span>`
-            : "";
+          let note = "";
+          if (s.kind === "manual" && s.held_through) {
+            note = ` <span class="since">— someone has been out to the `
+                 + `instruments; we hold through ${esc(fmtDate(s.held_through))}</span>`;
+          } else if (s.kind === "backlog") {
+            note = s.live
+              ? ` <span class="since">— reporting again; the rest is older `
+                + `than the hourly update reaches</span>`
+              : ` <span class="since">— more published than the hourly `
+                + `update reaches</span>`;
+          }
+          const cmd = (s.commands || []).map(c => `<code>${esc(c)}</code>`).join(" then ");
           return `<li><strong>${esc(s.site)}</strong>`
                + `${kit ? ` (${esc(kit)})` : ""}: `
-               + `${fmtInt.format(s.records)} new records${since}</li>`;
-        }).join("");
+               + `${fmtInt.format(s.records)} records${note}`
+               + `${cmd ? `<br>${cmd}` : ""}</li>`;
+        };
+
         alertEl.innerHTML =
-          `<h3>New hand-collected data available</h3>`
-          + `<p>${alert.sites.length} ${plural} published `
-          + `${fmtInt.format(alert.total_records)} records we haven't pulled. `
-          + `Someone has been out to the instruments.</p>`
-          + `<ul>${rows}</ul>`
-          + `<p>Run <code>${esc(alert.command)}</code> to bring them in.</p>`;
+          `<h3>${heading}</h3>`
+          + `<p>${fmtInt.format(alert.total_records)} published records `
+          + `haven't been pulled into this record yet.</p>`
+          + `<ul>${alert.sites.map(row).join("")}</ul>`;
         alertEl.hidden = false;
       } else {
         alertEl.hidden = true;

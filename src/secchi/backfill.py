@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from secchi.config import PROCESSED_DIR
+from secchi.config import PROCESSED_DIR, SENSOR_TYPE_CANONICAL
 from secchi.sources.teon import TeonClient, VisibilityUnavailable
 
 log = logging.getLogger("secchi.backfill")
@@ -43,7 +43,7 @@ log = logging.getLogger("secchi.backfill")
 # Rows held in memory before flushing to disk. 20,000 observations is a
 # few MB — small enough to be safe on any machine, large enough that a
 # 600,000-record sensor doesn't cause thousands of tiny writes.
-CHUNK_ROWS = 20_000
+CHUNK_ROWS = 100_000
 
 # Page size to request. TEON has served 50 reliably; larger values are
 # untested, so the default stays conservative and `--page-size` allows
@@ -90,10 +90,10 @@ STAGES: dict[str, BackfillStage] = {
                       "Soil Environmental Conditions", "Tree stress and growth",
                       "Stream Level"),
         telemetered_only=True,
-        note="History for the sensors that ARE reporting. ~427k records. "
-             "The hourly cron only ever fetched the newest 200 per sensor, "
-             "so everything before we started running is missing — including "
-             "both live lake sondes and the entire transect.",
+        note="History for the telemetered sensors. Each endpoint returns "
+             "different columns, so every one is fetched: soil, air "
+             "temperature and humidity, tree stress, stream level, and the "
+             "live lake sondes. Sensors already complete are skipped.",
     ),
     "blackwood": BackfillStage(
         name="blackwood",
@@ -127,6 +127,37 @@ def _is_manual(sensor: dict) -> bool:
             or sensor.get("_sensor_type") in MANUAL_COLLECTION_TYPES)
 
 
+# A sensor within this many records of its upstream count is complete.
+# Matches the backlog banner's threshold: anything smaller is unparseable
+# or duplicate records (up to ~14 seen), not missing history.
+COMPLETE_TOLERANCE = 100
+
+
+def held_counts() -> dict[tuple[str, str], int]:
+    """Unique record ids held per (site, stored sensor type).
+
+    Counted with DuckDB, which reads only the three columns it needs.
+    Loading the store into pandas to answer this would cost ~650 MB.
+    Returns an empty dict if DuckDB or the store is unavailable — in
+    which case nothing is skipped, which is the safe direction.
+    """
+    try:
+        import duckdb
+        from secchi.query import _glob
+    except ImportError:
+        log.warning("DuckDB unavailable; can't tell what's already held, "
+                    "so nothing will be skipped")
+        return {}
+    g = _glob("observations")
+    if g is None:
+        return {}
+    rows = duckdb.sql(
+        f"SELECT site, sensor_type, count(DISTINCT uuid) "
+        f"FROM read_parquet('{g}', hive_partitioning = true, "
+        f"union_by_name = true) GROUP BY site, sensor_type").fetchall()
+    return {(site, stype): int(n) for site, stype, n in rows}
+
+
 def _slugify_site(site: str) -> str:
     """Match TEON's own site-slug form, used by /site-visibility/disabled."""
     return (site or "").lower().replace(" ", "").replace("_", "").replace("-", "")
@@ -134,7 +165,9 @@ def _slugify_site(site: str) -> str:
 
 def select_targets(client: TeonClient,
                    stage: BackfillStage,
-                   site: str | None = None) -> list[dict]:
+                   site: str | None = None,
+                   held: dict[tuple[str, str], int] | None = None,
+                   refetch_complete: bool = False) -> list[dict]:
     """Inventory rows this stage should pull.
 
     Excludes sites TEON has flagged non-public. That check was missing
@@ -143,13 +176,21 @@ def select_targets(client: TeonClient,
     published. The dashboard honoured the flag; the backfill didn't even
     look at it.
 
-    Also collapses shared loggers. At every terrestrial station the soil,
-    air-temperature, tree-stress and stream-level endpoints are
-    projections of ONE Campbell table with identical record ids and
-    identical row counts. Fetching all of them means fetching the same
-    logger two or three times: 684,366 of 1,410,562 records in the first
-    live run — 49 % — were duplicates of each other. The store deduped
-    them correctly; the cost was in requests and time.
+    Skips sensors already complete in the store, so re-running a stage
+    fetches only what's missing. Pass ``refetch_complete=True`` to fetch
+    everything regardless.
+
+    It no longer collapses "shared loggers", and the reason is worth
+    keeping. At each forest station the soil, air, tree and stream-level
+    endpoints share record ids, row counts and battery voltage, so an
+    earlier version fetched one and marked it as standing in for the
+    rest. But they are PROJECTIONS of one logger table: each endpoint
+    returns different measurement columns. Soil gives Soil_VWC, Soil_T
+    and Soil_EC; air gives Air_Temp and RH; tree gives the dendrometers.
+    Fetching only soil silently discarded every forest station's air
+    temperature, humidity and tree-stress history — found on 2026-09-23
+    when a query showed Air_Temp at Homewood covering 7.5 days while
+    soil covered a year. Shared ids mean shared rows, not shared columns.
     """
     try:
         disabled = {_slugify_site(d) for d in client.disabled_sites()}
@@ -184,37 +225,29 @@ def select_targets(client: TeonClient,
                  "non-public: %s", len(skipped_hidden),
                  ", ".join(sorted(skipped_hidden)))
 
-    # Collapse shared loggers: at one site, endpoints reporting an
-    # identical record count are the same table under different names.
-    # Keep one, and note which endpoints it stands in for.
-    by_site: dict[str, list[dict]] = {}
+    # Skip what's already complete. Compares upstream count with the
+    # records held under the same stored sensor type — deliberately per
+    # endpoint, because endpoints that share record ids still carry
+    # different columns (see the docstring).
+    if held is None or refetch_complete:
+        return targets
+
+    needed: list[dict] = []
+    complete: list[str] = []
     for t in targets:
-        by_site.setdefault(t["site"], []).append(t)
+        raw = t["_sensor_type"]
+        canon = SENSOR_TYPE_CANONICAL.get(raw, raw)
+        have = held.get((t["site"], canon), 0)
+        want = t.get("data_count") or 0
+        if want and have >= want - COMPLETE_TOLERANCE:
+            complete.append(f"{raw} @ {t['site']}")
+            continue
+        needed.append(t)
 
-    collapsed: list[dict] = []
-    for site_name, rows in by_site.items():
-        by_count: dict[int, list[dict]] = {}
-        for r in rows:
-            by_count.setdefault(r.get("data_count") or 0, []).append(r)
-        for count, group in by_count.items():
-            if len(group) > 1 and count > 0:
-                keep = group[0]
-                keep = {**keep, "_shares_logger_with":
-                        [g["_sensor_type"] for g in group[1:]]}
-                log.info("%s: %s share one logger (%s records); fetching once",
-                         site_name,
-                         " / ".join(g["_sensor_type"] for g in group),
-                         f"{count:,}")
-                collapsed.append(keep)
-            else:
-                collapsed.extend(group)
-
-    saved = sum(t.get("data_count") or 0 for t in targets) \
-        - sum(t.get("data_count") or 0 for t in collapsed)
-    if saved:
-        log.info("shared-logger collapse avoids re-fetching %s records", f"{saved:,}")
-
-    return collapsed
+    if complete:
+        log.info("skipping %d sensor(s) already complete in the store: %s",
+                 len(complete), ", ".join(sorted(complete)))
+    return needed
 
 
 def backfill_sensor(client: TeonClient,
@@ -301,9 +334,14 @@ def backfill_sensor(client: TeonClient,
 def run_backfill(stage_name: str,
                  site: str | None = None,
                  page_size: int = DEFAULT_BACKFILL_PAGE_SIZE,
-                 dry_run: bool = False) -> int:
-    """Run one backfill stage."""
-    from secchi.store import write_partitions
+                 dry_run: bool = False,
+                 refetch_complete: bool = False) -> int:
+    """Run one backfill stage.
+
+    Sensors already complete in the store are skipped unless
+    ``refetch_complete`` is set (``--force`` on the command line).
+    """
+    from secchi.store import append_partitions, compact_partitions
 
     stage = STAGES.get(stage_name)
     if not stage:
@@ -314,15 +352,30 @@ def run_backfill(stage_name: str,
     root = PROCESSED_DIR / "observations"
 
     def writer(df: pd.DataFrame) -> None:
+        """Append without reading; compaction happens once at the end.
+
+        Read-merge-write is quadratic for a bulk load. The precipitation
+        gauge's 1.78 M observations meant 89 flushes each rewriting all
+        accumulated rows — 80 M row writes, ~2 GB to store 45 MB — and it
+        filled the disk mid-run on 2026-09-22.
+
+        This function was reverted to read-merge-write once already, by a
+        later bundle rebuilt from an older copy of this file. It is now
+        covered by tests/test_capabilities_persist.py.
+        """
         if df is None or df.empty:
             return
-        write_partitions(df, root, "teon", ["uuid", "site", "variable"])
+        append_partitions(df, root, "teon")
 
     print(f"\n  stage: {stage.name}")
     print(f"  {stage.note}\n")
 
+    # What's already held, so the stage fetches only what's missing.
+    held = {} if refetch_complete else held_counts()
+
     with TeonClient() as client:
-        targets = select_targets(client, stage, site)
+        targets = select_targets(client, stage, site, held=held,
+                                 refetch_complete=refetch_complete)
         if not targets:
             log.error("no sensors matched stage %r%s", stage_name,
                       f" at site {site!r}" if site else "")
@@ -341,6 +394,21 @@ def run_backfill(stage_name: str,
             results.append(backfill_sensor(
                 client, t["_sensor_type"], t["site"],
                 t.get("data_count") or 0, page_size, writer, dry_run))
+
+    # One compaction pass for everything this run appended: merge each
+    # partition's part files and deduplicate, leaving the store in the
+    # shape the hourly job expects. Skipped on a dry run, which writes
+    # nothing.
+    if not dry_run:
+        print("\n  compacting...")
+        out = compact_partitions(root, ["uuid", "site", "variable"])
+        if out.get("compacted"):
+            print(f"  merged {out['compacted']} partition(s), "
+                  f"{out['rows']:,} rows, removed {out['files_removed']} "
+                  f"part file(s)")
+        if out.get("skipped"):
+            print(f"  {out['skipped']} partition(s) left uncompacted — see the "
+                  f"errors above")
 
     print()
     print(f"  {'sensor':22}{'site':20}{'pages':>7}{'records':>10}"

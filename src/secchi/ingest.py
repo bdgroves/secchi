@@ -631,8 +631,11 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         return run_watch(write_baseline=update_baseline)
     if mode == "backfill":
         from secchi.backfill import run_backfill
+        # --force refetches sensors already complete in the store; without
+        # it the stage only pulls what's missing.
         return run_backfill(stage or "manual", site=site,
-                            page_size=page_size, dry_run=dry_run)
+                            page_size=page_size, dry_run=dry_run,
+                            refetch_complete=force)
     if mode == "record-shape":
         from secchi.probe_shape import probe_record_shapes
         return probe_record_shapes()

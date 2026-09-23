@@ -426,7 +426,12 @@ def to_frames(snapshots: Iterable[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
             base = {
                 "uuid": rec.get("uuid"),
                 "source": "TEON",
-                "site": rec.get("site"),
+                # Fall back to the site the snapshot was requested for. Real
+                # TEON records carry their own `site`, but a record without
+                # one would otherwise become invisible to every per-site
+                # query, card, banner and completeness check — which is how
+                # a test with site-less records found this.
+                "site": rec.get("site") or snap.get("site"),
                 "sensor_type": sensor_type,
                 "timestamp": _record_timestamp(rec, sensor_type,
                                                resolved_ts_field),
@@ -1415,40 +1420,162 @@ def build_manual_sonde_cards(df_wide: pd.DataFrame,
     return dict(sorted(out.items()))
 
 
-def build_upload_alert(manual_cards: dict) -> dict | None:
-    """A banner payload when a hand-collected site has unpulled records.
+# A gap smaller than this is noise, not a backlog. The hourly job fetches
+# each sensor's newest 200 records, so anything it could close it already
+# has; what's left after it runs is either a handful of unparseable or
+# duplicate records (up to ~14 seen in practice) or a real backlog of
+# thousands. 100 sits comfortably between.
+BACKLOG_THRESHOLD = 100
 
-    This is the thing worth being told about. The instruments store to
-    memory and are read by boat and snorkel roughly monthly; when
-    someone dives, two months of 15-minute data appears upstream at
-    once. Until it's backfilled the dashboard is showing a record that
-    stops before the data does.
 
-    The watcher already opens a GitHub issue. This puts the same fact on
-    the page, because a coverage bar at 87 % three sections down is easy
-    to miss and this is good news, not a fault.
+def _stages_for(raw_sensor_type: str, is_manual: bool) -> list[str]:
+    """Which backfill stage(s) cover this sensor, from backfill.STAGES.
 
-    Returns None when everything is current, so the banner disappears
-    rather than lingering as furniture.
+    Derived rather than hardcoded. The first banner said
+    "pixi run backfill --stage manual" for every hand-collected site —
+    but six of the eight are MiniDOT and HOBO sites, which live in the
+    "nearshore" stage, so that command would have fetched nothing for
+    them. Asking STAGES keeps the banner honest if a stage changes.
     """
-    pending = []
+    from secchi.backfill import STAGES          # lazy: avoids import cycles
+    out = []
+    for name, stage in STAGES.items():
+        if raw_sensor_type not in stage.sensor_types:
+            continue
+        if stage.manual_only and not is_manual:
+            continue
+        if getattr(stage, "telemetered_only", False) and is_manual:
+            continue
+        out.append(name)
+    return out
+
+
+def build_backlog_entries(inventory: list[dict],
+                          df_long: pd.DataFrame,
+                          disabled: list[str]) -> list[dict]:
+    """Telemetered sites with published records the hourly job can't reach.
+
+    The case this exists for: a station comes back after a long outage and
+    its logger uploads the backlog it kept while the radio was down.
+    Blackwood 2 went dark in June; if it returns, ~9,000 readings could
+    appear at once. The hourly job only fetches the newest 200 per sensor,
+    so it would pick up the last two days and leave the rest behind with
+    nothing on the page saying so.
+
+    The comparison is upstream count against held records, per DEVICE.
+    That distinction matters. A forest station's soil, air and tree
+    endpoints are one logger reporting identical counts, and the backfill
+    stored the history under only ONE of them. Comparing air's upstream
+    count against air's held rows would report a 40,000-record backlog at
+    every forest station. So sensors are grouped by upstream count, the
+    same way the backfill identified shared loggers, and "held" is the
+    largest held count within each group — wherever the history landed.
+
+    Excluded, because each would false-alarm permanently: hidden sites
+    (never ingested, so their gap is their entire record), cameras (their
+    records live in the assets table, not observations), and hand-collected
+    sensors (which have their own banner entry).
+    """
+    if df_long is None or df_long.empty or not inventory:
+        return []
+
+    held = (df_long.groupby(["site", "sensor_type"])["uuid"].nunique()
+            .to_dict())
+    disabled_set = set(disabled or [])
+
+    by_site: dict[str, list[tuple[dict, str]]] = {}
+    for row in inventory:
+        site = row.get("site")
+        if not site or row.get("is_manual"):
+            continue
+        if _slugify_site(site) in disabled_set:
+            continue
+        raw = row.get("sensor_type") or ""
+        canon = SENSOR_TYPE_CANONICAL.get(raw, raw)
+        if canon == "FieldCamera":
+            continue
+        by_site.setdefault(site, []).append((row, canon))
+
+    out: list[dict] = []
+    for site, rows in by_site.items():
+        groups: dict[int, list[tuple[dict, str]]] = {}
+        for row, canon in rows:
+            groups.setdefault(int(row.get("data_count") or 0), []).append((row, canon))
+
+        gap_total = 0
+        stages: set[str] = set()
+        instruments: set[str] = set()
+        for count, members in groups.items():
+            if count <= 0:
+                continue
+            have = max(held.get((site, canon), 0) for _, canon in members)
+            gap = count - have
+            if gap > BACKLOG_THRESHOLD:
+                gap_total += gap
+                for row, _ in members:
+                    stages.update(_stages_for(row.get("sensor_type") or "", False))
+                    instruments.add(row.get("sensor_type_display")
+                                    or row.get("sensor_type") or "?")
+        if gap_total:
+            out.append({
+                "site": site,
+                "kind": "backlog",
+                "records": gap_total,
+                "instruments": sorted(instruments),
+                "live": any(r.get("is_live") for r, _ in rows),
+                "commands": [f"pixi run backfill --stage {st}"
+                             for st in sorted(stages)],
+            })
+    return out
+
+
+def build_upload_alert(manual_cards: dict,
+                       inventory: list[dict] | None = None,
+                       df_long: pd.DataFrame | None = None,
+                       disabled: list[str] | None = None) -> dict | None:
+    """Banner payload: published records we haven't pulled, and how to.
+
+    Two cases, one banner:
+
+      manual   a hand-collected site has been visited and uploaded — a
+               dive happened, and there is fresh history to fetch
+      backlog  a telemetered station has published more than the hourly
+               job can reach, typically after coming back from an outage
+
+    Each entry carries its own backfill command(s), derived from the
+    stage definitions. Returns None when everything is current, so the
+    banner disappears rather than becoming furniture.
+    """
+    entries: list[dict] = []
+
     for site, card in (manual_cards or {}).items():
         gap = card.get("unpulled_records") or 0
-        if gap > 0:
-            pending.append({
-                "site": site,
-                "records": gap,
-                "instruments": card.get("instruments") or [],
-                "held_through": (card.get("coverage") or {}).get("last"),
-            })
-    if not pending:
-        return None
+        if gap <= 0:
+            continue
+        stages: set[str] = set()
+        for row in (inventory or []):
+            if row.get("site") == site and row.get("is_manual"):
+                stages.update(_stages_for(row.get("sensor_type") or "", True))
+        entries.append({
+            "site": site,
+            "kind": "manual",
+            "records": gap,
+            "instruments": card.get("instruments") or [],
+            "held_through": (card.get("coverage") or {}).get("last"),
+            "commands": [f"pixi run backfill --stage {st}"
+                         for st in sorted(stages)],
+        })
 
-    pending.sort(key=lambda r: -r["records"])
+    entries.extend(build_backlog_entries(inventory or [], df_long, disabled or []))
+
+    if not entries:
+        return None
+    entries.sort(key=lambda e: -e["records"])
+    commands = sorted({c for e in entries for c in e["commands"]})
     return {
-        "sites": pending,
-        "total_records": sum(r["records"] for r in pending),
-        "command": "pixi run backfill --stage manual",
+        "sites": entries,
+        "total_records": sum(e["records"] for e in entries),
+        "commands": commands,
     }
 
 
@@ -1575,6 +1702,9 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
     gauges = build_usgs_cards(df_usgs)
     transect = build_transect(df_long)
     inv = build_inventory_summary(inventory)
+    # Built once. It was being built twice — once for the cards, once for
+    # the banner — which over 7.5 million rows is real, wasted time.
+    manual_cards = build_manual_sonde_cards(df_wide, df_long, inv)
     return {
         "generated_at": pd.Timestamp.now(tz="UTC").isoformat(),
         "sources": ["TEON"] + (["USGS"] if not df_usgs.empty else []),
@@ -1592,9 +1722,9 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "transect_line": build_transect_line(transect),
         "watersheds": watersheds,
         "manual_sondes": build_manual_sondes(inv),
-        "manual_cards": build_manual_sonde_cards(df_wide, df_long, inv),
-        "upload_alert": build_upload_alert(
-            build_manual_sonde_cards(df_wide, df_long, inv)),
+        "manual_cards": manual_cards,
+        "upload_alert": build_upload_alert(manual_cards, inv, df_long,
+                                           sorted(disabled)),
     }
 
 

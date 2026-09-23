@@ -65,6 +65,11 @@ pydantic = ">=2.7"
 # database present. Without it the code falls back to UTC and every
 # "X ago" is off by the offset.
 tzdata = "*"
+# Query layer over the partitioned parquet store — reads it in place,
+# nothing imported. Used by `pixi run query`. Storage stays parquet: a
+# .duckdb file would be one binary that git re-stores in full on every
+# write, the exact churn the partitioning was built to avoid.
+python-duckdb = ">=1.0"
 
 # Everyday commands. `pixi run <name>` from anywhere in the repo.
 [tool.pixi.tasks]
@@ -165,6 +170,9 @@ glenbrook = "python -m secchi.ingest --mode glenbrook"
 # dark; this says whether the battery was failing first, and flags any
 # station showing the same decline now.
 station-health = "python -m secchi.ingest --mode station-health"
+# SQL over the whole record, in place. `pixi run query` for a shell, or
+# `pixi run query "SELECT ..."` for one question.
+query = "python -m secchi.query"
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.

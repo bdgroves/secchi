@@ -54,9 +54,11 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.analysis.transect", "analyse"),
     ("secchi.analysis.glenbrook", "analyse"),
     ("secchi.analysis.station_health", "analyse"),
+    ("secchi.query", "connect"),
     ("secchi.store", "write_partitions"),
     ("secchi.store", "repair_sensor_types"),
     ("secchi.backfill", "run_backfill"),
+    ("secchi.backfill", "held_counts"),
     ("secchi.probe_shape", "probe_record_shapes"),
     ("secchi.sources.reference", "reproject_geojson"),
     ("secchi.sources.simplify", "simplify_collection"),
@@ -73,6 +75,8 @@ REQUIRED_TRANSFORM_FUNCTIONS = {
     "_local_do_saturation",
     "_record_timestamp",
     "build_upload_alert",
+    "build_backlog_entries",
+    "_stages_for",
 }
 
 
@@ -149,6 +153,7 @@ REQUIRED_HTML = {
     'renderManualCards': "coverage card renderer",
     'c.variable_order': "per-card variable order (MiniDOT/HOBO readings)",
     'upload_alert': "banner payload consumer",
+    's.kind === "backlog"': "banner handles station backlogs",
     'function convert(': "unit conversion",
     'isDelta': "delta-aware unit conversion",
 }
@@ -162,3 +167,33 @@ def test_required_html_features_still_exist():
         "these dashboard features have disappeared from web/index.html:\n  "
         + "\n  ".join(missing)
     )
+
+
+
+def test_backfill_appends_then_compacts():
+    """The backfill must not read-merge-write, and must not collapse endpoints.
+
+    Both of these have been lost before, silently:
+
+    * Read-merge-write is quadratic for a bulk load. It filled the disk on
+      2026-09-22, was replaced with append-then-compact, and then came back
+      when a later bundle rebuilt backfill.py from an older copy.
+    * "Collapsing" a forest station's endpoints — fetching one and treating
+      it as standing in for the rest — discarded every station's air
+      temperature, humidity and tree-stress history, because the endpoints
+      share record ids but return different columns.
+
+    Checked by parsing, so it runs without the data stack installed.
+    """
+    src = (ROOT / "src" / "secchi" / "backfill.py").read_text()
+    tree = ast.parse(src)
+    called = {n.func.id for n in ast.walk(tree)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    assert "append_partitions" in called, "backfill no longer appends"
+    assert "compact_partitions" in called, "backfill no longer compacts"
+    assert "write_partitions" not in called, (
+        "backfill calls write_partitions — the quadratic read-merge-write "
+        "that filled the disk. Use append_partitions + compact_partitions.")
+    assert "_shares_logger_with" not in src, (
+        "backfill is collapsing endpoints again. They share record ids but "
+        "return different columns; collapsing discards whole variables.")
