@@ -92,3 +92,37 @@ be atomic. That wasn't true until now.
 history. The real fallback is that TEON still has everything — which is
 lucky rather than designed. A backfill that depended on a source having
 gone away would have been a different conversation.
+
+## Update, 2026-09-23: it was about three times bigger
+
+The table above lists only the three nearshore sites, because those were
+the only sites with coverage cards, and a coverage card is what noticed
+the loss.
+
+The truncated partitions held **every** site's data for those months.
+The next day, the new SQL shell compared records held against TEON's
+counts and found the forest stations and lake sondes short too:
+
+| Site | Missing |
+|---|---|
+| Glenbrook 4 soil | 8,772 |
+| Glenbrook 5 soil | 7,435 |
+| Glenbrook 1 soil | 5,956 |
+| Glenbrook 2 soil | 5,932 |
+| Blackwood 2 soil | 5,652 |
+| UNR Tahoe Campus soil | 5,255 |
+| Glenbrook EXO | 4,421 |
+| Homewood soil | 2,880 |
+| Sunnyside EXO | 1,523 |
+
+About **47,800 more records**, for roughly **76,000 in total**. Blackwood
+3 and Meeks were complete: their data sits in months the failed run
+never rewrote.
+
+All recovered by a `live` backfill, verified to within 6 records of
+TEON's counts at every site.
+
+The lesson is about coverage of the checks, not the storage. The loss
+was detectable everywhere; it was only *detected* where something was
+looking. The backlog check now compares held against upstream for
+telemetered stations too, so the same loss would appear on the banner.

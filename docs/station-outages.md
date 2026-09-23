@@ -83,3 +83,32 @@ not visible in the remaining five.
 
 That's a more useful answer than the alarm the first version raised, and
 it took being wrong to get there.
+
+## Instruments go quiet on their own, too
+
+Not every outage takes the whole station. At **Glenbrook 5**, the air
+temperature and humidity probe was offline from early June to mid-August
+2025 while the soil sensors logged straight through:
+
+| Month | Soil readings | Air readings |
+|---|---|---|
+| June 2025 | 2,466 | 458 |
+| July 2025 | 2,142 | 0 |
+| August 2025 | 2,975 | 1,291 |
+
+Temperature and humidity counts are identical at every station, so they
+always drop out together — one combined probe, not two sensors. Glenbrook
+2 and 4 have similar shortfalls; all three are the stations carrying tree
+dendrometers, which may or may not be a clue.
+
+## Does an outage backfill when the station comes back?
+
+Glenbrook 5 answers that once. It nearly vanished for **June 2026** — 31
+readings all month, soil and air alike — and came back in July. TEON's
+record count for the station matches ours, so that month never came back
+upstream.
+
+One example, not a rule. A station that lost only its radio would still
+have a full card to upload. But it's a reason not to count on Glenbrook 2
+and Blackwood 2 filling in their gaps, even though both went dark on
+healthy batteries.

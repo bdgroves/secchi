@@ -2,7 +2,7 @@
 
 ### A modern Secchi disk for Lake Tahoe
 
-**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 8.6 million observations, twenty-seven months, updating hourly and watching itself
+**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 11.2 million observations, twenty-seven months, updating hourly and watching itself
 
 ---
 
@@ -61,11 +61,11 @@ Homewood and Glenbrook 5 sit **64 metres apart in latitude** on opposite shores.
 
 The overlap is about a year because Homewood is the youngest forest station, reporting only since September 2025.
 
-**The sturdiest result: a west-to-east lag of +3.7 to +4.3 hours**, with six of seven shared events reaching the west shore first. It survived four versions of the detector because no threshold enters it — only which station moved first. Storms arrive from the Pacific and cross the basin.
+**The result: total soil wetting runs at about the rainfall ratio.** Summed over every wetting event in the overlapping year, Homewood's soil took 146 points of wetting against Glenbrook 5's 63 — **2.32×**, against a catchment rainfall ratio of 2.12×. It's the one statistic built to be compared with rainfall, and it doesn't depend on how storms are paired between stations. It leans on a few big west-shore storms Glenbrook 5 never felt (+22.2 on 2025-10-02, +16.1 on 2025-12-17), so it's encouraging rather than settled.
 
-**The ratios are provisional, and I got them wrong three times.** 3.31× from averaging ratios (wrong operation for a multiplicative quantity). 2.82× from counting the diurnal cycle as storms. 1.29× after matching at the wrong resolution. Every correction moved toward the null.
+**Storms mostly reach the west shore first: 15 of 18 shared events.** How long they take to cross can't be measured here. Detection runs on daily means, which it has to in order to reject the soil's daily cycle, so most storm onsets can only be placed to the day. I twice reported a lag in hours — +3.7 h, then +11.7 h — and called it the sturdiest finding. The first was biased short by a 12-hour matching window; the second was inflated by storms stamped at midnight. Only 6 of 18 pairs resolve to a real hour, spread from 4 to 37 hours.
 
-Four methodological choices each moved the headline by more than the effect being measured, which means the data is under-determining the question. The honest range is somewhere between 1.3× and 2× against a climatological 2.12×.
+**Getting here took five wrong answers, and every correction moved toward the null:** 3.31× from averaging ratios, 2.82× from counting the daily cycle as storms, 1.29× from matching at the wrong resolution, and the two lag figures. The number that survived is the one defined, before its value was known, to be compared against rainfall.
 
 **What would settle it:** the 593,507 precipitation records now in the store, at a west-shore site, covering the same winter. That converts *"did both stations wet at the same time?"* — inferring storms from responses, where all four bugs lived — into *"how much did each wet after this much rain?"*
 
@@ -148,6 +148,8 @@ They get coverage cards rather than live cards — period of record held, what's
 
 **A camera filed a frame from the future** — six hours ahead of the snapshot containing it.
 
+**Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream. Glenbrook 2 and Blackwood 2 are dark now, both on healthy batteries, and Glenbrook 1's battery channel has been frozen at exactly 11.45 V.
+
 Cataloguing these *is* the work, and it's much easier from outside than operating the network. All reported back.
 
 ---
@@ -161,7 +163,7 @@ data/processed/observations/
     source=teon/year=2026/month=09/part.parquet    the only file that churns
 ```
 
-**8,609,633 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
+**11,151,846 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
 
 `pixi run query` opens a SQL shell over all of it, reading the parquet in place. A filtered aggregate over the whole store answers in under a tenth of a second.
 
@@ -169,7 +171,7 @@ Hive-partitioned because a parquet is rewritten whole on every update and git st
 
 Backfills **append then compact** rather than read-merge-write. The first design was quadratic: 1.78 million observations meant 89 flushes each rewriting everything accumulated — **80 million row writes, 45× amplification, ~2 GB to store 45 MB** — and it filled the disk mid-run.
 
-All writes are **atomic**. That failed run left a truncated partition and took **28,535 rows** of nearshore history with it. Writes now go to a temp file and replace on success; compaction refuses to touch a partition it can't fully read.
+All writes are **atomic**. That failed run left truncated partitions and took about **76,000 records** with it: 28,535 at the nearshore sites, noticed at once because those sites have coverage cards, and about 47,800 at the forest stations and lake sondes, noticed a day later only because a SQL query compared what we held against TEON's counts. All recovered. Writes now go to a temp file and replace on success; compaction refuses to touch a partition it can't fully read.
 
 ---
 
@@ -185,7 +187,7 @@ All writes are **atomic**. That failed run left a truncated partition and took *
 
 ## The bugs were mostly mine
 
-Twenty-eight errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Thirty errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -199,13 +201,15 @@ Twenty-eight errors shipped or nearly shipped. Every one produced **plausible-lo
 | A local import shadowing a module one | **`UnboundLocalError`, cron down for hours** |
 | Backfill wrote non-canonical sensor types | **98.9 % of the record invisible** |
 | Quadratic write amplification | **Filled the disk mid-backfill** |
-| Non-atomic writes | **28,535 rows lost** |
+| Non-atomic writes | **About 76,000 records lost**, all recovered |
 | Fail-open defeating a fail-closed guard | A safety check that could never fire |
 | Correlation as a discriminator, twice | Numbers that couldn't separate anything |
 | Recession fit measuring its own window | Four signals, all ~3 days |
 | A ratio quoted from one day's reading | 12× that was really 2.9–4.2× |
 | Collapsed endpoints that shared rows but not columns | **Air temperature, humidity and tree-stress history discarded** |
 | A fifth stale-base copy, this time of the backfill | The quadratic writer that filled the disk, silently back |
+| A lag in hours read from day-resolution data | "+3.7 h, the sturdiest finding" — an artifact |
+| A data-loss incident sized from the only sites with cards | 28,535 lost records that were really about 76,000 |
 
 ### The pattern
 
@@ -227,14 +231,14 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
 ## By the numbers
 
 ```
-   8,609,633   observations stored, Jun 2024 to now
+  11,151,846   observations stored, Jun 2024 to now
      374,942   paired readings behind the oxygen finding
    1,490,116   rows that once landed with no timestamp, recovered
-      28,535   rows lost to a non-atomic write, recovered
+      76,361   records lost to a non-atomic write, all recovered
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          28   of my own bugs caught before or shortly after shipping
+          30   of my own bugs caught before or shortly after shipping
           13   actual physical devices
            8   data-quality faults found upstream, all reported
         3.03×  rain-shadow gradient across the basin
