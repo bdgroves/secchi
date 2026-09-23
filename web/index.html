@@ -279,6 +279,11 @@
      actively misleading. */
   .pin-manual  { background: var(--paper); border: 2px solid var(--wet);
                  box-shadow: 0 0 0 1px rgba(0,0,0,.25), inset 0 0 0 2px var(--paper); }
+  /* A whole station dark — every channel at once. Distinct from one
+     quiet sensor and from a working instrument on a monthly download
+     cycle. Lost once when index.html was rebuilt from a copy that
+     predated it; tests/test_capabilities_persist.py now checks for it. */
+  .pin-offline { background: var(--muted); border: 2px solid var(--ember); }
   .pin-manual-pending { background: var(--ember); border: 2px solid var(--paper); }
   .pin-gauge   { background: var(--wet); border-radius: 2px; transform: rotate(45deg); }
 
@@ -321,6 +326,7 @@
   .lg-dormant { background: var(--muted); }
   .lg-hidden { border: 1px dashed var(--muted); }
   .lg-manual { background: var(--paper); border: 2px solid var(--wet); }
+  .lg-offline { background: var(--muted); border: 2px solid var(--ember); }
   .lg-manual-pending { background: var(--ember); }
   .lg-gauge { background: var(--wet); border-radius: 1px; }
   .lg-transect { width: 1.4rem; height: 0; border-top: 2px dashed var(--ember);
@@ -407,6 +413,7 @@
     <span><i class="lg-hidden"></i>hidden by TEON</span>
     <span><i class="lg-manual"></i>collected by hand</span>
     <span><i class="lg-manual-pending"></i>uploaded, not yet pulled</span>
+    <span><i class="lg-offline"></i>station offline</span>
     <span><i class="lg-gauge"></i>USGS gauge</span>
     <span><i class="lg-transect"></i>transect</span>
   </div>
@@ -1047,6 +1054,11 @@
     if (p.is_manual) {
       return (p.unpulled_records > 0) ? "pin-manual-pending" : "pin-manual";
     }
+    // Every channel at the location dark — the station, not one sensor.
+    // The transform has sent collection: "offline" all along; without
+    // this branch the page fell through to colouring by age, so a dead
+    // station showed amber ("quiet < 30 days") like a slow one.
+    if (p.collection === "offline") return "pin-offline";
     const st = ageState(p.last_update);
     return st === "live" ? "pin-live" : st === "stale" ? "pin-stale" : "pin-dormant";
   }
@@ -1084,6 +1096,9 @@
       flags.push(p.unpulled_records > 0
         ? `${fmtInt.format(p.unpulled_records)} records published, not yet pulled`
         : "collected by hand, up to date");
+    }
+    if (p.collection === "offline") {
+      flags.push(`all ${(p.sensor_types || []).length} channels dark — station offline`);
     }
     const flagHtml = flags.map(f => `<span class="pop-flag">${esc(f)}</span>`).join(" ");
 

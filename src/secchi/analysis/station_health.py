@@ -68,6 +68,11 @@ WATCH_VOLTAGE = 12.0
 # than this.
 WEEKS_OF_HEADROOM = 12
 
+# Below this average daily swing, the series is treated as not
+# moving. A healthy solar-charged 12 V supply swings tenths of a volt
+# between afternoon charge and pre-dawn sag.
+FLATLINE_SWING = 0.02
+
 # Days over which to measure the trend. Long enough to see through
 # weather, short enough to catch a decline while it's still a warning.
 TREND_DAYS = 30
@@ -96,9 +101,15 @@ def _battery(df: pd.DataFrame, site: str) -> pd.DataFrame:
              & df["timestamp"].notna() & df["value"].notna()]
     if sub.empty:
         return pd.DataFrame()
-    daily = sub.set_index("timestamp")["value"].sort_index().resample("1D")
+    raw = sub.set_index("timestamp")["value"].sort_index()
+    daily = raw.resample("1D")
     out = pd.DataFrame({"mean": daily.mean(), "min": daily.min(),
                         "max": daily.max()}).dropna()
+    # The RAW last timestamp. Staleness computed from the daily index is
+    # quantized to midnight, so it can only take values 24 h apart: the
+    # first real run showed three stations at exactly 34 h, which was
+    # "last reported yesterday", not three simultaneous outages.
+    out.attrs["last_raw"] = raw.index.max()
     return out
 
 
@@ -135,12 +146,13 @@ def analyse(df: pd.DataFrame | None = None) -> dict | None:
         if batt.empty:
             continue
 
+        last_raw = batt.attrs.get("last_raw", batt.index.max())
+        hours_stale = (_now_like(batt.index) - last_raw).total_seconds() / 3600
         last_day = batt.index.max()
-        hours_stale = (_now_like(batt.index) - last_day).total_seconds() / 3600
         recent = batt.loc[batt.index >= last_day - pd.Timedelta(days=TREND_DAYS)]
 
         entry = {
-            "last_reading": last_day.isoformat(),
+            "last_reading": last_raw.isoformat(),
             "hours_stale": round(hours_stale, 1),
             "dark": hours_stale > DARK_AFTER_HOURS,
             "days_of_record": int(len(batt)),
@@ -157,7 +169,16 @@ def analyse(df: pd.DataFrame | None = None) -> dict | None:
             # forecast.
             "current_floor": round(
                 float(batt["min"].tail(7).min()), 2),
+            # Daily swing over the last week. A solar-charged battery
+            # charges through the afternoon and sags overnight, every
+            # day. Glenbrook 1 reported mean, min and floor all exactly
+            # 11.45 V — a series that doesn't move at all. Real
+            # batteries don't flatline; stuck channels and placeholder
+            # values do.
+            "daily_swing": round(float(
+                (batt["max"] - batt["min"]).tail(7).mean()), 3),
         }
+        entry["flatlined"] = entry["daily_swing"] < FLATLINE_SWING
         slope = _slope_per_week(recent["mean"])
         if slope is not None:
             entry["trend_v_per_week"] = round(slope, 3)
@@ -257,21 +278,36 @@ def report() -> int:
             # Flag on where it IS and where it is GOING, together.
             flag = ""
             wtf = v.get("weeks_to_floor")
-            if v["current_floor"] < LOW_VOLTAGE:
+            if v.get("flatlined"):
+                flag = "  STUCK?"
+            elif v["current_floor"] < LOW_VOLTAGE:
                 flag = "  AT RISK"
             elif wtf is not None and wtf < WEEKS_OF_HEADROOM:
                 flag = f"  {wtf:.0f} wk to floor"
             elif v["current_floor"] < WATCH_VOLTAGE:
                 flag = "  watch"
-            print(f"    {site:20}{v['hours_stale']:>9.0f} h"
+            print(f"    {site:20}{v['hours_stale']:>9.1f} h"
                   f"{v['final_mean']:>9.2f}{v['final_min']:>9.2f}"
                   f"{v['current_floor']:>12.2f}{trend:>13}{flag}")
         print()
 
+        stuck = sorted(s for s, v in live.items() if v.get("flatlined"))
+        if stuck:
+            print(f"    {', '.join(stuck)}: battery reading hasn't moved in a")
+            print("    week — no daily charge/discharge cycle at all. A real")
+            print("    solar-charged battery always swings. This is most")
+            print("    likely a stuck channel or a placeholder value, NOT a")
+            print("    flat battery, and it isn't counted as at risk.\n")
+
+        # Parenthesised on purpose. Without them, `and` binds tighter
+        # than `or`, so the stuck-exclusion only applied to the first
+        # condition — and Glenbrook 1, flagged STUCK and explicitly "not
+        # counted as at risk", was counted anyway through the second.
         at_risk = [s for s, v in live.items()
-                   if v["current_floor"] < WATCH_VOLTAGE
-                   or (v.get("weeks_to_floor") is not None
-                       and v["weeks_to_floor"] < WEEKS_OF_HEADROOM)]
+                   if not v.get("flatlined")
+                   and (v["current_floor"] < WATCH_VOLTAGE
+                        or (v.get("weeks_to_floor") is not None
+                            and v["weeks_to_floor"] < WEEKS_OF_HEADROOM))]
         if at_risk:
             print(f"    {len(at_risk)} station(s) worth watching: "
                   f"{', '.join(sorted(at_risk))}\n")

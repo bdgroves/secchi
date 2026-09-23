@@ -126,3 +126,39 @@ def test_required_modules_still_import():
         if symbol not in names:
             missing.append(f"{module}.{symbol}")
     assert not missing, f"these entry points have disappeared: {missing}"
+
+
+# Dashboard features that must remain in web/index.html. The Python
+# checks above could not see the page, so when index.html was rebuilt
+# from a copy predating the offline-station marker, the transform kept
+# sending collection: "offline" and the page silently drew dead stations
+# amber, as if merely slow. Glenbrook 2 sat orange for a day because of
+# it. Plain string checks: each is a class, element id or branch that a
+# feature depends on.
+REQUIRED_HTML = {
+    # map pin states
+    'pin-offline': "offline-station pin style",
+    'p.collection === "offline"': "pinClass branch for offline stations",
+    'station offline</span>': "legend entry for offline stations",
+    'pin-manual-pending': "hand-collected, data waiting",
+    'pin-manual': "hand-collected, up to date",
+    'pin-hidden': "hidden by TEON",
+    # sections and features
+    'id="manual-cards"': "hand-collected coverage cards",
+    'id="upload-alert"': "new-upload banner",
+    'renderManualCards': "coverage card renderer",
+    'c.variable_order': "per-card variable order (MiniDOT/HOBO readings)",
+    'upload_alert': "banner payload consumer",
+    'function convert(': "unit conversion",
+    'isDelta': "delta-aware unit conversion",
+}
+
+
+def test_required_html_features_still_exist():
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    missing = [f"{token!r} ({why})" for token, why in REQUIRED_HTML.items()
+               if token not in html]
+    assert not missing, (
+        "these dashboard features have disappeared from web/index.html:\n  "
+        + "\n  ".join(missing)
+    )
