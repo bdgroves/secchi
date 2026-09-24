@@ -4,25 +4,31 @@
 *.bat text eol=crlf
 
 # ---------------------------------------------------------------------------
-# Parquet: binary, and never mergeable
+# Parquet: binary, merged as a set of readings
 # ---------------------------------------------------------------------------
-# These accumulate across runs and are the durable record, so they must be
-# committed (see .gitignore). But git cannot merge binary content, and both
-# a local `pixi run transform` and the hourly cron write them — so any
-# divergent history produces a conflict git has no way to resolve.
+# The store is committed, and both the hourly job and a local transform or
+# backfill write the current month's partition. Git can't merge binary
+# content, so every divergence used to stop `git pull --rebase` for a hand
+# resolution.
 #
-# Marking them binary with `-merge` makes git stop *trying*. It still
-# reports the conflict, but it won't corrupt the file attempting a
-# content merge, and the resolution is unambiguous: take either side, then
-# run `pixi run transform`, which rebuilds from data/raw/ and dedupes on
-# the source's own record ids. Nothing is lost either way.
+# A partition is an append-only set of readings keyed by record id, site
+# and variable, so merging two versions has a well-defined answer: keep
+# every reading either side has, once — three-way against the common
+# ancestor, so a purge or a repair on one side survives. That's
+# src/secchi/merge_parquet.py, registered per clone by:
 #
-# Resolution, for whichever file git names:
-#     git checkout --theirs data/processed/<file>.parquet
-#     git add data/processed/<file>.parquet
-#     git rebase --continue
-#     pixi run transform      # restores any rows the chosen side lacked
-*.parquet binary -merge -diff
+#     pixi run setup-git
+#
+# A clone WITHOUT that setup falls back to the old behaviour: git reports
+# the conflict and leaves a readable file. Verified — it does not attempt
+# a text merge on the binary. So an unconfigured machine is no worse off.
+#
+# ORDER MATTERS: later lines win. `binary` expands to -diff -merge -text,
+# so the general rule must come BEFORE the specific one, or it would
+# switch the driver back off. An earlier draft had them the other way
+# round; `git check-attr merge -- <file>` is how to confirm.
+*.parquet binary
+data/processed/**/*.parquet merge=parquet-union
 
 # Raw snapshots are JSON with unique filenames per run, so they append
 # rather than conflict. Marked -diff only to keep `git log -p` readable.

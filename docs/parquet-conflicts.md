@@ -1,86 +1,80 @@
-# Parquet conflicts, and why they happen
+# Why `git pull` no longer stops on parquet
 
 ## The problem
 
-`data/processed/*.parquet` are committed on purpose — they accumulate
-across runs and are the durable record, which is what lets `data/raw/` be
-pruned on a 7-day window instead of growing without bound.
+The store is committed, and two writers touch the current month's
+partition: the hourly job in CI, and a local `transform` or `backfill`.
+Git can't merge binary content, so every time both had changed it,
+`git pull --rebase` stopped and asked for a hand resolution:
 
-But they are **binary**, and git cannot merge binary content. Both the
-hourly cron and any local `pixi run transform` write them. So the moment
-local and remote history diverge, git hits a conflict it has no mechanism
-to resolve:
-
-    warning: Cannot merge binary files: data/processed/usgs_observations.parquet
-    CONFLICT (content): Merge conflict in data/processed/usgs_observations.parquet
-
-This bit on 2026-09-18 and took a rebase, a stray cherry-pick and a
-detached HEAD to untangle.
-
-## Why it's safe to resolve carelessly
-
-Take either side. It genuinely does not matter, because
-`pixi run transform` **accumulates**: it reads the existing parquet, merges
-everything currently in `data/raw/`, deduplicates on the source's own
-record ids (TEON's per-observation UUID, USGS's feature id), and writes
-back. Any rows the chosen side lacked come straight back from the raw
-snapshots.
-
-So the fix is always:
-
-    git checkout --theirs data/processed/<file>.parquet
-    git add data/processed/<file>.parquet
+    git checkout --theirs <partition>
+    git add <partition>
     git rebase --continue
-    # then, once the rebase finishes:
-    pixi run transform
-    git add -A && git commit -m "reconcile parquet" && git push
-
-Repeat the first three lines for each file git names.
-
-## What's been done to stop it recurring
-
-**`.gitattributes` marks them unmergeable:**
-
-    *.parquet binary -merge -diff
-
-`-merge` makes git stop *attempting* a content merge. It still reports the
-conflict, but it won't mangle the file trying to reconcile it, and the
-resolution above is then unambiguous. `-diff` keeps `git log -p` from
-dumping binary noise.
-
-**The cron no longer merges.** `fetch.yml` now, before regenerating:
-
-    git fetch origin main
-    git checkout origin/main -- data/processed/
-
-It takes the remote's parquet, then lets `transform` rebuild from
-`data/raw/`. Because transform accumulates, the result holds both sides'
-rows regardless of which copy it started from — so the cron never pushes a
-parquet that diverged. The push also retries up to three times with
-`pull --rebase -X theirs`, and aborts cleanly rather than forcing if that
-fails.
-
-## The alternative we didn't take
-
-Stop committing the parquet and keep only `data/raw/`. That removes the
-conflict entirely, but it also removes the reason raw can be pruned — the
-repo would go back to unbounded growth, roughly 23 MB/day at current
-settings. The accumulating parquet is what makes a 7-day raw window safe,
-so the conflict is a cost worth paying for it.
-
-A middle option, if this keeps being annoying: write the parquet only in
-CI and never locally, with local runs using a gitignored scratch path.
-That fully separates the writers. It costs the ability to inspect the real
-record locally, which is worth more than the occasional conflict for now.
-
-## If it gets truly tangled
-
-Local commits are recoverable from the bundles, and `data/raw/` lives on
-the remote:
-
-    git rebase --abort
-    git reset --hard origin/main
     pixi run transform
 
-That discards local commits back to the remote state and rebuilds the
-parquet. Costs whatever wasn't pushed; loses nothing irreplaceable.
+That happened on most pushes.
+
+## Why not just stop committing the current month
+
+It was suggested here once, and it would lose data. The raw buffer only
+keeps seven days, so a CI run starting without the current month's
+partition could rebuild only the last week of it. Everything older in
+that month — including rows a backfill had recovered — would be gone.
+
+## The fix: a merge driver
+
+A partition is an append-only set of readings, keyed by record id, site
+and variable. Merging two versions has a well-defined answer, the same
+one the hand resolution reached: keep every reading either side has,
+once. Git lets a repository define how to merge a file type, so
+`src/secchi/merge_parquet.py` does exactly that.
+
+It's a **three-way** merge against the common ancestor, so deliberate
+changes survive:
+
+| Situation | Result |
+|---|---|
+| a reading added on either side | kept |
+| a reading removed on one side (a purge) | removed |
+| a reading changed on one side (a repair) | the changed version |
+| changed on both sides | ours |
+
+Plain union would resurrect purged rows and undo repairs whenever the
+other side still held the old copy.
+
+It runs in about 2.5 seconds on a 500,000-row partition: keys and rows
+are hashed, and the decisions are set operations on the hashes. A hash
+collision would silently merge two different readings, so the driver
+checks for one and declines to merge if it finds one — git then reports
+an ordinary conflict.
+
+## Setup, once per clone
+
+    pixi run setup-git
+
+This registers the driver in the clone's git config, which is the one
+part git doesn't let a repository carry itself. CI runs the same command
+before its push-retry rebase.
+
+**A clone without it is no worse off.** Git falls back to reporting the
+conflict and leaving a readable file; it does not attempt a text merge
+on the binary. That was tested before relying on it.
+
+## Checking it's active
+
+    git check-attr merge -- data/processed/observations/source=teon/year=2026/month=09/part.parquet
+
+should print `merge: parquet-union`. The order of lines in
+`.gitattributes` decides this: later lines win, and `binary` expands to
+"don't merge", so the general `*.parquet binary` rule must come before
+the store rule. An earlier draft had them the other way round and the
+driver never ran. `test_parquet_merge_driver_is_wired` asks git the same
+question, so that mistake can't come back unnoticed.
+
+## What it can't handle
+
+A partition **deleted** on one side and changed on the other is a
+modify/delete conflict, which git resolves before any driver runs. That
+would take a `drop-undated` on one side racing an hourly write to the
+same undated partition — unlikely, and resolved the old way if it
+happens.

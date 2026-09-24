@@ -59,6 +59,7 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.store", "repair_sensor_types"),
     ("secchi.backfill", "run_backfill"),
     ("secchi.backfill", "held_counts"),
+    ("secchi.merge_parquet", "merge_frames"),
     ("secchi.probe_shape", "probe_record_shapes"),
     ("secchi.sources.reference", "reproject_geojson"),
     ("secchi.sources.simplify", "simplify_collection"),
@@ -197,3 +198,36 @@ def test_backfill_appends_then_compacts():
     assert "_shares_logger_with" not in src, (
         "backfill is collapsing endpoints again. They share record ids but "
         "return different columns; collapsing discards whole variables.")
+
+
+
+def test_parquet_merge_driver_is_wired():
+    """Store partitions must resolve to the merge driver, per git itself.
+
+    Asks `git check-attr` rather than reading .gitattributes, because the
+    file's ORDER decides the answer: later lines win, and `binary` expands
+    to -merge. An earlier draft put a general `*.parquet binary` line
+    after the store rule, which silently switched the driver off — the
+    file looked right and git reported `merge: unset`.
+    """
+    import subprocess
+    import pytest
+
+    partition = ("data/processed/observations/source=teon/"
+                 "year=2026/month=09/part.parquet")
+    try:
+        out = subprocess.run(["git", "check-attr", "merge", "--", partition],
+                             cwd=ROOT, capture_output=True, text=True)
+    except FileNotFoundError:
+        pytest.skip("git not available")
+    if out.returncode != 0:
+        pytest.skip("not inside a git checkout")
+    assert out.stdout.strip().endswith("merge: parquet-union"), (
+        f"store partitions don't resolve to the merge driver: {out.stdout.strip()}")
+
+    tasks = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["pixi"]["tasks"]
+    assert "merge_parquet" in tasks.get("setup-git", ""), \
+        "the setup-git task no longer registers the driver"
+    workflow = (ROOT / ".github" / "workflows" / "fetch.yml").read_text()
+    assert "pixi run setup-git" in workflow, \
+        "CI no longer registers the merge driver before its push-retry rebase"

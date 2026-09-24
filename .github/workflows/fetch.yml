@@ -43,6 +43,12 @@ jobs:
           environments: default
           cache: true
 
+      - name: Register the parquet merge driver
+        # So the push-retry rebase in the Commit step merges partitions as
+        # sets of readings instead of failing on a binary conflict. Same
+        # command a local clone runs once.
+        run: pixi run setup-git
+
       - name: Ingest TEON
         run: pixi run ingest-all
 
@@ -88,7 +94,7 @@ jobs:
           fi
 
       - name: Take the remote's parquet before regenerating
-        # The parquet is binary and unmergeable, so we never try. Instead:
+        # Belt and braces alongside the merge driver. Instead of merging:
         # reset those paths to whatever is on the remote, then let
         # transform rebuild from data/raw/ — which accumulates and dedupes,
         # so the result contains both sides' rows regardless of which copy

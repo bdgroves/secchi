@@ -173,6 +173,9 @@ station-health = "python -m secchi.ingest --mode station-health"
 # SQL over the whole record, in place. `pixi run query` for a shell, or
 # `pixi run query "SELECT ..."` for one question.
 query = "python -m secchi.query"
+# One-time, per clone: teach git to merge store partitions as sets of
+# readings instead of stopping on a binary conflict. See .gitattributes.
+setup-git = "git config merge.parquet-union.name \"set merge for the partitioned parquet store\" && git config merge.parquet-union.driver \"pixi run python -m secchi.merge_parquet %O %A %B %P\""
 # Assign every station and gauge to its containing catchment and report the
 # attributes that would attach. The join that turns an outlier into an
 # explanation. Requires `reference` and `transform` to have run.
