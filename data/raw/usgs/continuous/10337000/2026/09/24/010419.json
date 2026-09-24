@@ -1,0 +1,135 @@
+{
+  "fetched_at": "2026-09-24T01:04:19.603855+00:00",
+  "source": "USGS",
+  "collection": "continuous",
+  "site_number": "10337000",
+  "site_name": "Lake Tahoe at Tahoe City",
+  "feature_count": 5,
+  "parameter_codes": [
+    "00065"
+  ],
+  "period": "PT6H",
+  "statistic_id": "00011",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "time_series_id": "5f5bb06dc4914b06916b9dde5ef7e98f",
+        "monitoring_location_id": "USGS-10337000",
+        "parameter_code": "00065",
+        "statistic_id": "00011",
+        "time": "2026-09-23T20:00:00+00:00",
+        "value": "7.00",
+        "unit_of_measure": "ft",
+        "approval_status": "Provisional",
+        "qualifier": null,
+        "last_modified": "2026-09-23T20:05:16.389703+00:00",
+        "method_category": null
+      },
+      "id": "b05e4380-e73f-4654-b80a-f5e6074b22d9",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -120.11933679124554,
+          39.180717516719696
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "time_series_id": "5f5bb06dc4914b06916b9dde5ef7e98f",
+        "monitoring_location_id": "USGS-10337000",
+        "parameter_code": "00065",
+        "statistic_id": "00011",
+        "time": "2026-09-23T21:00:00+00:00",
+        "value": "7.01",
+        "unit_of_measure": "ft",
+        "approval_status": "Provisional",
+        "qualifier": null,
+        "last_modified": "2026-09-23T21:05:18.927266+00:00",
+        "method_category": null
+      },
+      "id": "d1775cca-8421-4285-8852-9108f46484f1",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -120.11933679124554,
+          39.180717516719696
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "time_series_id": "5f5bb06dc4914b06916b9dde5ef7e98f",
+        "monitoring_location_id": "USGS-10337000",
+        "parameter_code": "00065",
+        "statistic_id": "00011",
+        "time": "2026-09-23T22:00:00+00:00",
+        "value": "7.01",
+        "unit_of_measure": "ft",
+        "approval_status": "Provisional",
+        "qualifier": null,
+        "last_modified": "2026-09-23T22:05:29.707697+00:00",
+        "method_category": null
+      },
+      "id": "46852400-978b-4ca5-b755-0d30b0e87888",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -120.11933679124554,
+          39.180717516719696
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "time_series_id": "5f5bb06dc4914b06916b9dde5ef7e98f",
+        "monitoring_location_id": "USGS-10337000",
+        "parameter_code": "00065",
+        "statistic_id": "00011",
+        "time": "2026-09-23T23:00:00+00:00",
+        "value": "7.01",
+        "unit_of_measure": "ft",
+        "approval_status": "Provisional",
+        "qualifier": null,
+        "last_modified": "2026-09-23T23:06:19.642713+00:00",
+        "method_category": null
+      },
+      "id": "85dd1e0b-1525-45d8-889a-654ccfb977d5",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -120.11933679124554,
+          39.180717516719696
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "time_series_id": "5f5bb06dc4914b06916b9dde5ef7e98f",
+        "monitoring_location_id": "USGS-10337000",
+        "parameter_code": "00065",
+        "statistic_id": "00011",
+        "time": "2026-09-24T00:00:00+00:00",
+        "value": "7.01",
+        "unit_of_measure": "ft",
+        "approval_status": "Provisional",
+        "qualifier": null,
+        "last_modified": "2026-09-24T00:06:21.419193+00:00",
+        "method_category": null
+      },
+      "id": "e0460580-2419-409c-9ae6-a5f9f7b0b963",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -120.11933679124554,
+          39.180717516719696
+        ]
+      }
+    }
+  ]
+}
