@@ -150,6 +150,8 @@ They get coverage cards rather than live cards — period of record held, what's
 
 **Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream. Glenbrook 2 and Blackwood 2 are dark now, both on healthy batteries, and Glenbrook 1's battery channel has been frozen at exactly 11.45 V.
 
+**An outage's cause is written in the battery.** Glenbrook 4 lost about 68 days to outages in 2024–25 that never came back. Before each winter outage its battery had collapsed to 6.8–8.1 V: power failures, with the logger shut down and nothing recorded to recover. This September it dropped out for a day on a healthy battery, and every reading came back when it reconnected — the logger had kept recording while it couldn't transmit. `pixi run station-health` tells the two apart for every station.
+
 Cataloguing these *is* the work, and it's much easier from outside than operating the network. All reported back.
 
 ---
@@ -173,6 +175,8 @@ Backfills **append then compact** rather than read-merge-write. The first design
 
 All writes are **atomic**. That failed run left truncated partitions and took about **76,000 records** with it: 28,535 at the nearshore sites, noticed at once because those sites have coverage cards, and about 47,800 at the forest stations and lake sondes, noticed a day later only because a SQL query compared what we held against TEON's counts. All recovered. Writes now go to a temp file and replace on success; compaction refuses to touch a partition it can't fully read.
 
+The hourly job and local runs both write the current month's partition, and git can't merge binary files. A custom merge driver treats each partition as a set of readings and merges three-way against the common ancestor, so `git pull` no longer stops on them. It's registered once per clone with `pixi run setup-git`.
+
 ---
 
 ## It watches itself
@@ -187,7 +191,7 @@ All writes are **atomic**. That failed run left truncated partitions and took ab
 
 ## The bugs were mostly mine
 
-Thirty errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Thirty-one errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -210,6 +214,7 @@ Thirty errors shipped or nearly shipped. Every one produced **plausible-looking 
 | A fifth stale-base copy, this time of the backfill | The quadratic writer that filled the disk, silently back |
 | A lag in hours read from day-resolution data | "+3.7 h, the sturdiest finding" — an artifact |
 | A data-loss incident sized from the only sites with cards | 28,535 lost records that were really about 76,000 |
+| `.gitattributes` lines in the wrong order | The merge driver silently switched off; caught by asking git |
 
 ### The pattern
 
@@ -238,7 +243,7 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          30   of my own bugs caught before or shortly after shipping
+          31   of my own bugs caught before or shortly after shipping
           13   actual physical devices
            8   data-quality faults found upstream, all reported
         3.03×  rain-shadow gradient across the basin
@@ -252,16 +257,23 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
 ## Running it
 
 ```bash
+git clone git@github.com:bdgroves/secchi.git
+cd secchi
 pixi install
-pixi run pipeline     # ingest both agencies, rebuild, prune
-pixi run serve
+pixi run setup-git    # once per clone: the parquet merge driver
+pixi run -e dev test
+pixi run transform    # builds the page's data, which isn't committed
+pixi run serve        # http://localhost:8000
 ```
+
+Picking this up on a new machine, or in a new Claude session? Start with **[`HANDOFF.md`](HANDOFF.md)** — setup, current state, open questions and next steps.
 
 | Task | What it does |
 |---|---|
 | `backfill --stage …` | full history for one fleet, straight to parquet |
 | `transect` | do the two shores respond differently to the same storm |
-| `glenbrook` | why is one station four times wetter than its neighbours |
+| `glenbrook` | why is one station three to four times wetter than its neighbours |
+| `station-health` | logger battery per station: power failure, or something else |
 | `oxygen-check` | which atmosphere each instrument family references |
 | `record-shape` | field names per sensor type — **run before any new backfill** |
 | `query` | SQL over the whole store, in place — see `docs/querying.md` |
