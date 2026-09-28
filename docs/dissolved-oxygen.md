@@ -91,11 +91,29 @@ referenced to **sea level** like the other four: month by month its
 effective reference pressure matches Glenbrook's to three decimals.
 
 But adding it moved the EXO fleet's fit from **0.004 to 0.242 mg/L**. The
-cause wasn't configuration: for about six days in July 2026 its sonde
-reported saturation near zero or negative — 564 readings, down to −0.16 % —
-with normal concentrations alongside. Surface water sits around 70–130 %,
-and a sensor lifted into air reads near 100 %, so this looks like the
-percentage channel failing on its own, not the sonde out of the water.
+cause wasn't configuration: for about six days in July 2026, ending
+2026-07-24, its optical channels were filed under the wrong names — 564
+readings. Averaged over those readings against the rest of the month:
+
+| Field | During | Normally | Which is really |
+|---|---|---|---|
+| `Do_mgL` | 85.83 | 7.83 | the saturation (normally 85.01) |
+| `Do_percent` | 0.65 | 85.01 | the chlorophyll (normally 0.67) |
+| `Turbidity` | 7.74 | −2.37 | the concentration (normally 7.83) |
+
+Temperature, conductivity, TDS, salinity and depth were unaffected, and pH
+reported 89.4 once — another saturation value in the wrong place. This
+looks like sensors moved between ports at a service visit with the parser
+keeping the old order. If so, the readings are intact and could be
+remapped upstream.
+
+An earlier draft of this note said the concentration "stayed normal",
+inferred from the ratio exploding. It read 85 mg/L. Both fields were wrong.
+
+Blackwood 3's 22 set-aside readings are a different case: internally
+consistent low oxygen (5.6 mg/L, 48 %) over about four hours in April 2026,
+with warmer water, disturbed optical channels and a freshly charged
+battery — a sonde being handled at a service visit.
 
 The check averaged errors across the whole fleet, so one sonde's bad week
 blurred every EXO verdict. It also dropped saturation ≤ 0 **silently**

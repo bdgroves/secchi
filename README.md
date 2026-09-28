@@ -39,7 +39,7 @@ Tested across **427,517 paired readings**, eleven instruments, twenty months:
 
 **The MiniDOTs are altitude-corrected. The EXO sondes are not.** Every one of the eleven sites agrees with its instrument family, and **each of the five EXO sondes fits sea level to 0.004 mg/L on its own** — EXO reading 78–85 % where the water is really at 99–107 %, MiniDOT agreeing with the corrected figure to within half a point.
 
-The fifth sonde, 4H Camp, arrived when TEON made the site public on 2026-09-26, and at first it looked like an exception: the fleet's fit jumped from 0.004 to 0.242 mg/L. It wasn't configuration. For about six days in July 2026 its sonde reported saturation near zero or negative, with normal concentrations alongside, and the check was averaging those faults into every EXO verdict. Readings outside 50–150 % saturation are now set aside and counted — 592 of them across three sondes — and each site is fitted on its own.
+The fifth sonde, 4H Camp, arrived when TEON made the site public on 2026-09-26, and at first it looked like an exception: the fleet's fit jumped from 0.004 to 0.242 mg/L. It wasn't configuration. For about six days in July 2026 its optical channels were filed under the wrong names — saturation in the concentration field, chlorophyll in the saturation field — and the check was averaging those into every EXO verdict. Readings outside 50–150 % saturation are now set aside and counted — 592 of them across three sondes — and each site is fitted on its own.
 
 I expected both fleets to share the error, and being wrong made it stronger: one fleet right and one wrong, in the same network, rules out a deliberate sea-level convention. The MiniDOTs are the control, and they prove the correction is achievable in TEON's own pipeline.
 
@@ -140,7 +140,7 @@ They get coverage cards rather than live cards — period of record held, what's
 
 ## pH 1.8, or: we've seen this movie
 
-**pH is dead fleetwide.** Glenbrook returns `0`. Sunnyside returns `null`.
+**pH works on the hand-collected sondes and fails on the telemetered ones.** Blackwood 3 and Meeks read a steady 7.8–7.9. Glenbrook and 4H Camp report `0` for most of their record, Sunnyside has stopped reporting it, and 4H Camp once reported a pH of 89.4. pH probes need regular calibration; the hand-collected sondes are visited about monthly.
 
 **Sunnyside reads negative turbidity** — −2.109 FNU, σ 0.042, across 48 readings. A mis-set zero point. USGS on Blackwood Creek reads +0.3 FNU from a different instrument and agency.
 
@@ -156,7 +156,11 @@ They get coverage cards rather than live cards — period of record held, what's
 
 **A battery that nobody is charging.** Glenbrook 1's supply has fallen every week for 35 weeks, from 12.74 V after an apparent battery swap in January to 11.40 V now, with no afternoon charging swing even in midsummer — a failed solar panel or charge controller. It was reported here as a *stuck channel* first, because its readings barely move within a day; that label took the most at-risk station off the at-risk list. It's heading for a power failure, the kind whose gap never comes back, and it's preventable.
 
-**A saturation channel that collapsed.** 4H Camp's sonde reported oxygen saturation near zero — down to −0.16 % — for about six days in July 2026, while its concentration read normally. A sensor lifted into air reads near 100 %, so this looks like the percentage channel failing on its own.
+**Channels filed under the wrong names.** For about six days in July 2026, ending 2026-07-24, 4H Camp's optical sensors reported into each other's columns: its oxygen *saturation* (normally ~85 %) arrived in the concentration field as "85.8 mg/L", its *chlorophyll* (~0.67) arrived as "0.65 % saturation", and its *concentration* (~7.8 mg/L) arrived as turbidity, a spike that never happened. Temperature, conductivity and depth were untouched, so the scramble is confined to the optical sensors — consistent with sensors moved between ports at a service visit while the parser kept the old order. That's inference, but it means the readings are probably intact and could be remapped. I first wrote that the concentration "read normally"; it read 85 mg/L, which no lake holds.
+
+**Service visits aren't flagged.** Blackwood 3 shows about four hours in April 2026 of warm, low-oxygen, disturbed readings with a freshly charged battery: a sonde being handled. They're real readings, and they shouldn't be used.
+
+**4H Camp's turbidity reads −2.4 NTU** normally, a second sonde with a negative zero offset after Sunnyside's −2.1.
 
 Cataloguing these *is* the work, and it's much easier from outside than operating the network. Reported, or in the next note to TEON.
 
@@ -197,7 +201,7 @@ The hourly job and local runs both write the current month's partition, and git 
 
 ## The bugs were mostly mine
 
-Thirty-three errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Thirty-four errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -223,6 +227,7 @@ Thirty-three errors shipped or nearly shipped. Every one produced **plausible-lo
 | `.gitattributes` lines in the wrong order | The merge driver silently switched off; caught by asking git |
 | A "stuck channel" label on a battery that wasn't charging | **The station most at risk, taken off the at-risk list** |
 | One average across a whole instrument fleet | One sonde's bad week moved five sondes' fit sixty-fold |
+| A guess from a ratio, written up as a finding | "Normal concentrations alongside" — they read 85 mg/L |
 
 ### The pattern
 
@@ -251,13 +256,13 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          33   of my own bugs caught before or shortly after shipping
+          34   of my own bugs caught before or shortly after shipping
           13   actual physical devices
-          10   data-quality faults found upstream
+          12   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin
     0.004 mg/L the EXO fit to a sea-level atmosphere
      0.00 km   reprojection error, against published centroids
-           0   pH readings worth anything
+           2   lake sondes with a working pH channel, both hand-collected
 ```
 
 ---

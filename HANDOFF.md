@@ -159,12 +159,14 @@ TEON's to within 6 records at every site.
   MiniDOTs correctly reference lake pressure (0.142 mg/L across 265,316). At
   1,898 m that makes EXO read ~78–85 % where the water is really ~99–107 %.
   592 implausible readings are set aside and counted: 4H Camp 567 (564 in July
-  2026, saturation collapsed to near zero), Blackwood 3 22 (April 2026),
+  2026, its optical channels filed under the wrong names), Blackwood 3 22 (a
+  few hours of a sonde being handled at an April 2026 service visit),
   Sunnyside 3.
 - **43 listed sensors are 13 physical devices.**
 - **The hand-collected sondes are the most complete records** (98.8 %);
   telemetry buys timeliness, not completeness.
 - **Sunnyside turbidity has a −2.11 FNU zero offset**, confirmed against USGS.
+  4H Camp's reads about −2.4 too.
 
 **Transect (Homewood west vs Glenbrook 5 east, 376 days)**
 
@@ -201,8 +203,10 @@ TEON's to within 6 records at every site.
 
 **pH**
 
-- Lake sondes report pH as 0 (Glenbrook) or blank (Sunnyside) — not
-  measurements.
+- **pH works on the two hand-collected sondes** (Blackwood 3 7.91, Meeks 7.83)
+  **and fails on the three telemetered ones**: Glenbrook and 4H Camp mostly 0,
+  Sunnyside no longer reporting, 4H Camp once 89.4. Blackwood 2's stream sensor
+  reads a plausible 8.06.
 - The watershed layer gives soil pH 1.79 at Cave Rock, impossible for soil.
   Hypothesis: map cells with no soil were averaged as zero. If so, other
   catchments are quietly biased low too.
@@ -276,11 +280,14 @@ last-reading query instead.
    form about the oxygen issue, plus a UX survey. **Lead with Glenbrook 1** — a
    battery not being charged, heading for a power failure that can still be
    prevented. Then: all five EXO sondes on sea level (4H Camp included), 4H
-   Camp's July 2026 saturation collapse, the two dark stations (healthy
+   Camp's July 2026 channel scramble (probably recoverable by remapping),
+   unflagged service-visit readings, the two dark stations (healthy
    batteries), Glenbrook
    4's recovered outage versus its unrecovered earlier ones and the winter
    battery collapses, Glenbrook 5's probe outage, the oxygen split with its full
-   numbers, pH reading 0 or blank, and the soil pH layer. Useful questions: do
+   numbers, pH working only on the hand-collected sondes, the turbidity
+   offsets, and the soil pH layer. The draft is `docs/teon-note-2026-09-28.md`.
+   Useful questions: do
    the loggers buffer during a dropout, and did something change after 2025?
    Was the power system upgraded in spring 2025? What happened on 2025-10-15?
 2. **The transect against rainfall.** Blackwood 2's gauge holds 593,507
@@ -320,6 +327,11 @@ doing nothing**. These rules came out of that.
 - **A statistic that can't tell your hypothesis from the null isn't weak
   evidence; it's no evidence.** And be suspicious of results stronger than
   expected: every correction to the transect moved toward the null.
+- **Quarantine before analysing optical channels.** At 4H Camp for ~6 days in
+  July 2026, turbidity and chlorophyll hold other sensors' values that look
+  plausible (a turbidity "spike" of 7.7 NTU). Nothing analyses those
+  variables yet; whoever builds the first one should exclude timestamps where
+  EXO saturation is outside 50–150 % or concentration is above ~20 mg/L.
 - **Backfills append then compact.** Read-merge-write is quadratic at bulk
   scale and filled the disk once. All store writes are atomic.
 - **Detect events on daily means.** Soil moisture has a strong daily cycle.
