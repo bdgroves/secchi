@@ -49,7 +49,7 @@ Reported upstream. `pixi run oxygen-check`.
 
 At every forest station, the soil, air-temperature, tree-stress *and* stream-level endpoints return **projections of one Campbell logger table** — identical record UUIDs, identical battery voltage, identical row counts.
 
-A full pull grabs 4,600 records; deduplicating collapses it to **1,600**. The live network is 2 lake sondes, 6 forest loggers and 5 cameras.
+A full pull grabs 4,600 records; deduplicating collapses it to **1,600**. When this was first counted, the live network was 2 lake sondes, 6 forest loggers and 5 cameras. On 2026-09-28 it's 3 lake sondes (4H Camp went public), 4 of 7 forest loggers and 3 of 5 cameras; `pixi run status` gives the current picture.
 
 **But shared rows are not shared columns**, and I learned that the expensive way. Each endpoint is a *projection* of the logger table: soil returns soil moisture and temperature, air returns air temperature and humidity, tree returns the dendrometers. They share only record IDs and a couple of housekeeping fields. A backfill that fetched one endpoint and treated it as standing in for the rest silently discarded every forest station's air temperature, humidity and tree-stress history. The first query run in the new SQL shell showed air temperature at Homewood covering 7.5 days while soil covered a year.
 
