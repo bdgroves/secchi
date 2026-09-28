@@ -83,3 +83,24 @@ saturation by well under a tenth of a percent.
 `pixi run oxygen-check` tests both hypotheses against every reading
 carrying temperature, concentration and percentage on the same
 timestamp, and reports which fits.
+
+## Update, 2026-09-28: 4H Camp, and a check that let one sonde blur a fleet
+
+TEON made 4H Camp public on 2026-09-26, adding a fifth EXO sonde. It is
+referenced to **sea level** like the other four: month by month its
+effective reference pressure matches Glenbrook's to three decimals.
+
+But adding it moved the EXO fleet's fit from **0.004 to 0.242 mg/L**. The
+cause wasn't configuration: for about six days in July 2026 its sonde
+reported saturation near zero or negative — 564 readings, down to −0.16 % —
+with normal concentrations alongside. Surface water sits around 70–130 %,
+and a sensor lifted into air reads near 100 %, so this looks like the
+percentage channel failing on its own, not the sonde out of the water.
+
+The check averaged errors across the whole fleet, so one sonde's bad week
+blurred every EXO verdict. It also dropped saturation ≤ 0 **silently**
+while keeping near-zero positives like 0.01 %.
+
+Now readings outside 50–150 % saturation are set aside, **counted and
+reported by site and month**, and each site gets its own fit alongside the
+fleet's.

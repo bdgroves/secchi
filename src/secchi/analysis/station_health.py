@@ -73,6 +73,21 @@ WEEKS_OF_HEADROOM = 12
 # between afternoon charge and pre-dawn sag.
 FLATLINE_SWING = 0.02
 
+# A battery with nothing charging it looks flat within each day — no
+# afternoon rise — but falls week after week under the logger's load.
+# Glenbrook 1 did exactly this: 36 straight weekly declines from 12.74 V
+# to 11.40 V, with a daily swing too small to see. An earlier version
+# read the flat days as a stuck channel and REMOVED it from the at-risk
+# list, when it was the station most at risk.
+#
+# So "flat" alone decides nothing. Flat within a day AND unchanged week
+# to week is a stuck channel. Flat within a day AND falling week after
+# week is a battery that isn't being charged.
+NO_CHARGE_SWING = 0.10        # V: below this daily swing, nothing is charging it
+NOT_CHARGING_WEEKS = 8        # complete weeks examined
+NOT_CHARGING_MIN_DROP = 0.15  # V: total fall across those weeks
+STUCK_MAX_CHANGE = 0.02       # V: a stuck channel changes less than this
+
 # Days over which to measure the trend. Long enough to see through
 # weather, short enough to catch a decline while it's still a warning.
 TREND_DAYS = 30
@@ -110,6 +125,12 @@ def _battery(df: pd.DataFrame, site: str) -> pd.DataFrame:
     # first real run showed three stations at exactly 34 h, which was
     # "last reported yesterday", not three simultaneous outages.
     out.attrs["last_raw"] = raw.index.max()
+    # Distinct values in the last week. A frozen channel or placeholder
+    # repeats the SAME number; a real battery, however steady, varies in
+    # the third decimal. "Barely moves" can't tell them apart — Glenbrook
+    # 4, healthy and steady, was flagged stuck by a swing threshold.
+    last_week = raw.loc[raw.index >= raw.index.max() - pd.Timedelta(days=7)]
+    out.attrs["distinct_7d"] = int(last_week.round(4).nunique())
     return out
 
 
@@ -178,7 +199,36 @@ def analyse(df: pd.DataFrame | None = None) -> dict | None:
             "daily_swing": round(float(
                 (batt["max"] - batt["min"]).tail(7).mean()), 3),
         }
-        entry["flatlined"] = entry["daily_swing"] < FLATLINE_SWING
+        # Week-on-week behaviour, from complete weeks only — the current
+        # week is usually partial, and a partial week of a falling series
+        # would look like the bottom of the trend.
+        weekly = batt["mean"].resample("W").mean().dropna().iloc[:-1]
+        window = weekly.tail(NOT_CHARGING_WEEKS)
+        changes = window.diff().dropna()
+        total_change = (float(window.iloc[-1] - window.iloc[0])
+                        if len(window) >= 2 else 0.0)
+        run = 0
+        for step in reversed(weekly.diff().dropna().tolist()):
+            if step < 0:
+                run += 1
+            else:
+                break
+        entry["weeks_falling"] = run
+        entry["weekly_change_v"] = round(total_change, 3)
+        entry["weekly_rate_v"] = (round(float(changes.tail(4).mean()), 3)
+                                  if len(changes) else None)
+        entry["not_charging"] = bool(
+            entry["daily_swing"] < NO_CHARGE_SWING
+            and len(changes) >= NOT_CHARGING_WEEKS - 1
+            and int((changes < 0).sum()) >= len(changes) - 1
+            and -total_change >= NOT_CHARGING_MIN_DROP)
+        # Stuck means frozen: one repeated value all week, and not a
+        # battery that is visibly running down.
+        entry["distinct_7d"] = batt.attrs.get("distinct_7d")
+        entry["flatlined"] = bool(
+            entry["distinct_7d"] is not None
+            and entry["distinct_7d"] <= 1
+            and not entry["not_charging"])
         slope = _slope_per_week(recent["mean"])
         if slope is not None:
             entry["trend_v_per_week"] = round(slope, 3)
@@ -278,7 +328,9 @@ def report() -> int:
             # Flag on where it IS and where it is GOING, together.
             flag = ""
             wtf = v.get("weeks_to_floor")
-            if v.get("flatlined"):
+            if v.get("not_charging"):
+                flag = "  NOT CHARGING"
+            elif v.get("flatlined"):
                 flag = "  STUCK?"
             elif v["current_floor"] < LOW_VOLTAGE:
                 flag = "  AT RISK"
@@ -291,10 +343,23 @@ def report() -> int:
                   f"{v['current_floor']:>12.2f}{trend:>13}{flag}")
         print()
 
+        for site, v in sorted(live.items()):
+            if not v.get("not_charging"):
+                continue
+            rate = v.get("weekly_rate_v")
+            print(f"    {site}: battery has fallen every week for "
+                  f"{v['weeks_falling']} weeks, with")
+            print("    no daily charging swing. That is a battery with nothing")
+            print("    charging it (a failed solar panel or charge controller),")
+            print("    not a stuck channel."
+                  + (f" Falling {abs(rate):.3f} V/week lately." if rate else ""))
+            print("    This ends in a power failure, and power-failure gaps")
+            print("    don't backfill: the logger records nothing to upload.\n")
+
         stuck = sorted(s for s, v in live.items() if v.get("flatlined"))
         if stuck:
-            print(f"    {', '.join(stuck)}: battery reading hasn't moved in a")
-            print("    week — no daily charge/discharge cycle at all. A real")
+            print(f"    {', '.join(stuck)}: battery reading hasn't moved in")
+            print("    weeks — no daily cycle and no weekly change. A real")
             print("    solar-charged battery always swings. This is most")
             print("    likely a stuck channel or a placeholder value, NOT a")
             print("    flat battery, and it isn't counted as at risk.\n")
@@ -303,11 +368,14 @@ def report() -> int:
         # than `or`, so the stuck-exclusion only applied to the first
         # condition — and Glenbrook 1, flagged STUCK and explicitly "not
         # counted as at risk", was counted anyway through the second.
+        # Fully parenthesised: `and` binds tighter than `or`, and a
+        # missing pair here once counted a station the text said wasn't.
         at_risk = [s for s, v in live.items()
-                   if not v.get("flatlined")
-                   and (v["current_floor"] < WATCH_VOLTAGE
-                        or (v.get("weeks_to_floor") is not None
-                            and v["weeks_to_floor"] < WEEKS_OF_HEADROOM))]
+                   if v.get("not_charging")
+                   or (not v.get("flatlined")
+                       and (v["current_floor"] < WATCH_VOLTAGE
+                            or (v.get("weeks_to_floor") is not None
+                                and v["weeks_to_floor"] < WEEKS_OF_HEADROOM)))]
         if at_risk:
             print(f"    {len(at_risk)} station(s) worth watching: "
                   f"{', '.join(sorted(at_risk))}\n")

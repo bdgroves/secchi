@@ -45,6 +45,15 @@ LAKE_SURFACE_M = 1898.0
 # coin flip.
 DISCRIMINATION_THRESHOLD_MGL = 0.3
 
+# Saturation outside this range isn't lake chemistry, it's a reading
+# fault: surface water sits around 70-130 %. 4H Camp's sonde reported
+# near-zero and negative saturation for about six days in July 2026, with
+# normal concentrations alongside, and those readings dragged the whole
+# EXO fleet's fit from 0.004 to 0.242 mg/L — although every EXO sonde is
+# configured identically. Readings outside the range are set aside,
+# COUNTED and reported by site and month, never silently dropped.
+PLAUSIBLE_PCT = (50.0, 150.0)
+
 
 def do_saturation_sealevel(temp_c: float) -> float:
     """Oxygen saturation in fresh water at 1 atm, mg/L.
@@ -145,6 +154,7 @@ def check_saturation_basis() -> int:
 
     families: dict[str, list[dict]] = {}
     per_site: dict[tuple, list[dict]] = {}
+    set_aside: dict[tuple, list] = {}
 
     for family, fields in FIELD_SETS.items():
         sub = df[(df["sensor_type"] == family)
@@ -164,7 +174,14 @@ def check_saturation_basis() -> int:
         for _, r in wide.iterrows():
             temp, mgl, pct = (float(r[fields["temp"]]), float(r[fields["mgl"]]),
                               float(r[fields["pct"]]))
-            if not (0 < temp < 40) or mgl <= 0 or pct <= 0:
+            if not (0 < temp < 40):
+                continue
+            # Implausible saturation, or no concentration: a fault in the
+            # reading. Counted, not silently skipped — an earlier version
+            # dropped pct <= 0 quietly and KEPT near-zero positives like
+            # 0.01 %, which is how a bad week got into the fit.
+            if mgl <= 0 or not (PLAUSIBLE_PCT[0] <= pct <= PLAUSIBLE_PCT[1]):
+                set_aside.setdefault((family, r["site"]), []).append(r["timestamp"])
                 continue
             sea = do_saturation_sealevel(temp)
             row = {
@@ -209,6 +226,32 @@ def check_saturation_basis() -> int:
         print("  It also rules out a deliberate sea-level convention adopted")
         print("  for cross-site comparability, which would have been applied")
         print("  to both.\n")
+
+    print("  Per site — each instrument's own fit:\n")
+    print(f"  {'instrument':16}{'site':18}{'n':>8}{'set aside':>11}"
+          f"{'if sea':>9}{'if lake':>9}   referenced to")
+    print("  " + "-" * 78)
+    for (family, site), rows in sorted(per_site.items()):
+        v = _verdict(rows)
+        aside = len(set_aside.get((family, site), []))
+        print(f"  {family:16}{str(site)[:17]:18}{v['n']:>8,}{aside:>11,}"
+              f"{v['err_sea']:>9.3f}{v['err_local']:>9.3f}   {v['basis'].upper()}")
+    print()
+
+    if set_aside:
+        print(f"  Readings set aside: saturation outside "
+              f"{PLAUSIBLE_PCT[0]:.0f}-{PLAUSIBLE_PCT[1]:.0f}% or no concentration.\n")
+        for (family, site), stamps in sorted(set_aside.items(),
+                                             key=lambda kv: -len(kv[1])):
+            months = (pd.Series(pd.to_datetime(stamps)).dt.to_period("M")
+                      .value_counts())
+            top, top_n = months.index[0], int(months.iloc[0])
+            print(f"    {str(site)[:17]:18}{len(stamps):>7,}   "
+                  f"most in {top} ({top_n:,})")
+        print()
+        print("  These are data-quality faults, not lake chemistry, and are")
+        print("  excluded from every fit above so one sonde's bad week can't")
+        print("  blur a whole fleet's verdict.\n")
 
     print(f"  {'instrument':16}{'site':18}{'n':>8}{'temp':>7}"
           f"{'mg/L':>8}{'published':>11}{'at lake':>10}")

@@ -150,3 +150,44 @@ The battery floor before each outage rises steadily through 2025. Either the
 power system was upgraded around spring 2025 or it's partly seasonal. The
 monthly battery floor for winter 2025–26 would settle it: still near 12 V
 means an upgrade, a sag that held means seasonal.
+
+## Glenbrook 1: a battery that isn't being charged
+
+Until 2026-09-28 this station was reported as a **stuck channel**: its
+battery reading barely moved within a day. That was wrong, and wrong in
+the dangerous direction — the label removed it from the at-risk list.
+
+Weekly means for 2026 tell the real story:
+
+| Period | Battery |
+|---|---|
+| early January | ~11.9 V, already low |
+| week of 2026-01-12 | jumps to 12.84 V — most likely a service visit and a fresh or recharged battery |
+| 2026-01-19 to 2026-09-28 | **falls every single week**, 12.74 V to 11.40 V |
+
+Not one week rose, including June and July, when a solar panel at Tahoe
+charges hardest. A working solar battery rises every afternoon. This one
+has drained steadily under the logger's load, with a daily wobble of a few
+hundredths of a volt — load variation, not charging.
+
+That is a battery with **nothing charging it**: a failed or disconnected
+solar panel or charge controller. The decline has sped up lately, from an
+average 0.037 V/week to about 0.05 V/week, as lead-acid voltage does near
+empty. It ends in a power failure, and power-failure gaps don't backfill.
+
+**It is preventable,** which makes it the most useful thing to report: a
+panel or controller check, or a battery swap, before it fails.
+
+### How station-health tells them apart now
+
+| Within a day | Week to week | Verdict |
+|---|---|---|
+| swings with the sun | steady | healthy |
+| flat | steady, but values vary | healthy (a steady supply) |
+| one repeated value | unchanged | **stuck** channel |
+| flat | falling almost every week | **not charging — at risk** |
+
+"Flat" alone decides nothing. The first fix also flagged Glenbrook 4 — a
+healthy, very steady supply — as stuck; the stuck test now requires a
+single repeated value, since a real battery varies in the third decimal
+however steady it is.
