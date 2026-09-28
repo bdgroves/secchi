@@ -19,7 +19,11 @@ name: fetch
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # Not minute 0. GitHub delays scheduled runs at busy times and drops
+    # some queued jobs outright, and the start of every hour is the busiest.
+    # At "0 * * * *" snapshots landed every 3-8 hours, at odd minutes, in
+    # late September 2026. GitHub's advice is a different minute.
+    - cron: "41 * * * *"
   workflow_dispatch: {}
 
 concurrency:

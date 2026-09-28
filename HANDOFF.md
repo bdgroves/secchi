@@ -70,9 +70,14 @@ one-line form also works: `pixi run query "SELECT count(*) FROM obs"`.
 
 | Workflow | When | What |
 |---|---|---|
-| `fetch.yml` | hourly at :00 | ingest TEON + USGS, transform, prune, commit. Registers the merge driver first. |
+| `fetch.yml` | hourly at :41 | ingest TEON + USGS, transform, prune, commit. Registers the merge driver first. |
 | `pages.yml` | hourly at :25, and on push | build and deploy the page. Commits nothing. |
 | `watch.yml` | every 6 hours | diff TEON's inventory against a baseline; open a GitHub issue on anything notable, assigned to the repo owner so it emails. |
+
+`fetch` runs at :41, not :00. At minute 0 its runs were delayed and many
+dropped (GitHub's busiest moment), so "hourly" snapshots landed every 3–8
+hours until 2026-09-28. Even at :41 GitHub doesn't guarantee every run;
+`pixi run status` shows how old the newest snapshot is.
 
 `pages.yml` has its own schedule because pushes made with the default
 `GITHUB_TOKEN` don't trigger other workflows — relying on fetch's commit to
@@ -134,6 +139,7 @@ TEON's to within 6 records at every site.
 
 | Task | What |
 |---|---|
+| `status` | **start here** — one screen of what's live, dark, failing or waiting, and a to-do list |
 | `pipeline` | ingest both agencies, transform, prune |
 | `transform` | rebuild the store and the page's data |
 | `query` | DuckDB SQL shell; `.examples`, `.run N`, `.save file.csv` |
@@ -184,7 +190,8 @@ TEON's to within 6 records at every site.
 
 **Station outages**
 
-- **Blackwood 2** dark since June 2026; **Glenbrook 2** dark since 2026-09-22;
+- **Blackwood 2** dark since June 2026 (its logger, 06-18; the rain gauge is a
+  separate device and reported until 2026-08-14); **Glenbrook 2** dark since 2026-09-22;
   **Glenbrook 5** dark since 2026-09-27 05:45. All three went down on working
   batteries (12.2–12.9 V) — not power. Glenbrook 5's daily peaks were only
   ~12.2 V in its last week, so its charging may be weak too.

@@ -195,7 +195,9 @@ The hourly job and local runs both write the current month's partition, and git 
 
 ## It watches itself
 
-**fetch** hourly, **pages** at :25, **watch** every six hours.
+**fetch** hourly at :41, **pages** at :25, **watch** every six hours.
+
+Not at :00. GitHub delays scheduled runs at busy times and drops some outright, and the top of the hour is the busiest: scheduled at minute 0, the "hourly" fetch actually landed every three to eight hours.
 
 `pages` has its own schedule rather than triggering off fetch's commit, because GitHub deliberately does not create workflow runs from events triggered by the default `GITHUB_TOKEN`. That coupling looked right and never once fired.
 
@@ -205,7 +207,7 @@ The hourly job and local runs both write the current month's partition, and git 
 
 ## The bugs were mostly mine
 
-Thirty-five errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Thirty-six errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -233,6 +235,7 @@ Thirty-five errors shipped or nearly shipped. Every one produced **plausible-loo
 | One average across a whole instrument fleet | One sonde's bad week moved five sondes' fit sixty-fold |
 | A guess from a ratio, written up as a finding | "Normal concentrations alongside" — they read 85 mg/L |
 | A silent `continue` next to the counted one | **5,145 scrambled Sunnyside readings dropped unseen**; "3 set aside" |
+| An hourly schedule at minute 0 | Snapshots every 3–8 hours, while the README said hourly |
 
 ### The pattern
 
@@ -261,7 +264,7 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          35   of my own bugs caught before or shortly after shipping
+          36   of my own bugs caught before or shortly after shipping
           13   actual physical devices
           13   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin
@@ -282,6 +285,7 @@ pixi run setup-git    # once per clone: the parquet merge driver
 pixi run -e dev test
 pixi run transform    # builds the page's data, which isn't committed
 pixi run serve        # http://localhost:8000
+pixi run status       # is anything wrong, and is there anything to do?
 ```
 
 Picking this up on a new machine, or in a new Claude session? Start with **[`HANDOFF.md`](HANDOFF.md)** — setup, current state, open questions and next steps.
@@ -294,6 +298,7 @@ Picking this up on a new machine, or in a new Claude session? Start with **[`HAN
 | `station-health` | logger battery per station: power failure, or something else |
 | `oxygen-check` | which atmosphere each instrument family references |
 | `record-shape` | field names per sensor type — **run before any new backfill** |
+| `status` | **one screen: stations, batteries, lake, data waiting, impossible readings, what to do** |
 | `query` | SQL over the whole store, in place — see `docs/querying.md` |
 | `catchment-join` | assign stations to catchments |
 | `watch` | report upstream changes (read-only) |
