@@ -184,8 +184,12 @@ TEON's to within 6 records at every site.
 
 **Station outages**
 
-- **Blackwood 2** dark since June 2026; **Glenbrook 2** dark since 2026-09-22.
-  Both went down on healthy batteries — not power.
+- **Blackwood 2** dark since June 2026; **Glenbrook 2** dark since 2026-09-22;
+  **Glenbrook 5** dark since 2026-09-27 05:45. All three went down on working
+  batteries (12.2–12.9 V) — not power. Glenbrook 5's daily peaks were only
+  ~12.2 V in its last week, so its charging may be weak too.
+  **Glenbrook 5 is the transect's east station**: the overlapping record stops
+  on 2026-09-27 until it returns.
 - **Glenbrook 1 is not being charged, and hasn't been since July 2025.** Its
   daily charging swing vanished that month; since then its supply has only
   fallen, apart from an apparent battery swap in mid-January 2026, to 11.40 V

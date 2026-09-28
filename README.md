@@ -150,7 +150,7 @@ They get coverage cards rather than live cards — period of record held, what's
 
 **A camera filed a frame from the future** — six hours ahead of the snapshot containing it.
 
-**Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream. Glenbrook 2 and Blackwood 2 are dark now, both on healthy batteries.
+**Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream. Blackwood 2, Glenbrook 2 and Glenbrook 5 are dark now, three of seven forest stations, all on working batteries.
 
 **An outage's cause is written in the battery.** Glenbrook 4 lost about 68 days to outages in 2024–25 that never came back. Before each winter outage its battery had collapsed to 6.8–8.1 V: power failures, with the logger shut down and nothing recorded to recover. This September it dropped out for a day on a healthy battery, and every reading came back when it reconnected — the logger had kept recording while it couldn't transmit. `pixi run station-health` tells the two apart for every station.
 
