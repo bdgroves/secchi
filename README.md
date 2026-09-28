@@ -2,7 +2,7 @@
 
 ### A modern Secchi disk for Lake Tahoe
 
-**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 11.2 million observations, twenty-seven months, updating hourly and watching itself
+**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 11.8 million observations, twenty-seven months, updating hourly and watching itself
 
 ---
 
@@ -28,16 +28,18 @@ There was no documentation. There still isn't.
 
 Lake Tahoe's surface sits at **1,898 m**, where air pressure is about **79.5 %** of sea level. Saturation depends on pressure, so a percentage referenced to sea level is wrong by roughly twenty points — enough to invert the reading.
 
-Tested across **374,942 paired readings**, ten instruments, twenty months:
+Tested across **427,517 paired readings**, eleven instruments, twenty months:
 
 | | readings | fit to sea level | fit to lake pressure |
 |---|---|---|---|
-| **EXO sondes** | 109,626 | **0.004 mg/L** | 1.853 mg/L |
+| **EXO sondes** | 162,201 | **0.004 mg/L** | 1.847 mg/L |
 | **MiniDOT** | 265,316 | 2.097 mg/L | **0.142 mg/L** |
 
 0.004 mg/L is the precision of the Weiss (1970) formula itself.
 
-**The MiniDOTs are altitude-corrected. The EXO sondes are not.** Every one of the ten sites agrees with its instrument family — EXO reading 80–85 % where the water is really at 101–107 %, MiniDOT agreeing with the corrected figure to within half a point.
+**The MiniDOTs are altitude-corrected. The EXO sondes are not.** Every one of the eleven sites agrees with its instrument family, and **each of the five EXO sondes fits sea level to 0.004 mg/L on its own** — EXO reading 78–85 % where the water is really at 99–107 %, MiniDOT agreeing with the corrected figure to within half a point.
+
+The fifth sonde, 4H Camp, arrived when TEON made the site public on 2026-09-26, and at first it looked like an exception: the fleet's fit jumped from 0.004 to 0.242 mg/L. It wasn't configuration. For about six days in July 2026 its sonde reported saturation near zero or negative, with normal concentrations alongside, and the check was averaging those faults into every EXO verdict. Readings outside 50–150 % saturation are now set aside and counted — 592 of them across three sondes — and each site is fitted on its own.
 
 I expected both fleets to share the error, and being wrong made it stronger: one fleet right and one wrong, in the same network, rules out a deliberate sea-level convention. The MiniDOTs are the control, and they prove the correction is achievable in TEON's own pipeline.
 
@@ -148,11 +150,15 @@ They get coverage cards rather than live cards — period of record held, what's
 
 **A camera filed a frame from the future** — six hours ahead of the snapshot containing it.
 
-**Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream. Glenbrook 2 and Blackwood 2 are dark now, both on healthy batteries, and Glenbrook 1's battery channel has been frozen at exactly 11.45 V.
+**Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream. Glenbrook 2 and Blackwood 2 are dark now, both on healthy batteries.
 
 **An outage's cause is written in the battery.** Glenbrook 4 lost about 68 days to outages in 2024–25 that never came back. Before each winter outage its battery had collapsed to 6.8–8.1 V: power failures, with the logger shut down and nothing recorded to recover. This September it dropped out for a day on a healthy battery, and every reading came back when it reconnected — the logger had kept recording while it couldn't transmit. `pixi run station-health` tells the two apart for every station.
 
-Cataloguing these *is* the work, and it's much easier from outside than operating the network. All reported back.
+**A battery that nobody is charging.** Glenbrook 1's supply has fallen every week for 35 weeks, from 12.74 V after an apparent battery swap in January to 11.40 V now, with no afternoon charging swing even in midsummer — a failed solar panel or charge controller. It was reported here as a *stuck channel* first, because its readings barely move within a day; that label took the most at-risk station off the at-risk list. It's heading for a power failure, the kind whose gap never comes back, and it's preventable.
+
+**A saturation channel that collapsed.** 4H Camp's sonde reported oxygen saturation near zero — down to −0.16 % — for about six days in July 2026, while its concentration read normally. A sensor lifted into air reads near 100 %, so this looks like the percentage channel failing on its own.
+
+Cataloguing these *is* the work, and it's much easier from outside than operating the network. Reported, or in the next note to TEON.
 
 ---
 
@@ -165,7 +171,7 @@ data/processed/observations/
     source=teon/year=2026/month=09/part.parquet    the only file that churns
 ```
 
-**11,151,846 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
+**11,795,903 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
 
 `pixi run query` opens a SQL shell over all of it, reading the parquet in place. A filtered aggregate over the whole store answers in under a tenth of a second.
 
@@ -191,7 +197,7 @@ The hourly job and local runs both write the current month's partition, and git 
 
 ## The bugs were mostly mine
 
-Thirty-one errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Thirty-three errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -215,6 +221,8 @@ Thirty-one errors shipped or nearly shipped. Every one produced **plausible-look
 | A lag in hours read from day-resolution data | "+3.7 h, the sturdiest finding" — an artifact |
 | A data-loss incident sized from the only sites with cards | 28,535 lost records that were really about 76,000 |
 | `.gitattributes` lines in the wrong order | The merge driver silently switched off; caught by asking git |
+| A "stuck channel" label on a battery that wasn't charging | **The station most at risk, taken off the at-risk list** |
+| One average across a whole instrument fleet | One sonde's bad week moved five sondes' fit sixty-fold |
 
 ### The pattern
 
@@ -236,16 +244,16 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
 ## By the numbers
 
 ```
-  11,151,846   observations stored, Jun 2024 to now
-     374,942   paired readings behind the oxygen finding
+  11,795,903   observations stored, Jun 2024 to now
+     427,517   paired readings behind the oxygen finding
    1,490,116   rows that once landed with no timestamp, recovered
       76,361   records lost to a non-atomic write, all recovered
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          31   of my own bugs caught before or shortly after shipping
+          33   of my own bugs caught before or shortly after shipping
           13   actual physical devices
-           8   data-quality faults found upstream, all reported
+          10   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin
     0.004 mg/L the EXO fit to a sea-level atmosphere
      0.00 km   reprojection error, against published centroids

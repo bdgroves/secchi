@@ -15,7 +15,7 @@ documentation; everything about it was worked out by probing. The live page is
 **https://brooksgroves.com/secchi/**, and it updates hourly on its own.
 
 The project holds a complete, verified copy of everything TEON's API exposes —
-about **11.15 million observations, June 2024 to now** — in a partitioned
+about **11.8 million observations, June 2024 to now** — in a partitioned
 parquet store committed to the repo, queryable in place with DuckDB. Its most
 useful work so far has been finding problems in TEON's published data, with
 evidence, and reporting them back.
@@ -115,8 +115,14 @@ variable, value`, plus `year` and `month` from the folder names.
   Soil, air, tree and stream-level are projections of one logger table. Never
   fetch one and treat it as standing in for the rest — that once discarded all
   air temperature, humidity and tree history.
-- **4H Camp is hidden by TEON** (`/site-visibility/disabled`). The dashboard and
-  ingest both honour it, and ingest **fails closed** if the list can't be read.
+- **TEON's hidden-site list** (`/site-visibility/disabled`) is honoured by the
+  dashboard and ingest, and ingest **fails closed** if it can't be read. 4H Camp
+  was hidden until TEON made it public on 2026-09-26; the ingest picked it up
+  on its own, and its history was backfilled on 2026-09-28. The list is empty now.
+- **The backfill's skip check counts readings per endpoint**, so a station whose
+  air probe was offline for a while (Blackwood 2, Glenbrook 2, 4 and 5) always
+  looks a few thousand air readings short and gets refetched. Harmless, just
+  slow; `--site "Name"` narrows a stage to one site.
 
 **Completeness, verified 2026-09-23:** all four backfill stages done
 (`manual`, `nearshore`, `live`, `blackwood`); soil and EXO held counts match
@@ -148,10 +154,13 @@ TEON's to within 6 records at every site.
 
 **Solid**
 
-- **Oxygen saturation.** TEON's EXO sondes reference saturation to sea level
-  (fit 0.004 mg/L across 109,818 readings); its MiniDOTs correctly reference
-  lake pressure (0.142 mg/L across 265,316). At 1,898 m that makes EXO read
-  ~80–85 % where the water is really ~100–107 %. The MiniDOTs are the control.
+- **Oxygen saturation.** TEON's EXO sondes reference saturation to sea level —
+  **all five, each fitting to 0.004 mg/L on its own** (162,201 readings); its
+  MiniDOTs correctly reference lake pressure (0.142 mg/L across 265,316). At
+  1,898 m that makes EXO read ~78–85 % where the water is really ~99–107 %.
+  592 implausible readings are set aside and counted: 4H Camp 567 (564 in July
+  2026, saturation collapsed to near zero), Blackwood 3 22 (April 2026),
+  Sunnyside 3.
 - **43 listed sensors are 13 physical devices.**
 - **The hand-collected sondes are the most complete records** (98.8 %);
   telemetry buys timeliness, not completeness.
@@ -175,7 +184,12 @@ TEON's to within 6 records at every site.
 
 - **Blackwood 2** dark since June 2026; **Glenbrook 2** dark since 2026-09-22.
   Both went down on healthy batteries — not power.
-- **Glenbrook 1**'s battery reading has been frozen at exactly 11.45 V.
+- **Glenbrook 1 is not being charged.** Its battery has fallen every week for
+  35 weeks, 12.74 V after an apparent swap in mid-January to 11.40 V on
+  2026-09-28, recently 0.054 V/week, with no daily charging swing even in
+  summer. A failed panel or charge controller. It was mislabelled "stuck"
+  until 2026-09-28. **Most time-sensitive item for TEON**: preventable, and a
+  power failure's gap never backfills.
 - **Glenbrook 4** dropped out 2026-09-23 to 09-24 and **recovered every
   reading** (watcher Issue #4). It had lost ~68 days to earlier outages that
   never came back. Winter 2024–25 outages followed battery collapses to
@@ -259,8 +273,11 @@ last-reading query instead.
 ### Next steps, in order
 
 1. **Send TEON a second note.** An earlier note went through their contact
-   form about the oxygen issue, plus a UX survey. This one covers: the two dark
-   stations (healthy batteries), Glenbrook 1's frozen battery reading, Glenbrook
+   form about the oxygen issue, plus a UX survey. **Lead with Glenbrook 1** — a
+   battery not being charged, heading for a power failure that can still be
+   prevented. Then: all five EXO sondes on sea level (4H Camp included), 4H
+   Camp's July 2026 saturation collapse, the two dark stations (healthy
+   batteries), Glenbrook
    4's recovered outage versus its unrecovered earlier ones and the winter
    battery collapses, Glenbrook 5's probe outage, the oxygen split with its full
    numbers, pH reading 0 or blank, and the soil pH layer. Useful questions: do
