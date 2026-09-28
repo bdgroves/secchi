@@ -158,10 +158,10 @@ TEON's to within 6 records at every site.
   **all five, each fitting to 0.004 mg/L on its own** (162,201 readings); its
   MiniDOTs correctly reference lake pressure (0.142 mg/L across 265,316). At
   1,898 m that makes EXO read ~78–85 % where the water is really ~99–107 %.
-  592 implausible readings are set aside and counted: 4H Camp 567 (564 in July
-  2026, its optical channels filed under the wrong names), Blackwood 3 22 (a
-  few hours of a sonde being handled at an April 2026 service visit),
-  Sunnyside 3.
+  5,765 impossible readings are set aside and counted: Sunnyside 5,170 (its
+  whole sonde scrambled 2026-04-30 to 06-25), 4H Camp 568 (optical channels
+  scrambled 2026-07-17 to 07-24), Blackwood 3 22 (handled at an April 30
+  service visit), Glenbrook (the lake sonde) 5 isolated zeros.
 - **43 listed sensors are 13 physical devices.**
 - **The hand-collected sondes are the most complete records** (98.8 %);
   telemetry buys timeliness, not completeness.
@@ -186,11 +186,15 @@ TEON's to within 6 records at every site.
 
 - **Blackwood 2** dark since June 2026; **Glenbrook 2** dark since 2026-09-22.
   Both went down on healthy batteries — not power.
-- **Glenbrook 1 is not being charged.** Its battery has fallen every week for
-  35 weeks, 12.74 V after an apparent swap in mid-January to 11.40 V on
-  2026-09-28, recently 0.054 V/week, with no daily charging swing even in
-  summer. A failed panel or charge controller. It was mislabelled "stuck"
-  until 2026-09-28. **Most time-sensitive item for TEON**: preventable, and a
+- **Glenbrook 1 is not being charged, and hasn't been since July 2025.** Its
+  daily charging swing vanished that month; since then its supply has only
+  fallen, apart from an apparent battery swap in mid-January 2026, to 11.40 V
+  on 2026-09-28 (recently 0.054 V/week). Fifteen months on swaps. It was
+  mislabelled "stuck" until 2026-09-28.
+- **Glenbrook 4's charging was repaired around September 2025**: daily peaks
+  jumped from ~13 V to 14.2–14.6 V (a working charge controller) and winter
+  2025–26 held above 12 V, where the winter before collapsed to ~7 V. It's
+  the model for what Glenbrook 1 needs. **Most time-sensitive item for TEON**: preventable, and a
   power failure's gap never backfills.
 - **Glenbrook 4** dropped out 2026-09-23 to 09-24 and **recovered every
   reading** (watcher Issue #4). It had lost ~68 days to earlier outages that
@@ -207,55 +211,33 @@ TEON's to within 6 records at every site.
   **and fails on the three telemetered ones**: Glenbrook and 4H Camp mostly 0,
   Sunnyside no longer reporting, 4H Camp once 89.4. Blackwood 2's stream sensor
   reads a plausible 8.06.
-- The watershed layer gives soil pH 1.79 at Cave Rock, impossible for soil.
-  Hypothesis: map cells with no soil were averaged as zero. If so, other
-  catchments are quietly biased low too.
+- **The watershed soil pH layer averages empty cells as zero — confirmed.**
+  22 of 60 catchments average below 4.5. A mix of zeros and real soil has a
+  predictable mean and spread, and the layer's own `pHStDev` matches it:
+  Cave Rock's 1.79 ± 2.75 is a 70/30 mix of 0 and pH 6.0. Solving
+  `true = (mean² + sd²) / mean`, 38 of 60 catchments contain zeros (up to
+  70 %), and every one comes out at pH 5.6–6.4, in line with the clean
+  catchments (5.7–6.6). Glenbrook Creek is 58 % zeros; don't use its
+  published pH.
 
 ---
 
 ## 7. Where we left off
 
-### Queries not yet run (they feed the TEON note)
+### Queries run on 2026-09-28, and what they showed
 
-Paste each at the `secchi>` prompt.
+All of these were run against the committed store; the SQL is in the
+conversation history and easy to rebuild from `docs/querying.md`.
 
-Soil pH layer — find the column, then sort all 60 catchments:
+- **Soil pH sort**: layer-wide nodata-as-zero, above.
+- **Frozen-channel sweep** (one repeated value all week): nothing new.
+  Glenbrook's dead pH, Sunnyside's salinity (really 0.04, recorded to two
+  decimals) and Glenbrook 2's deepest soil sensor on its final day.
+- **Glenbrook 1 and 4 battery histories**: above.
+- **Impossible-reading scan**: 28 episodes across four sondes, now run
+  automatically by the watcher (see below).
 
-```sql
-SELECT column_name FROM (DESCRIBE catchments)
-WHERE lower(column_name) LIKE '%ph%';
--- then, with that name:
-SELECT Name, PUT_COLUMN_NAME_HERE AS soil_ph FROM catchments ORDER BY soil_ph;
-```
-
-A smooth slide of values toward 2 means the error is layer-wide; one outlier
-means Cave Rock is a one-off.
-
-Frozen channels anywhere in the network:
-
-```sql
-SELECT site, variable, count(*) AS readings, count(DISTINCT value) AS distinct_values
-FROM obs
-WHERE timestamp > (SELECT max(timestamp) FROM obs) - INTERVAL 7 DAY
-GROUP BY ALL HAVING count(*) > 50 AND count(DISTINCT value) = 1
-ORDER BY site, variable;
-```
-
-Glenbrook 4 battery by month — was the power system upgraded in spring 2025, or
-is it seasonal?
-
-```sql
-SELECT year, month, round(min(value), 2) AS floor_v, round(avg(value), 2) AS mean_v
-FROM obs WHERE site = 'Glenbrook 4' AND variable = 'BattV_Avg'
-GROUP BY ALL ORDER BY year, month;
-```
-
-Stations still dark:
-
-```sql
-SELECT site, max(timestamp) AS last_reading FROM obs
-WHERE variable = 'Soil_VWC' GROUP BY site ORDER BY last_reading;
-```
+The two queries worth keeping to hand:
 
 Holes in one station's record (change the site):
 
@@ -271,8 +253,21 @@ WHERE next_reading - prev_reading > INTERVAL 2 HOUR
 ORDER BY prev_reading;
 ```
 
-This only finds holes *between* readings; a station still dark shows up in the
-last-reading query instead.
+Every variable during a bad stretch against the rest of the month — how the
+channel scrambles were decoded (change site, month and the condition):
+
+```sql
+WITH bad AS (
+  SELECT DISTINCT timestamp FROM obs
+  WHERE site = '4H Camp' AND variable = 'Do_percent' AND value < 50
+)
+SELECT o.variable,
+       round(avg(o.value) FILTER (WHERE b.timestamp IS NOT NULL), 2) AS during_bad,
+       round(avg(o.value) FILTER (WHERE b.timestamp IS NULL), 2) AS normal
+FROM obs o LEFT JOIN bad b USING (timestamp)
+WHERE o.site = '4H Camp' AND o.year = 2026 AND o.month = 7
+GROUP BY o.variable ORDER BY o.variable;
+```
 
 ### Next steps, in order
 
@@ -280,22 +275,25 @@ last-reading query instead.
    form about the oxygen issue, plus a UX survey. **Lead with Glenbrook 1** — a
    battery not being charged, heading for a power failure that can still be
    prevented. Then: all five EXO sondes on sea level (4H Camp included), 4H
-   Camp's July 2026 channel scramble (probably recoverable by remapping),
+   Camp's July 2026 and Sunnyside's April–June 2026 channel scrambles (probably
+   recoverable by remapping),
    unflagged service-visit readings, the two dark stations (healthy
    batteries), Glenbrook
    4's recovered outage versus its unrecovered earlier ones and the winter
    battery collapses, Glenbrook 5's probe outage, the oxygen split with its full
    numbers, pH working only on the hand-collected sondes, the turbidity
-   offsets, and the soil pH layer. The draft is `docs/teon-note-2026-09-28.md`.
+   offsets, and the soil pH layer (38 of 60 catchments, recoverable). The draft is `docs/teon-note-2026-09-28.md`.
    Useful questions: do
    the loggers buffer during a dropout, and did something change after 2025?
    Was the power system upgraded in spring 2025? What happened on 2025-10-15?
 2. **The transect against rainfall.** Blackwood 2's gauge holds 593,507
    readings. First check whether its values are per-interval amounts or a
    running total — that decides how to sum them.
-3. **Small polish:** group watcher alerts by station (one Glenbrook 4 outage
-   produced six alerts, one per endpoint per signal); run `pixi lock` once to
-   upgrade the lock file format and silence a CI warning.
+3. **Small polish:** run `pixi lock` once to upgrade the lock file format and
+   silence a CI warning (needs conda-forge access, so do it locally). Watcher
+   alerts are now grouped by station. The backfill's skip check still
+   refetches the four stations with air-probe gaps — harmless; left alone
+   because fixing it properly means persisting per-endpoint fetch state.
 4. **For fun:** the tree dendrometer history landed on 2026-09-23 and nobody
    has looked at it. Stems swell and shrink daily with water content.
 5. **Longer:** Glenbrook 2 raster sampling; camera imagery (the bucket refuses
@@ -327,11 +325,19 @@ doing nothing**. These rules came out of that.
 - **A statistic that can't tell your hypothesis from the null isn't weak
   evidence; it's no evidence.** And be suspicious of results stronger than
   expected: every correction to the transect moved toward the null.
-- **Quarantine before analysing optical channels.** At 4H Camp for ~6 days in
-  July 2026, turbidity and chlorophyll hold other sensors' values that look
-  plausible (a turbidity "spike" of 7.7 NTU). Nothing analyses those
-  variables yet; whoever builds the first one should exclude timestamps where
-  EXO saturation is outside 50–150 % or concentration is above ~20 mg/L.
+- **Quarantine scrambled windows before analysing any lake variable.** Two
+  sondes had channels filed under the wrong names: **Sunnyside 2026-04-30
+  11:30 to 06-25 09:15, every channel** (its "temperature" reads 85–102), and
+  **4H Camp 2026-07-17 14:15 to 07-24 13:15, the optical channels**. Inside
+  those windows, values in other columns can look plausible (a turbidity
+  "spike" of 7.7 NTU). Nothing analyses those variables yet; exclude the
+  windows, or any timestamp where the watcher's impossible-reading rules
+  fire. A monthly lake-temperature query will otherwise show Sunnyside at
+  ~79 °C in May 2026.
+- **The watcher scans for impossible readings** every six hours
+  (`IMPOSSIBLE` in `src/secchi/sources/watch.py`) and reports each episode
+  (site, variable, month) once, remembering what it raised in the baseline.
+  Its first run after 2026-09-28 reports the 28 known episodes in one issue.
 - **Backfills append then compact.** Read-merge-write is quadratic at bulk
   scale and filled the disk once. All store writes are atomic.
 - **Detect events on daily means.** Soil moisture has a strong daily cycle.

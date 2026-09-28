@@ -191,3 +191,25 @@ panel or controller check, or a battery swap, before it fails.
 healthy, very steady supply — as stuck; the stuck test now requires a
 single repeated value, since a real battery varies in the third decimal
 however steady it is.
+
+## Update: fifteen months, not eight
+
+Glenbrook 1's full record shows the charging stopped in **July 2025**, not
+January 2026. Through June 2025 its monthly range was a volt or more, with
+peaks of 13.2 V — a working panel and a struggling battery (lows of 8–9.5 V).
+In July 2025 the range collapsed to 0.04 V and has stayed under 0.25 V
+since; the monthly mean has only fallen, 12.77 V to 12.04 V by December.
+The January 2026 jump to 12.84 V was a recharge or a new battery, and the
+same decline resumed, to 11.52 V by September.
+
+## Glenbrook 4 was repaired in September 2025
+
+The charging voltage is the tell. Through August 2025 Glenbrook 4's daily
+peaks reached about 12.4–13.0 V. From September 2025 they reach **14.2–14.6
+V** — the absorption voltage a working charge controller pushes a battery
+to — and have stayed there. Its winter 2025–26 lows held around 12 V, where
+the winter before had collapsed to 6.8 V.
+
+So the network holds both a before and an after. Glenbrook 1 hasn't
+reached a charging voltage since June 2025, and Glenbrook 4 shows what it
+looks like once fixed.

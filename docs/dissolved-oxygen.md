@@ -122,3 +122,17 @@ while keeping near-zero positives like 0.01 %.
 Now readings outside 50–150 % saturation are set aside, **counted and
 reported by site and month**, and each site gets its own fit alongside the
 fleet's.
+
+## Update: Sunnyside, and a second silent skip
+
+The first version of the per-site check skipped readings with an
+implausible **temperature** before counting anything, and so dropped
+5,145 Sunnyside readings unseen while reporting three set aside. Sunnyside's
+whole sonde was scrambled from 2026-04-30 11:30 to 06-25 08:00 — its
+"temperature" field held the saturation, 85–102 — so every one of those
+readings failed the temperature test first.
+
+Impossible temperatures are now counted too. The fits don't change (they
+were already excluded); the honest count is **5,765 set aside across four
+sondes**: Sunnyside 5,170, 4H Camp 568, Blackwood 3 22, and 5 isolated
+zeros at the Glenbrook lake sonde.

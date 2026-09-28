@@ -404,7 +404,7 @@ def run_watch(write_baseline: bool = False) -> int:
     """
     from secchi.sources.watch import (_snapshot_state, diff_state,
                                       format_report, load_baseline,
-                                      save_baseline)
+                                      save_baseline, scan_readings)
 
     with TeonClient() as client:
         try:
@@ -417,6 +417,12 @@ def run_watch(write_baseline: bool = False) -> int:
     state = _snapshot_state(inventory, disabled)
     baseline = load_baseline()
 
+    # Impossible lake readings, each episode reported once. The keys ride
+    # in the same baseline, so they advance only when CI advances it.
+    quality_changes, reported = scan_readings(
+        (baseline or {}).get("quality_reported", []))
+    state["quality_reported"] = reported
+
     if baseline is None:
         # The first run always writes, regardless — there is nothing to
         # consume and nothing to conflict with.
@@ -428,7 +434,7 @@ def run_watch(write_baseline: bool = False) -> int:
         print("Baseline established. Future runs will report changes against it.")
         return 0
 
-    changes = diff_state(baseline, state)
+    changes = diff_state(baseline, state) + quality_changes
     report = format_report(changes, state)
     print()
     print(report)

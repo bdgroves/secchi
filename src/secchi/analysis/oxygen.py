@@ -174,7 +174,13 @@ def check_saturation_basis() -> int:
         for _, r in wide.iterrows():
             temp, mgl, pct = (float(r[fields["temp"]]), float(r[fields["mgl"]]),
                               float(r[fields["pct"]]))
-            if not (0 < temp < 40):
+            # An impossible temperature is a fault too, and is COUNTED.
+            # This line used to `continue` silently, and so hid 5,145
+            # Sunnyside readings (2026-04-30 to 06-25) whose channels were
+            # scrambled — "temperatures" of 85-102 — while the report said
+            # three readings had been set aside.
+            if not (-2 < temp < 35):
+                set_aside.setdefault((family, r["site"]), []).append(r["timestamp"])
                 continue
             # Implausible saturation, or no concentration: a fault in the
             # reading. Counted, not silently skipped — an earlier version
@@ -240,7 +246,8 @@ def check_saturation_basis() -> int:
 
     if set_aside:
         print(f"  Readings set aside: saturation outside "
-              f"{PLAUSIBLE_PCT[0]:.0f}-{PLAUSIBLE_PCT[1]:.0f}% or no concentration.\n")
+              f"{PLAUSIBLE_PCT[0]:.0f}-{PLAUSIBLE_PCT[1]:.0f}%, temperature outside")
+        print("  -2 to 35 C, or no concentration.\n")
         for (family, site), stamps in sorted(set_aside.items(),
                                              key=lambda kv: -len(kv[1])):
             months = (pd.Series(pd.to_datetime(stamps)).dt.to_period("M")

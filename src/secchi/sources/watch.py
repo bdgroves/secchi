@@ -111,6 +111,93 @@ def _snapshot_state(teon_inventory: dict, disabled: set[str]) -> dict:
     }
 
 
+# Readings no lake can produce. Each rule is (instrument, variable, low,
+# high): a value outside [low, high] is impossible, not merely unusual.
+#
+# Why this exists: three sondes had their channels filed under the wrong
+# names — 4H Camp for a week in July 2026, Sunnyside for eight weeks from
+# 2026-04-30 (a "temperature" of 85-102), and the values looked plausible
+# enough in most columns that nothing flagged them. They were found by
+# hand, months later. The two most reliable tells are oxygen and
+# temperature, because a scramble almost always drops some other channel's
+# value somewhere physically impossible.
+#
+# pH of exactly 0 is NOT flagged: several sondes report a dead channel as
+# 0 continuously, which is known and reported, and would drown the rest.
+IMPOSSIBLE = [
+    ("ExoSensor",     "Temp",                        -2.0,  35.0),
+    ("ExoSensor",     "Do_mgL",                       0.0,  20.0),
+    ("ExoSensor",     "Do_percent",                  50.0, 150.0),
+    ("ExoSensor",     "pH",                           0.0,  14.0),
+    ("MiniDotSensor", "Temperature",                 -2.0,  35.0),
+    ("MiniDotSensor", "Dissolved Oxygen",             0.0,  20.0),
+    ("MiniDotSensor", "Dissolved Oxygen Saturation", 50.0, 150.0),
+    ("HoboSensor",    "temperature",                 -2.0,  35.0),
+]
+
+INSTRUMENT_LABEL = {"ExoSensor": "EXO sonde", "MiniDotSensor": "MiniDOT",
+                    "HoboSensor": "HOBO"}
+
+
+def scan_readings(already_reported: list[str]) -> tuple[list[dict], list[str]]:
+    """Find episodes of impossible lake readings not reported before.
+
+    An episode is one site, one variable, one month. Each is reported
+    ONCE: the keys already raised travel in the baseline, so a bad week
+    doesn't reopen an issue every six hours. Scans the whole record, not
+    just recent days, because hand-collected sondes upload months at once
+    and a bad stretch can arrive with old timestamps.
+
+    Returns (changes, all_reported_keys). Anything going wrong — no store,
+    no DuckDB — returns no changes and leaves the keys as they were; the
+    inventory watch must never fail because of this.
+    """
+    try:
+        import duckdb
+        from secchi.query import _glob
+    except ImportError:
+        log.warning("DuckDB unavailable; skipping the impossible-reading scan")
+        return [], list(already_reported)
+    g = _glob("observations")
+    if g is None:
+        return [], list(already_reported)
+
+    rules = " OR ".join(
+        f"(sensor_type = '{inst}' AND variable = '{var}' "
+        f"AND (value < {lo} OR value > {hi}))"
+        for inst, var, lo, hi in IMPOSSIBLE)
+    # Exact-zero pH is a known dead channel, not a new fault.
+    sql = f"""
+        SELECT site, sensor_type, variable, strftime(timestamp, '%Y-%m') AS ym,
+               count(*) AS n, min(timestamp) AS first, max(timestamp) AS last,
+               min(value) AS lo, max(value) AS hi
+        FROM read_parquet('{g}', hive_partitioning = true, union_by_name = true)
+        WHERE ({rules}) AND NOT (variable = 'pH' AND value = 0)
+        GROUP BY ALL ORDER BY site, ym, variable"""
+    try:
+        rows = duckdb.sql(sql).fetchall()
+    except Exception as exc:                      # never break the watch
+        log.warning("impossible-reading scan failed: %s", exc)
+        return [], list(already_reported)
+
+    seen = set(already_reported)
+    changes: list[dict] = []
+    for site, inst, var, ym, n, first, last, lo, hi in rows:
+        key = f"{site}|{var}|{ym}"
+        if key in seen:
+            continue
+        seen.add(key)
+        span = (f"{first:%Y-%m-%d %H:%M}" if n == 1 else
+                f"{first:%Y-%m-%d %H:%M} to {last:%Y-%m-%d %H:%M}")
+        changes.append({
+            "severity": "notable",
+            "kind": "impossible readings",
+            "detail": f"lake/{INSTRUMENT_LABEL.get(inst, inst)}/{site}",
+            "note": f"{var}: {n:,} reading(s) {lo:g} to {hi:g}, {span}",
+        })
+    return changes, sorted(seen)
+
+
 def load_baseline(out_dir: Path = REFERENCE_DIR) -> dict | None:
     path = out_dir / BASELINE_FILE
     if not path.exists():
@@ -239,6 +326,41 @@ def diff_state(old: dict, new: dict) -> list[dict]:
     return changes
 
 
+def _grouped_lines(changes: list[dict], bold: bool) -> list[str]:
+    """One line per (kind, site) rather than per endpoint.
+
+    A forest station's soil, air and tree endpoints are one logger, so one
+    outage produced six alerts — two signals times three endpoints — for a
+    single event at Glenbrook 4. Grouping by the site at the end of the
+    key makes one event read as one line. When the endpoints' notes agree
+    (they usually do, sharing record counts) the note is shown once;
+    otherwise each endpoint's note is listed beneath.
+    """
+    groups: dict[tuple, list[tuple]] = {}
+    for c in changes:
+        parts = c["detail"].split("/")
+        site = parts[-1] if len(parts) >= 3 else c["detail"]
+        endpoint = "/".join(parts[1:-1]) if len(parts) >= 3 else None
+        groups.setdefault((c["kind"], site), []).append((endpoint, c.get("note")))
+
+    out: list[str] = []
+    for (kind, site), items in groups.items():
+        endpoints = [e for e, _ in items if e]
+        notes = list(dict.fromkeys(n for _, n in items if n))
+        label = f"**{kind}**" if bold else kind
+        what = f" ({', '.join(dict.fromkeys(endpoints))})" if endpoints else ""
+        if len(notes) <= 1:
+            note = f" — {notes[0]}" if notes else ""
+            out.append(f"- {label}: `{site}`{what}{note}")
+        else:
+            out.append(f"- {label}: `{site}`{what}")
+            for e, n in items:
+                if n:
+                    prefix = f"{e}: " if e and len(set(endpoints)) > 1 else ""
+                    out.append(f"  - {prefix}{n}")
+    return out
+
+
 def format_report(changes: list[dict], new: dict) -> str:
     """Markdown suitable for a GitHub issue body."""
     if not changes:
@@ -251,16 +373,12 @@ def format_report(changes: list[dict], new: dict) -> str:
     if notable:
         lines.append("### Notable")
         lines.append("")
-        for c in notable:
-            note = f" — {c['note']}" if c.get("note") else ""
-            lines.append(f"- **{c['kind']}**: `{c['detail']}`{note}")
+        lines += _grouped_lines(notable, bold=True)
         lines.append("")
     if info:
         lines.append("### Other")
         lines.append("")
-        for c in info:
-            note = f" — {c['note']}" if c.get("note") else ""
-            lines.append(f"- {c['kind']}: `{c['detail']}`{note}")
+        lines += _grouped_lines(info, bold=False)
         lines.append("")
 
     live = sum(1 for s in new["sensors"].values() if s["state"] == "live")

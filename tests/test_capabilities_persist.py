@@ -60,6 +60,8 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.backfill", "run_backfill"),
     ("secchi.backfill", "held_counts"),
     ("secchi.merge_parquet", "merge_frames"),
+    ("secchi.sources.watch", "scan_readings"),
+    ("secchi.sources.watch", "_grouped_lines"),
     ("secchi.probe_shape", "probe_record_shapes"),
     ("secchi.sources.reference", "reproject_geojson"),
     ("secchi.sources.simplify", "simplify_collection"),
@@ -157,6 +159,10 @@ REQUIRED_HTML = {
     's.kind === "backlog"': "banner handles station backlogs",
     'function convert(': "unit conversion",
     'isDelta': "delta-aware unit conversion",
+    # Added by hand on 2026-09-26, from another computer — exactly the
+    # kind of change a bundle rebuilt from an older copy would drop.
+    'class="home-bar"': "navigation back to brooksgroves.com",
+    'brooksgroves.com/blog/secchi-post.html': "link to the project write-up",
 }
 
 
