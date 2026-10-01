@@ -19,6 +19,24 @@ Historical partitions are never touched again, so git stores each exactly
 once. And a backfill is *mostly* historical by definition, so the bulk of
 it lands as frozen partitions costing one commit each.
 
+**From October 2026, the current month is one file per day** —
+``month=10/part.d01.parquet`` … ``part.d31.parquet``. A monthly file still
+churned: each run rewrote the whole month (~3 MB) to add a few hours, and
+the repository reached 1.1 GB in its first two weeks. A day file is ~100 KB,
+so a run that adds readings now rewrites ~100 KB. Months before October
+2026 keep their single file; converting them would store a second copy of
+history for no benefit, since they no longer change.
+
+Two further rules keep unchanged data from costing anything:
+
+* rows are always written in the same order, so the same data produces
+  the same bytes (an unstable sort used to reorder ties, so identical data
+  became a "new" file every run);
+* a file whose contents haven't changed is not rewritten at all.
+
+Every reader looks for ``part*.parquet``, so the layout is invisible to
+them.
+
 Deliberately **not** using ``DataFrame.to_parquet(partition_cols=...)``.
 That appends a new randomly-named file to each partition on every write,
 which accumulates thousands of fragments and defeats the whole point.
@@ -42,6 +60,121 @@ import pandas as pd
 log = logging.getLogger("secchi.store")
 
 PARTITION_FILE = "part.parquet"
+
+# Months from this one onward store one file per day. See the module
+# docstring. A month is daily or monthly by date alone — never by what
+# happens to be on disk — so every writer agrees.
+DAILY_FROM = (2026, 10)
+
+
+def _is_daily(year: int, month: int) -> bool:
+    return year > 0 and (int(year), int(month)) >= DAILY_FROM
+
+
+def day_file(target: Path, day: int) -> Path:
+    """The file for one day of a daily month."""
+    return target / f"part.d{int(day):02d}.parquet"
+
+
+def _dir_year_month(target: Path) -> tuple[int, int]:
+    """(year, month) from a partition directory's hive names."""
+    year = month = 0
+    for part in target.parts:
+        if part.startswith("year="):
+            year = int(part[5:] or 0)
+        elif part.startswith("month="):
+            month = int(part[6:] or 0)
+    return year, month
+
+
+def _canonical(df: pd.DataFrame, dedupe_on: list[str]) -> pd.DataFrame:
+    """Rows in a fixed order, so the same data always gives the same file.
+
+    A plain ``sort_values("timestamp")`` uses an unstable sort: rows that
+    share a timestamp can come out in a different order each run, which
+    made identical data a different file and git stored a new copy.
+    Sorting stably on the timestamp AND the dedupe key removes any choice.
+    """
+    cols = [c for c in ["timestamp", *dedupe_on] if c in df.columns]
+    if not cols:
+        return df.reset_index(drop=True)
+    return (df.sort_values(cols, kind="mergesort", na_position="first")
+              .reset_index(drop=True))
+
+
+def _signatures(df: pd.DataFrame, dedupe_on: list[str], cols: list[str]) -> pd.Series:
+    """One hash per row of ``cols``, indexed by a hash of the key."""
+    key = pd.util.hash_pandas_object(df[dedupe_on].astype(str), index=False)
+    val = pd.util.hash_pandas_object(df[cols].astype(str), index=False)
+    return pd.Series(val.to_numpy(), index=key.to_numpy())
+
+
+def _merge_into(path: Path, incoming: pd.DataFrame, dedupe_on: list[str]) -> dict:
+    """Merge rows into one file; leave the file alone if nothing changed.
+
+    New rows win over stored copies of the same reading, as before, so a
+    corrected value upstream replaces the old one. But if every incoming
+    row is already stored with the same values, the file isn't touched.
+    """
+    incoming = incoming.drop_duplicates(subset=dedupe_on)
+    existing = None
+    if path.exists():
+        try:
+            existing = pd.read_parquet(path)
+            missing = set(dedupe_on) - set(existing.columns)
+            if missing:
+                log.warning("%s is missing %s; replacing it", path,
+                            ", ".join(sorted(missing)))
+                existing = None
+        except Exception as exc:
+            log.warning("could not read %s (%s); replacing it", path, exc)
+            existing = None
+
+    if existing is not None and len(existing):
+        cols = sorted(set(incoming.columns) & set(existing.columns))
+        if set(incoming.columns) <= set(existing.columns):
+            new_sig = _signatures(incoming, dedupe_on, cols)
+            old_sig = _signatures(existing, dedupe_on, cols)
+            known = new_sig.index.isin(old_sig.index)
+            if known.all():
+                same = (old_sig.reindex(new_sig.index).to_numpy() == new_sig.to_numpy())
+                if same.all():
+                    return {"written": False, "rows": len(existing), "added": 0}
+        merged = pd.concat([incoming, existing], ignore_index=True)
+        before = len(existing)
+    else:
+        merged = incoming
+        before = 0
+
+    merged = _canonical(merged.drop_duplicates(subset=dedupe_on), dedupe_on)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_atomic(merged, path)
+    return {"written": True, "rows": len(merged), "added": max(0, len(merged) - before)}
+
+
+def _fold_legacy_month(target: Path, dedupe_on: list[str]) -> int:
+    """Split a daily month's old single file into day files, once.
+
+    October 2026 began as a monthly file. The first write to a daily month
+    that still has one converts it, so there is no separate migration step
+    to remember — and a machine that missed the change converts it the
+    same way. Returns the number of rows moved.
+    """
+    legacy = target / PARTITION_FILE
+    if not legacy.exists():
+        return 0
+    try:
+        df = pd.read_parquet(legacy)
+    except Exception as exc:
+        log.error("could not read %s (%s); leaving it in place", legacy, exc)
+        return 0
+    if "timestamp" in df.columns and len(df):
+        days = pd.to_datetime(df["timestamp"], errors="coerce", utc=True).dt.day
+        for day, g in df.groupby(days.fillna(1).astype(int)):
+            _merge_into(day_file(target, int(day)), g, dedupe_on)
+    legacy.unlink()
+    log.info("converted %s to day files (%s rows)", target.name, f"{len(df):,}")
+    return len(df)
 
 # Files a partition may contain. Append mode writes "part-<n>.parquet"
 # alongside the canonical "part.parquet"; compaction merges them back.
@@ -90,6 +223,7 @@ def _partition_keys(df: pd.DataFrame, source: str) -> pd.DataFrame:
     ts = pd.to_datetime(out["timestamp"], errors="coerce", utc=True)
     out["_year"] = ts.dt.year.fillna(0).astype(int)
     out["_month"] = ts.dt.month.fillna(0).astype(int)
+    out["_day"] = ts.dt.day.fillna(0).astype(int)
     out["_source"] = source
     undated = int((out["_year"] == 0).sum())
     if undated:
@@ -155,7 +289,7 @@ def append_partitions(df: pd.DataFrame,
         existing = len(list(target.glob("part-*.parquet")))
         path = target / f"part-{existing + 1:05d}.parquet"
 
-        chunk = group.drop(columns=["_year", "_month", "_source"])
+        chunk = group.drop(columns=["_year", "_month", "_day", "_source"])
         _write_atomic(chunk, path)
         touched += 1
         written += len(chunk)
@@ -181,6 +315,37 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
     dirs = {f.parent for f in root.rglob(PARTITION_GLOB)}
     for target in sorted(dirs):
         files = sorted(target.glob(PARTITION_GLOB))
+        y, m = _dir_year_month(target)
+        if _is_daily(y, m):
+            # Fragments and any old monthly file are folded into day files;
+            # day files already present are merged into, not rewritten
+            # wholesale.
+            loose = [f for f in files if not f.name.startswith("part.d")]
+            if not loose:
+                continue
+            frames, unreadable = [], []
+            for f in loose:
+                try:
+                    frames.append(pd.read_parquet(f))
+                except Exception as exc:
+                    log.error("could not read %s (%s)", f, exc)
+                    unreadable.append(f)
+            if unreadable:
+                log.error("refusing to compact %s: %d unreadable file(s)",
+                          target.relative_to(root), len(unreadable))
+                skipped += 1
+                continue
+            merged = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+            if len(merged) and "timestamp" in merged.columns:
+                days = pd.to_datetime(merged["timestamp"], errors="coerce", utc=True).dt.day
+                for d, g in merged.groupby(days.fillna(1).astype(int)):
+                    _merge_into(day_file(target, int(d)), g, dedupe_on)
+            for f in loose:
+                f.unlink()
+                removed_files += 1
+            compacted += 1
+            total_rows += len(merged)
+            continue
         if len(files) <= 1:
             # Already a single file; nothing to merge. Rename it to the
             # canonical name if a bare append created part-00001 only.
@@ -215,9 +380,7 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
             continue
 
         merged = pd.concat(frames, ignore_index=True)
-        merged = merged.drop_duplicates(subset=dedupe_on).reset_index(drop=True)
-        if "timestamp" in merged.columns:
-            merged = merged.sort_values("timestamp").reset_index(drop=True)
+        merged = _canonical(merged.drop_duplicates(subset=dedupe_on), dedupe_on)
 
         # Write the canonical file first, then remove the parts, so an
         # interruption leaves duplicates rather than a hole.
@@ -262,38 +425,29 @@ def write_partitions(df: pd.DataFrame,
     touched = 0
     total_rows = 0
     total_added = 0
+    unchanged = 0
 
     for (year, month), group in keyed.groupby(["_year", "_month"], sort=True):
         target = partition_path(root, source, int(year), int(month))
         target.mkdir(parents=True, exist_ok=True)
-        path = target / PARTITION_FILE
+        if _is_daily(int(year), int(month)):
+            _fold_legacy_month(target, dedupe_on)
+            pieces = [(day_file(target, int(d)), g) for d, g in group.groupby("_day")]
+        else:
+            pieces = [(target / PARTITION_FILE, group)]
 
-        incoming = group.drop(columns=["_year", "_month", "_source"])
-        before = 0
-        if path.exists():
-            try:
-                existing = pd.read_parquet(path)
-                before = len(existing)
-                missing = set(dedupe_on) - set(existing.columns)
-                if missing:
-                    log.warning("%s is missing %s; replacing it", path,
-                                ", ".join(sorted(missing)))
-                else:
-                    incoming = pd.concat([incoming, existing], ignore_index=True)
-            except Exception as exc:
-                log.warning("could not read %s (%s); replacing it", path, exc)
+        for path, g in pieces:
+            out = _merge_into(path, g.drop(columns=["_year", "_month", "_day", "_source"]),
+                              dedupe_on)
+            if out["written"]:
+                touched += 1
+                total_added += out["added"]
+            else:
+                unchanged += 1
+            total_rows += out["rows"]
 
-        merged = incoming.drop_duplicates(subset=dedupe_on).reset_index(drop=True)
-        if "timestamp" in merged.columns:
-            merged = merged.sort_values("timestamp").reset_index(drop=True)
-
-        _write_atomic(merged, path)
-        touched += 1
-        total_rows += len(merged)
-        total_added += max(0, len(merged) - before)
-
-    log.info("%s: %d partition(s) touched, %d rows stored (+%d new)",
-             root.name, touched, total_rows, total_added)
+    log.info("%s: %d file(s) rewritten, %d unchanged, %d rows stored (+%d new)",
+             root.name, touched, unchanged, total_rows, total_added)
     return {"partitions_touched": touched,
             "rows_written": total_rows,
             "rows_added": total_added}
@@ -314,12 +468,46 @@ def partition_summary(root: Path) -> list[dict]:
             n = pq.ParquetFile(f).metadata.num_rows
         except Exception:
             n = -1
+        label = str(rel.parent).replace("\\", "/")
+        if f.name.startswith("part.d"):
+            label += f" day {f.name[6:8]}"
         out.append({
-            "partition": str(rel.parent).replace("\\", "/"),
+            "partition": label,
             "rows": n,
             "kb": round(f.stat().st_size / 1024, 1),
         })
     return out
+
+
+def undated_summary(root: Path) -> dict:
+    """Undated rows, and how many of their records exist nowhere else.
+
+    The undated bucket (``year=0000``) is where rows go when their
+    timestamp can't be read, rather than being discarded. On 2026-10-01 it
+    held 740,660 rows from three nearshore sites — every record also
+    stored with a proper date, so pure duplicates that inflated the
+    headline total by 6 %. Dropping duplicates is safe; dropping the only
+    copy of a reading is not, which is what ``only_undated`` tells apart.
+    """
+    files = sorted(root.glob(f"source=*/year=0000/month=00/{PARTITION_GLOB}"))
+    if not files:
+        return {"undated": 0, "only_undated": 0}
+    import duckdb
+    import pyarrow.parquet as pq
+    names = set(pq.ParquetFile(files[0]).schema_arrow.names)
+    key = ", ".join(k for k in ("site", "uuid") if k in names) or "uuid"
+    und = "[" + ", ".join(f"'{f.as_posix()}'" for f in files) + "]"
+    every = (root / "**" / PARTITION_GLOB).as_posix()
+    rows = duckdb.sql(f"SELECT count(*) FROM read_parquet({und})").fetchone()[0]
+    only = duckdb.sql(f"""
+        WITH u AS (SELECT DISTINCT {key} FROM read_parquet({und})),
+             d AS (SELECT DISTINCT {key} FROM read_parquet('{every}',
+                        hive_partitioning = true, union_by_name = true)
+                   WHERE CAST(year AS INTEGER) > 0)
+        SELECT count(*) FROM u WHERE NOT EXISTS
+            (SELECT 1 FROM d WHERE {" AND ".join(f"d.{k} = u.{k}" for k in key.split(", "))})
+        """).fetchone()[0]
+    return {"undated": int(rows), "only_undated": int(only)}
 
 
 def drop_partition(root: Path, source: str, year: int, month: int) -> dict:
@@ -333,18 +521,20 @@ def drop_partition(root: Path, source: str, year: int, month: int) -> dict:
     that never had a usable time.
     """
     target = partition_path(root, source, year, month)
-    path = target / PARTITION_FILE
-    if not path.exists():
+    paths = sorted(target.glob(PARTITION_GLOB)) if target.exists() else []
+    if not paths:
         return {"dropped": False, "reason": "partition does not exist"}
 
+    rows, kb = 0, 0.0
     try:
         import pyarrow.parquet as pq
-        rows = pq.ParquetFile(path).metadata.num_rows
+        for path in paths:
+            rows += pq.ParquetFile(path).metadata.num_rows
     except Exception:
         rows = -1
-    kb = path.stat().st_size / 1024
-
-    path.unlink()
+    for path in paths:
+        kb += path.stat().st_size / 1024
+        path.unlink()
     # Tidy the now-empty directories, but never above `root`.
     for parent in (target, target.parent):
         try:

@@ -62,6 +62,8 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.merge_parquet", "merge_frames"),
     ("secchi.sources.watch", "scan_readings"),
     ("secchi.status", "report"),
+    ("secchi.store", "day_file"),
+    ("secchi.store", "undated_summary"),
     ("secchi.sources.watch", "_grouped_lines"),
     ("secchi.probe_shape", "probe_record_shapes"),
     ("secchi.sources.reference", "reproject_geojson"),

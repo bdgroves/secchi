@@ -17,6 +17,10 @@ next steps are there. `README.md` is the public write-up.
   closed: skip, don't guess.
 - Backfills append then compact; never read-merge-write the store. Store
   writes are atomic.
+- The store is committed to git, so every rewritten byte is kept forever.
+  From October 2026 each month is one file per day; rows are written in a
+  fixed order and unchanged files are never rewritten. Keep it that way —
+  `tests/test_store_layout.py` checks it.
 - Forest-station endpoints share record IDs but return different columns.
   Fetch each one; never let one stand in for another.
 - `Soil_VWC` is stored as a fraction (display ×100). Timestamps are naive

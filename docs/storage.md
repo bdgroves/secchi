@@ -116,3 +116,48 @@ the decision can wait for evidence rather than anticipation.
 3. **Add `pixi run query`** as a DuckDB shell over the partitions.
 4. Only then consider external storage, and only if the thresholds above
    are actually hit.
+
+
+## Update, 2026-10-01: it churned anyway
+
+The partitioning above froze history, but the repository still reached
+**1.1 GB in its first two weeks**. Measured on one ordinary run:
+
+| What a run added | Size |
+|---|---|
+| this month's observation file, rewritten whole | 2.9 MB |
+| this month's USGS file, rewritten whole | 2.2 MB |
+| every camera month file, rewritten with nothing new | 0.17 MB |
+| raw downloads (git compresses text: 2.9 MB → 0.26 MB) | 0.26 MB |
+
+Two faults behind it, both in `write_partitions`:
+
+1. **It rewrote every partition it touched, even with no new rows.** The
+   log said `+0 new` and the file was written anyway.
+2. **It sorted with an unstable sort.** Rows sharing a timestamp came out
+   in a different order each run, so identical data became a different
+   file — and to git, a new 3 MB copy.
+
+And one choice: the current month was a single file, so adding an hour
+of readings meant storing the whole month again.
+
+**The fix:** rows are sorted stably on timestamp and key, so the same
+data is the same bytes; a file is compared with what's stored and left
+alone if nothing changed; and from October 2026 (`DAILY_FROM`) each month
+is one file per day. Months before stay single files — converting them
+would store a second copy of history for nothing.
+
+| A run now adds | Size |
+|---|---|
+| today's observation file | ≤ ~100 KB |
+| today's USGS file | ≤ ~75 KB |
+| camera files | nothing unless new frames |
+| raw downloads | ~0.26 MB |
+| **a run with no new data** | **nothing** |
+
+About a fourteenth of before. At the irregular pace GitHub actually runs
+the schedule, that's ~65 MB a month instead of ~1 GB; at a true hourly
+pace, ~0.3 GB instead of ~4.
+
+`tests/test_store_layout.py` pins all of this down, and the two churn
+tests fail against the old store.

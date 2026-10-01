@@ -2,7 +2,7 @@
 
 ### A modern Secchi disk for Lake Tahoe
 
-**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 11.8 million observations, twenty-seven months, updating hourly and watching itself
+**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 11.6 million observations, twenty-seven months, updating hourly and watching itself
 
 ---
 
@@ -176,16 +176,25 @@ Cataloguing these *is* the work, and it's much easier from outside than operatin
 
 ```
 data/processed/observations/
-    source=teon/year=2025/month=01/part.parquet    frozen
+    source=teon/year=2025/month=01/part.parquet    frozen, one file per month
     ...
-    source=teon/year=2026/month=09/part.parquet    the only file that churns
+    source=teon/year=2026/month=09/part.parquet    frozen
+    source=teon/year=2026/month=10/part.d01.parquet  one file per day from October 2026
+    source=teon/year=2026/month=10/part.d02.parquet  ...only today's file changes
 ```
 
-**11,795,903 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
+**11,626,099 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
 
 `pixi run query` opens a SQL shell over all of it, reading the parquet in place. A filtered aggregate over the whole store answers in under a tenth of a second.
 
-Hive-partitioned because a parquet is rewritten whole on every update and git stores each version as a new blob. Historical months freeze; only the current one churns.
+Hive-partitioned because a parquet is rewritten whole on every update and git stores each version as a new blob. Historical months freeze. **That still wasn't enough:** the repository reached **1.1 GB in its first two weeks**, about 5.5 MB per run. Two causes, both fixed on 2026-10-01:
+
+- **Unchanged files were rewritten.** Every run rewrote every month it touched even when it added nothing, and an unstable sort put tied rows in a different order each time, so identical data became a new file. Rows are now written in a fixed order, and a file whose contents haven't changed isn't written at all.
+- **The current month was one 3 MB file.** From October 2026 it's one file per day, so a run that adds readings rewrites about 100 KB.
+
+A run now adds about 0.4 MB to the repository, and nothing when there's no new data — roughly a fourteenth of before, which makes truly hourly runs affordable.
+
+The total above is also smaller than it was: **740,660 undated rows** turned out to be duplicates of readings stored with proper dates, from a September backfill, and were inflating the count by 6 %. They're removed, `drop-undated` now refuses to delete any reading that has no dated copy, and `status` reports undated rows if they reappear.
 
 Backfills **append then compact** rather than read-merge-write. The first design was quadratic: 1.78 million observations meant 89 flushes each rewriting everything accumulated — **80 million row writes, 45× amplification, ~2 GB to store 45 MB** — and it filled the disk mid-run.
 
@@ -209,7 +218,7 @@ Not at :00. GitHub delays scheduled runs at busy times and drops some outright, 
 
 ## The bugs were mostly mine
 
-Thirty-seven errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Thirty-nine errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -239,6 +248,8 @@ Thirty-seven errors shipped or nearly shipped. Every one produced **plausible-lo
 | A silent `continue` next to the counted one | **5,145 scrambled Sunnyside readings dropped unseen**; "3 set aside" |
 | An hourly schedule at minute 0 | Snapshots every 3–8 hours, while the README said hourly |
 | A freshness check timed from now, not from the snapshot | Two healthy stations reported dark by the new `status` |
+| An unstable sort, and rewriting files that hadn't changed | **Identical data stored again on every run; 1.1 GB in two weeks** |
+| Undated duplicates counted in the total | 740,660 phantom observations in the headline figure |
 
 ### The pattern
 
@@ -260,14 +271,14 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
 ## By the numbers
 
 ```
-  11,795,903   observations stored, Jun 2024 to now
+  11,626,099   observations stored, Jun 2024 to now
      427,517   paired readings behind the oxygen finding
    1,490,116   rows that once landed with no timestamp, recovered
       76,361   records lost to a non-atomic write, all recovered
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          37   of my own bugs caught before or shortly after shipping
+          39   of my own bugs caught before or shortly after shipping
           13   actual physical devices
           13   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin

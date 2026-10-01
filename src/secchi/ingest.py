@@ -714,11 +714,21 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
             print("\n  nothing to repair — all sensor types are canonical.\n")
         return 0
     if mode == "drop-undated":
-        from secchi.store import drop_partition
+        from secchi.store import drop_partition, undated_summary
         total = 0
         for name, src in (("observations", "teon"),
                           ("usgs_observations", "usgs"),
                           ("assets", "teon")):
+            # Refuse to delete the ONLY copy of a reading. Duplicates of
+            # dated records are safe to drop; anything else means a
+            # timestamp field needs configuring first, then a re-run.
+            check = undated_summary(PROCESSED_DIR / name)
+            if check["only_undated"] and not force:
+                print(f"\n  {name}: {check['undated']:,} undated row(s), and "
+                      f"{check['only_undated']:,} record(s) exist ONLY there.")
+                print("  Not dropping them. Configure the timestamp field and re-run")
+                print("  the affected backfill first, or pass --force to drop anyway.")
+                continue
             out = drop_partition(PROCESSED_DIR / name, src, 0, 0)
             if out.get("dropped"):
                 total += max(0, out.get("rows", 0))

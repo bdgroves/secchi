@@ -92,6 +92,19 @@ def report() -> int:
                 f"SELECT count(*), max(timestamp) FROM read_parquet('{g}', "
                 f"hive_partitioning = true, union_by_name = true)").fetchone()
             print(f"    observations stored        {n:,}, newest reading {newest:%Y-%m-%d %H:%M}")
+        from secchi.store import undated_summary
+        und = undated_summary(PROCESSED_DIR / "observations")
+        if und["undated"]:
+            if und["only_undated"]:
+                print(f"    undated readings           {und['undated']:,}, "
+                      f"{und['only_undated']:,} records held nowhere else")
+                todo.append("undated readings with no dated copy - a timestamp "
+                            "field needs configuring (see docs/timestamp-fields.md)")
+            else:
+                print(f"    undated readings           {und['undated']:,}, all "
+                      f"duplicates of dated ones")
+                todo.append(f"pixi run drop-undated - {und['undated']:,} duplicate "
+                            f"undated rows inflate the totals")
     except Exception as exc:                         # never fail the report
         print(f"    (store summary unavailable: {exc})")
 
