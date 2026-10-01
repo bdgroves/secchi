@@ -114,9 +114,18 @@ def report() -> int:
         if last and (s["last"] is None or last > s["last"]):
             s["last"] = last
 
+    # Judge liveness as of the SNAPSHOT, not as of now. The inventory is
+    # only as fresh as the last CI run that captured TEON, which has been
+    # 13 h old; measured from now, every station looked 13 h staler than
+    # it was and two healthy ones were reported dark.
+    from secchi.config import LIVE_WINDOW_HOURS
+    ref = snap or now
+    for v in sites.values():
+        v["live"] = bool(v["last"] and _hours(v["last"], ref) <= LIVE_WINDOW_HOURS)
     dark = {k: v for k, v in sites.items() if not v["live"]}
     live = sorted(k for k, v in sites.items() if v["live"])
-    print(f"\n  FOREST STATIONS              {len(live)} of {len(sites)} reporting")
+    as_of = f" (as of the snapshot, {_age(snap_age)} ago)" if snap_age and snap_age > 2 else ""
+    print(f"\n  FOREST STATIONS              {len(live)} of {len(sites)} reporting{as_of}")
 
     # Battery at the last reading, for the dark ones and for warnings.
     health = {}
@@ -142,7 +151,7 @@ def report() -> int:
         if g and v["last"] and (g - v["last"]).days >= 1:
             bs += f", rain gauge until {g.astimezone():%Y-%m-%d}"
         print(f"    dark   {site:18} since {since:%Y-%m-%d %H:%M}  "
-              f"({_age(_hours(v['last'], now))}){bs}" if since else
+              f"({_age(_hours(v['last'], ref))} quiet at snapshot){bs}" if since else
               f"    dark   {site:18}")
     if live:
         print(f"    live   {', '.join(live)}")
@@ -153,10 +162,9 @@ def report() -> int:
         if site in dark:
             continue
         if h.get("not_charging"):
-            rate = h.get("weekly_rate_v")
-            warn.append(f"{site:16} NOT CHARGING - falling {h.get('weeks_falling')} weeks, "
-                        f"{h.get('current_floor'):.2f} V"
-                        + (f", {abs(rate):.3f} V/week" if rate else ""))
+            warn.append(f"{site:16} NOT CHARGING - peak {h.get('peak_14d'):.2f} V in 14 days, "
+                        f"overnight low {h.get('current_floor'):.2f} V"
+                        + (f", falling {h['weeks_falling']} weeks" if h.get('weeks_falling', 0) >= 3 else ""))
             todo.append(f"{site}: battery not being charged - needs a site visit (tell TEON)")
         elif h.get("flatlined"):
             warn.append(f"{site:16} battery channel stuck on one value")
@@ -179,12 +187,12 @@ def report() -> int:
         if cur is None or (last and cur[0] and last > cur[0]) or cur[0] is None:
             bucket[r["site"]] = (last, r["is_live"])
     print("\n  LAKE")
-    tl = sorted(s for s, (_, ok) in tele.items() if ok)
-    td = sorted(s for s, (_, ok) in tele.items() if not ok)
+    tl = sorted(s for s, (t, _) in tele.items() if t and _hours(t, ref) <= LIVE_WINDOW_HOURS)
+    td = sorted(s for s in tele if s not in tl)
     print(f"    live sondes      {', '.join(tl) or 'none'}")
     for s in td:
         last = tele[s][0]
-        print(f"    quiet sonde      {s}, last reading {_age(_hours(last, now))} ago")
+        print(f"    quiet sonde      {s}, {_age(_hours(last, ref))} quiet at snapshot")
     if manual:
         newest = max((v[0] for v in manual.values() if v[0]), default=None)
         print(f"    by hand          {len(manual)} sites, most recent upload "

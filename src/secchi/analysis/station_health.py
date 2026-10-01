@@ -86,6 +86,15 @@ FLATLINE_SWING = 0.02
 NO_CHARGE_SWING = 0.10        # V: below this daily swing, nothing is charging it
 NOT_CHARGING_WEEKS = 8        # complete weeks examined
 NOT_CHARGING_MIN_DROP = 0.15  # V: total fall across those weeks
+
+# The sturdier test: a charging battery reaches a charging voltage on any
+# sunny day. Over 2026-09-14..30 every charging station's highest daily
+# peak was 13.97-14.38 V, while Glenbrook 1 never passed 11.53 and Glenbrook
+# 5 never passed 12.39. The "flat day" rule above missed Glenbrook 5,
+# whose voltage still wobbles ~0.2 V a day as it drains. One sunny day
+# above CHARGE_PEAK_V in the window proves the panel works.
+CHARGE_PEAK_V = 13.0
+CHARGE_PEAK_DAYS = 14
 STUCK_MAX_CHANGE = 0.02       # V: a stuck channel changes less than this
 
 # Days over which to measure the trend. Long enough to see through
@@ -217,11 +226,16 @@ def analyse(df: pd.DataFrame | None = None) -> dict | None:
         entry["weekly_change_v"] = round(total_change, 3)
         entry["weekly_rate_v"] = (round(float(changes.tail(4).mean()), 3)
                                   if len(changes) else None)
-        entry["not_charging"] = bool(
+        recent_peaks = batt["max"].tail(CHARGE_PEAK_DAYS)
+        entry["peak_14d"] = round(float(recent_peaks.max()), 2) if len(recent_peaks) else None
+        never_charged = bool(len(recent_peaks) >= CHARGE_PEAK_DAYS // 2
+                             and recent_peaks.max() < CHARGE_PEAK_V)
+        flat_and_falling = bool(
             entry["daily_swing"] < NO_CHARGE_SWING
             and len(changes) >= NOT_CHARGING_WEEKS - 1
             and int((changes < 0).sum()) >= len(changes) - 1
             and -total_change >= NOT_CHARGING_MIN_DROP)
+        entry["not_charging"] = never_charged or flat_and_falling
         # Stuck means frozen: one repeated value all week, and not a
         # battery that is visibly running down.
         entry["distinct_7d"] = batt.attrs.get("distinct_7d")
@@ -347,14 +361,15 @@ def report() -> int:
             if not v.get("not_charging"):
                 continue
             rate = v.get("weekly_rate_v")
-            print(f"    {site}: battery has fallen every week for "
-                  f"{v['weeks_falling']} weeks, with")
-            print("    no daily charging swing. That is a battery with nothing")
-            print("    charging it (a failed solar panel or charge controller),")
-            print("    not a stuck channel."
-                  + (f" Falling {abs(rate):.3f} V/week lately." if rate else ""))
-            print("    This ends in a power failure, and power-failure gaps")
-            print("    don't backfill: the logger records nothing to upload.\n")
+            peak = v.get("peak_14d")
+            print(f"    {site}: not being charged. Its highest daily peak in the")
+            print(f"    last {CHARGE_PEAK_DAYS} days was {peak:.2f} V; a charging battery reaches")
+            print("    about 14 V on any sunny day.")
+            if v.get("weeks_falling", 0) >= 3:
+                print(f"    It has fallen every week for {v['weeks_falling']} weeks"
+                      + (f", {abs(rate):.3f} V/week lately." if rate else "."))
+            print("    A failed solar panel or charge controller. This ends in a")
+            print("    power failure, and power-failure gaps don't backfill.\n")
 
         stuck = sorted(s for s, v in live.items() if v.get("flatlined"))
         if stuck:

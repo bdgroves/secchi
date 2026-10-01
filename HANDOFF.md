@@ -190,13 +190,19 @@ TEON's to within 6 records at every site.
 
 **Station outages**
 
-- **Blackwood 2** dark since June 2026 (its logger, 06-18; the rain gauge is a
-  separate device and reported until 2026-08-14); **Glenbrook 2** dark since 2026-09-22;
-  **Glenbrook 5** dark since 2026-09-27 05:45. All three went down on working
-  batteries (12.2–12.9 V) — not power. Glenbrook 5's daily peaks were only
-  ~12.2 V in its last week, so its charging may be weak too.
-  **Glenbrook 5 is the transect's east station**: the overlapping record stops
-  on 2026-09-27 until it returns.
+- **Three outages on working batteries came back (late Sept 2026).** Blackwood
+  2, silent since 06-18, uploaded its whole outage: +9,519 records to 09-25 12:00,
+  every 15-minute reading in 99 days. **Pull it**: `backfill --stage live --site
+  "Blackwood 2"` and `--stage blackwood --site "Blackwood 2"`. Glenbrook 5's
+  09-27..09-30 gap filled completely (+288). Glenbrook 2 is back, but its
+  09-22..09-28 gap hadn't filled as of 10-01. Blackwood 2's rain gauge is a
+  separate device and stopped 2026-08-14.
+- **New tree-stress sensors** appeared at Blackwood 2 (40,180 records) and
+  Homewood (5,560) around 2026-09-30. `backfill --stage live --site ...` pulls them.
+- **Glenbrook 5 is not being charged either**, since June 2026: battery swaps
+  in May and September, no charging voltage since. Weekly peaks fell 12.87 →
+  11.44 V June–August; it's falling again from 12.5 V. Its June 2026 outage
+  was a power failure (battery to 10.9 V), which is why it never came back.
 - **Glenbrook 1 is not being charged, and hasn't been since July 2025.** Its
   daily charging swing vanished that month; since then its supply has only
   fallen, apart from an apparent battery swap in mid-January 2026, to 11.40 V
@@ -213,8 +219,10 @@ TEON's to within 6 records at every site.
   6.8–8.1 V (power failures); fall 2025 outages happened on healthy batteries,
   including 21 days from 2025-10-15, the day the season's first storm arrived.
 - **Glenbrook 5**'s air/humidity probe was out June–August 2025 while soil kept
-  logging; the whole station nearly vanished in June 2026, and that month never
-  came back upstream.
+  logging.
+- **The not-charging test**: no daily peak above 13 V in 14 days
+  (`CHARGE_PEAK_V`). Charging stations peak 14.0–14.4 V; the old "flat and
+  falling" rule, kept as a second test, missed Glenbrook 5.
 
 **pH**
 

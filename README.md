@@ -150,11 +150,13 @@ They get coverage cards rather than live cards — period of record held, what's
 
 **A camera filed a frame from the future** — six hours ahead of the snapshot containing it.
 
-**Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream. Blackwood 2, Glenbrook 2 and Glenbrook 5 are dark now, three of seven forest stations, all on working batteries.
+**Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream; its battery had collapsed to 10.9 V, so that one was a power failure.
+
+**Outages that came back.** In late September three stations went dark on working batteries, and all three returned. Blackwood 2, silent since June 18, uploaded its whole outage at once: 9,519 new records to September 25, which at one reading every 15 minutes is every reading in those 99 days. Glenbrook 5's three-day gap filled completely too, and Glenbrook 2 is back, though its September 22–28 gap hasn't (yet). A logger that loses only its link keeps recording; one that loses power records nothing.
 
 **An outage's cause is written in the battery.** Glenbrook 4 lost about 68 days to outages in 2024–25 that never came back. Before each winter outage its battery had collapsed to 6.8–8.1 V: power failures, with the logger shut down and nothing recorded to recover. This September it dropped out for a day on a healthy battery, and every reading came back when it reconnected — the logger had kept recording while it couldn't transmit. `pixi run station-health` tells the two apart for every station.
 
-**A battery that nobody is charging.** Glenbrook 1's daily charging swing disappeared in **July 2025**. Since then its supply has only fallen — through summer, when a panel charges hardest — apart from one jump in January 2026 that looks like a battery swap, and it's at 11.40 V now: fifteen months without charging, kept alive by swaps. Glenbrook 4 shows what a repaired station looks like: its daily peaks jumped from about 13 V to 14.2–14.6 V in September 2025, the level a working charge controller reaches, and its next winter held above 12 V where the one before had collapsed to 7. It was reported here as a *stuck channel* first, because its readings barely move within a day; that label took the most at-risk station off the at-risk list. It's heading for a power failure, the kind whose gap never comes back, and it's preventable.
+**Two batteries that nobody is charging.** A charging battery reaches about 14 V on any sunny day; over two weeks in late September, every charging station's highest peak was 14.0–14.4 V, Glenbrook 5's was 12.4 and Glenbrook 1's was 11.5. Glenbrook 5 has had no charging since June 2026, surviving on battery swaps in May and September, and is falling again. Glenbrook 1's daily charging swing disappeared in **July 2025**. Since then its supply has only fallen — through summer, when a panel charges hardest — apart from one jump in January 2026 that looks like a battery swap, and it's at 11.40 V now: fifteen months without charging, kept alive by swaps. Glenbrook 4 shows what a repaired station looks like: its daily peaks jumped from about 13 V to 14.2–14.6 V in September 2025, the level a working charge controller reaches, and its next winter held above 12 V where the one before had collapsed to 7. It was reported here as a *stuck channel* first, because its readings barely move within a day; that label took the most at-risk station off the at-risk list. It's heading for a power failure, the kind whose gap never comes back, and it's preventable.
 
 **Channels filed under the wrong names.** For about six days in July 2026, ending 2026-07-24, 4H Camp's optical sensors reported into each other's columns: its oxygen *saturation* (normally ~85 %) arrived in the concentration field as "85.8 mg/L", its *chlorophyll* (~0.67) arrived as "0.65 % saturation", and its *concentration* (~7.8 mg/L) arrived as turbidity, a spike that never happened. Temperature, conductivity and depth were untouched, so the scramble is confined to the optical sensors — consistent with sensors moved between ports at a service visit while the parser kept the old order. That's inference, but it means the readings are probably intact and could be remapped. I first wrote that the concentration "read normally"; it read 85 mg/L, which no lake holds.
 
@@ -207,7 +209,7 @@ Not at :00. GitHub delays scheduled runs at busy times and drops some outright, 
 
 ## The bugs were mostly mine
 
-Thirty-six errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Thirty-seven errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -236,6 +238,7 @@ Thirty-six errors shipped or nearly shipped. Every one produced **plausible-look
 | A guess from a ratio, written up as a finding | "Normal concentrations alongside" — they read 85 mg/L |
 | A silent `continue` next to the counted one | **5,145 scrambled Sunnyside readings dropped unseen**; "3 set aside" |
 | An hourly schedule at minute 0 | Snapshots every 3–8 hours, while the README said hourly |
+| A freshness check timed from now, not from the snapshot | Two healthy stations reported dark by the new `status` |
 
 ### The pattern
 
@@ -264,7 +267,7 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          36   of my own bugs caught before or shortly after shipping
+          37   of my own bugs caught before or shortly after shipping
           13   actual physical devices
           13   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin
