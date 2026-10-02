@@ -82,3 +82,36 @@ A `.duckdb` file is a single binary, and git stores a complete new copy
 of it on every write — the exact churn the monthly partitioning exists
 to avoid. So the store stays parquet, and DuckDB is only ever the
 reading layer.
+
+## Two investigation queries worth keeping
+
+Holes in one station's record (change the site):
+
+```sql
+SELECT prev_reading, next_reading, next_reading - prev_reading AS gap
+FROM (
+  SELECT lag(timestamp) OVER (ORDER BY timestamp) AS prev_reading,
+         timestamp AS next_reading
+  FROM (SELECT DISTINCT timestamp FROM obs
+        WHERE site = 'Glenbrook 5' AND variable = 'Soil_VWC')
+)
+WHERE next_reading - prev_reading > INTERVAL 2 HOUR
+ORDER BY prev_reading;
+```
+
+Every variable during a bad stretch against the rest of the month — how the
+two channel scrambles were decoded (change the site, month and condition):
+
+```sql
+WITH bad AS (
+  SELECT DISTINCT timestamp FROM obs
+  WHERE site = '4H Camp' AND variable = 'Do_percent' AND value < 50
+)
+SELECT o.variable,
+       round(avg(o.value) FILTER (WHERE b.timestamp IS NOT NULL), 2) AS during_bad,
+       round(avg(o.value) FILTER (WHERE b.timestamp IS NULL), 2) AS normal
+FROM obs o LEFT JOIN bad b USING (timestamp)
+WHERE o.site = '4H Camp' AND o.year = 2026 AND o.month = 7
+GROUP BY o.variable ORDER BY o.variable;
+```
+

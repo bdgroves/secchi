@@ -1,68 +1,82 @@
 # Handoff: picking up secchi
 
-*Written 2026-09-25, at the end of the first build sprint. Read this first on a
-new computer or in a new Claude session. `README.md` is the public story;
-this is the working state.*
+*Rewritten 2026-10-02, at the end of a long working session. Read this first
+on a new computer or in a new Claude chat. `README.md` is the public story;
+this is the working state. `CLAUDE.md` holds the coding rules and is loaded
+automatically by Claude Code.*
 
 ---
 
-## 1. What this is, in two paragraphs
+## 0. The state of things, in ten lines
 
-**secchi** is a public dashboard and data archive for Lake Tahoe, built on the
+1. **It runs itself.** Hourly CI fetches TEON, USGS, SNOTEL and NOAA smoke data, rebuilds the store and commits; the page redeploys hourly; a watcher opens GitHub issues on anything notable.
+2. **The data is complete and verified**: about 12.0 million TEON observations, June 2024 to now, plus USGS gauges, SNOTEL precipitation and snowpack, and a daily smoke record.
+3. **`pixi run status`** is the one screen to check. Today its to-do list is two items, both TEON's: Glenbrook 1 and Glenbrook 5 aren't charging.
+4. **TEON has been told.** An email went on 2026-10-02 to Carina Seitz and Sudeep Chandra, with the full note linked. No reply yet; follow up around 2026-10-09.
+5. **Social posts are drafted and held** until TEON replies.
+6. **The rainfall transect is answered, as a range**: west/east precipitation 2.16× at the best-matched gauge, 1.20× at the other; soil wetting 2.32×.
+7. **Snowmelt is measured**: of 8 no-rain wetting events, 5 coincide with a shrinking snowpack and 3 remain unexplained.
+8. **Wildfire smoke left no detectable mark** on the lake in 2025–26, once each month's trend is removed (114 smoke days since June 2024; no lake data for summer 2024).
+9. **42 tests pass.** Run them before every commit.
+10. **Next**: wait for TEON; watch the batteries; then reliable hourly downloads, the tree sensors, or Glenbrook 2's wetness (section 7).
+
+---
+
+## 1. What this is
+
+**secchi** is a public dashboard and data archive for Lake Tahoe built on the
 [Tahoe Environmental Observatory Network](https://tahoeenvironmentalobservatorynetwork.org/)
-(TEON, University of Nevada, Reno) and USGS stream gauges. TEON's API has no
-documentation; everything about it was worked out by probing. The live page is
-**https://brooksgroves.com/secchi/**, and it updates hourly on its own.
+(TEON, University of Nevada, Reno), with USGS stream gauges, and, as context
+from outside TEON, NRCS SNOTEL precipitation and NOAA's satellite smoke
+analysis. Live at **https://brooksgroves.com/secchi/**. Repo
+`git@github.com:bdgroves/secchi.git`; local `C:\data\01_Projects\secchi`.
 
-The project holds a complete, verified copy of everything TEON's API exposes —
-about **12.0 million observations, June 2024 to now** — in a partitioned
-parquet store committed to the repo, queryable in place with DuckDB. Its most
-useful work so far has been finding problems in TEON's published data, with
-evidence, and reporting them back.
+TEON's API had no documentation; everything about it was worked out by
+probing. The project's most useful work so far has been finding problems in
+TEON's published data, with evidence, and reporting them back. Built by Brooks
+Groves (UNR B.S. Biology 1994), who read about TEON in the alumni newsletter.
 
 ---
 
 ## 2. Setting up on a new computer
 
-You need **git** (with an SSH key registered on GitHub, or use the HTTPS URL)
-and **[pixi](https://pixi.sh)**. Everything else comes from pixi.
+You need **git** (with an SSH key on GitHub, or the HTTPS URL) and
+**[pixi](https://pixi.sh)**. Everything else comes from pixi.
 
 ```powershell
 git clone git@github.com:bdgroves/secchi.git
 cd secchi
 pixi install
-pixi run setup-git            # once per clone — see below
-pixi run -e dev test          # 10 tests, all should pass
+pixi run setup-git            # once per clone: the parquet merge driver
+pixi run -e dev test          # 42 tests, all should pass
 pixi run transform            # builds web/assets, which aren't committed
+pixi run status               # one screen: is anything wrong?
 pixi run serve                # http://localhost:8000
-pixi run query                # SQL shell over the whole store
 ```
 
-**`setup-git` matters.** It registers a git merge driver that merges store
-partitions as sets of readings. Without it, `git pull` stops with a conflict
-whenever CI and your machine have both changed the current month. Check it:
+**`setup-git` matters.** It registers a merge driver that merges store files as
+sets of readings; without it `git pull` stops on a conflict whenever CI and
+your machine both touched the current day. Check it with
+`git config --get merge.parquet-union.driver`.
 
-```powershell
-git check-attr merge -- data/processed/observations/source=teon/year=2026/month=09/part.parquet
-# should end in:  merge: parquet-union
-git config --get merge.parquet-union.driver
-# should print:   pixi run python -m secchi.merge_parquet %O %A %B %P
-```
+**USGS key**, only for fetching USGS data locally (CI has it as a secret):
+`setx USGS_API_KEY "your-key"`, then open a new window. A lost key can't be
+read back from GitHub; get a new one free at https://api.waterdata.usgs.gov/signup/
+and update it locally and in the repo's Actions secrets.
 
-**USGS key.** Only needed to fetch USGS data locally (`pixi run usgs`,
-`pixi run pipeline`). CI already has it as a repository secret.
+**The clone is about 1.1 GB**, because the data store is committed. A clone is
+the complete dataset.
 
-```powershell
-$env:USGS_API_KEY = "your-key"        # this session only
-setx USGS_API_KEY "your-key"          # persistent, for new windows
-```
+**Windows notes.** SQL goes at the `secchi>` prompt after `pixi run query`, not
+straight into PowerShell. `Set-Content` in Windows PowerShell 5 writes ANSI;
+edit text files in an editor instead. For long outputs,
+`pixi run smoke 2>&1 | Select-Object -Last 5` shows just the summary.
 
-**The clone is large-ish** because the data store is committed. That's
-deliberate: a clone is the complete dataset.
-
-**On Windows**, SQL goes at the `secchi>` prompt after `pixi run query` —
-pasting SQL straight into PowerShell fails with "not recognized" errors. A
-one-line form also works: `pixi run query "SELECT count(*) FROM obs"`.
+**Working with Claude.** In a claude.ai chat, Claude can't touch your disk:
+changes arrive as zip bundles you unpack and copy in, and the worst bugs here
+came from assembling those bundles from stale copies. **Claude Code**, run in
+the repo on your machine, edits the files directly and reads `CLAUDE.md`
+automatically. Prefer it for the next stretch.
 
 ---
 
@@ -70,22 +84,17 @@ one-line form also works: `pixi run query "SELECT count(*) FROM obs"`.
 
 | Workflow | When | What |
 |---|---|---|
-| `fetch.yml` | hourly at :41 | ingest TEON + USGS, transform, prune, commit. Registers the merge driver first. |
-| `pages.yml` | hourly at :25, and on push | build and deploy the page. Commits nothing. |
-| `watch.yml` | every 6 hours | diff TEON's inventory against a baseline; open a GitHub issue on anything notable, assigned to the repo owner so it emails. |
+| `fetch.yml` | hourly at :41 | ingest TEON and USGS; reset `data/processed/` to the remote's copy; transform; ingest SNOTEL and HMS smoke; prune; commit |
+| `pages.yml` | hourly at :25 | ingest, transform, deploy the page; commits nothing |
+| `watch.yml` | every 6 hours | diff TEON's inventory against a baseline, scan for impossible readings, open GitHub issues |
 
-`fetch` runs at :41, not :00. At minute 0 its runs were delayed and many
-dropped (GitHub's busiest moment), so "hourly" snapshots landed every 3–8
-hours until 2026-09-28. Even at :41 GitHub doesn't guarantee every run;
-`pixi run status` shows how old the newest snapshot is.
-
-`pages.yml` has its own schedule because pushes made with the default
-`GITHUB_TOKEN` don't trigger other workflows — relying on fetch's commit to
-trigger a deploy never fired.
-
-`pixi run watch` locally is **read-only**. Only CI's `watch-update` advances the
-baseline; a local run that advanced it would consume a change before CI could
-report it.
+- **SNOTEL and smoke run after the reset**, because they write straight into
+  `data/processed/` with no raw buffer; before it, the reset would wipe them.
+  Each failure is non-fatal and shows as a warning on the run.
+- **GitHub runs scheduled jobs late and drops some**, even off the top of the
+  hour: snapshots land every few hours. No data is lost (each run reaches back
+  days), but the page can be hours behind. `status` shows the snapshot's age.
+- **`pixi run watch` locally is read-only**; only CI advances the baseline.
 
 ---
 
@@ -93,82 +102,53 @@ report it.
 
 ```
 data/processed/
-    observations/source=teon/year=YYYY/month=MM/part.parquet
-    usgs_observations/source=usgs/year=YYYY/month=MM/part.parquet
-    assets/source=teon/year=YYYY/month=MM/part.parquet
+    observations/source=teon/year=YYYY/month=MM/part.parquet     TEON
+    usgs_observations/source=usgs/...                            USGS gauges
+    assets/source=teon/...                                       camera frames
+    snotel_observations/source=snotel/...                        PRCP, PREC, TAVG, WTEQ
+    smoke_observations/source=hms/...                            hms_analysed, smoke_density, hms_polygons
 data/raw/          7-day rolling buffer of raw API snapshots (committed, pruned)
-data/reference/    watershed polygons + attributes, watch_baseline.json (CI writes it)
-web/assets/        generated by `transform`, not committed
+data/reference/    watershed polygons, watch_baseline.json, snotel_stations.json
+web/assets/        built by `transform`, not committed
 ```
 
-Historical months are written once and freeze. **From October 2026, each
-month is one file per day** (`month=10/part.d01.parquet` …), so a run that
-adds readings rewrites only today's ~100 KB file. Rows are written in a fixed
-order and unchanged files are never rewritten, so a run with nothing new
-commits nothing. Every reader looks for `part*.parquet`, so none of them care.
-`DAILY_FROM` in `src/secchi/store.py` sets the switch-over month; an old
-monthly file in a daily month converts itself on the next write.
-
-**Repository size: 1.1 GB on 2026-10-01**, mostly from the first two weeks'
-rewrites and backfills. History can't shrink without rewriting it; the
-fixes above stop the routine growth (≈0.4 MB per run now, from ≈5.5 MB).
-GitHub recommends under 1 GB and strongly recommends under 5 GB.
-
-**`obs` columns:** `uuid, source, site, sensor_type, timestamp, lat, lng,
-variable, value`, plus `year` and `month` from the folder names.
-
-**Things that will trip you up:**
-
-- **Four naming conventions**, because TEON keeps each vendor's field names:
-  EXO `Temp`/`Do_mgL`, MiniDOT `Temperature`/`Dissolved Oxygen`, HOBO
-  `temperature`/`conductivity`, Campbell loggers `Air_Temp`/`Soil_VWC`/`BattV_Avg`.
-- **Three timestamp field names** upstream: `TIMESTAMP`, `timestamp`, and
-  MiniDOT's literal `Pacific Standard Time`. Handled in `TEON_TIMESTAMP_FIELDS`.
-- **`Soil_VWC` is stored as a fraction.** A card reading 3.4 % is 0.034 in the
-  store.
-- **Timestamps are naive, Pacific local.**
+- **Months before October 2026 are one file; from October 2026, one file per
+  day** (`part.d01.parquet` …). Rows are written in a fixed order and unchanged
+  files are never rewritten, so a quiet run commits nothing and a normal one
+  adds a few hundred KB (it was ~5.5 MB). Every reader globs `part*.parquet`.
+- **Query tables**: `obs`, `usgs`, `snotel`, `smoke`, `assets`, `stations`,
+  `catchments`. `obs` columns: `uuid, source, site, sensor_type, timestamp,
+  lat, lng, variable, value`, plus `year` and `month`.
+- **Timestamps are naive Pacific local.** `Soil_VWC` is a fraction (0.034 = 3.4 %).
+- **Four naming conventions**: EXO `Temp`/`Do_mgL`/`Chl_a`, MiniDOT
+  `Temperature`/`Dissolved Oxygen`, HOBO `temperature`, Campbell loggers
+  `Air_Temp`/`Soil_VWC`/`BattV_Avg`.
 - **Forest-station endpoints share record IDs but return different columns.**
-  Soil, air, tree and stream-level are projections of one logger table. Never
-  fetch one and treat it as standing in for the rest — that once discarded all
-  air temperature, humidity and tree history.
-- **TEON's hidden-site list** (`/site-visibility/disabled`) is honoured by the
-  dashboard and ingest, and ingest **fails closed** if it can't be read. 4H Camp
-  was hidden until TEON made it public on 2026-09-26; the ingest picked it up
-  on its own, and its history was backfilled on 2026-09-28. The list is empty now.
-- **The backfill's skip check counts readings per endpoint**, so a station whose
-  air probe was offline for a while (Blackwood 2, Glenbrook 2, 4 and 5) always
-  looks a few thousand air readings short and gets refetched. Harmless, just
-  slow; `--site "Name"` narrows a stage to one site.
-
-**Completeness, verified 2026-09-23:** all four backfill stages done
-(`manual`, `nearshore`, `live`, `blackwood`); soil and EXO held counts match
-TEON's to within 6 records at every site.
+  Never fetch one and treat it as standing in for the rest.
+- **TEON's hidden-site list is honoured**, and ingest fails closed if it can't
+  be read. It's empty now.
+- **Reading parquet directly** (not through `pixi run query`): DuckDB reads the
+  `month` folder as text, so `CAST(month AS INTEGER)` before comparing.
 
 ---
 
-## 5. Commands worth knowing
+## 5. Commands
 
 | Task | What |
 |---|---|
-| `snotel` | daily precipitation and temperature from SNOTEL; first run `--since 2024-06-01` |
-| `transect-rain` | the transect against measured precipitation on both shores (also on the page, under "Beyond TEON") |
-| `smoke` | NOAA HMS smoke over the lake, daily; first run `--since 2024-06-01` (see `docs/smoke.md`) |
-| `smoke-lake` | smoky vs clear days for the sondes and forest air temperature, month trends removed |
-| `status` | **start here** — one screen of what's live, dark, failing or waiting, and a to-do list |
-| `pipeline` | ingest both agencies, transform, prune |
-| `transform` | rebuild the store and the page's data |
-| `query` | DuckDB SQL shell; `.examples`, `.run N`, `.save file.csv` |
-| `backfill --stage manual\|nearshore\|live\|blackwood` | full history for a fleet; skips sensors already complete; `--force` refetches |
-| `store-status` | partitions, row counts, sizes |
-| `drop-undated` | remove undated rows — refuses if any has no dated copy (`--force` overrides) |
-| `transect` | west vs east shore soil response to the same storms |
-| `glenbrook` | why Glenbrook 2 is wet (currently: unexplained) |
-| `station-health` | logger battery per station; power failure or not |
+| `status` | **start here**: live, dark, failing or waiting, and a to-do list |
+| `pipeline` / `transform` | ingest and rebuild / rebuild only |
+| `query` | DuckDB SQL over everything; `.examples`, `.save file.csv` |
+| `backfill --stage manual\|nearshore\|live\|blackwood [--site "Name"]` | full history; skips complete sensors |
+| `station-health` | logger batteries: charging, not charging, power failure |
+| `transect` / `transect-rain` | west vs east soil; the same against SNOTEL precipitation and snowpack |
+| `snotel [--since YYYY-MM-DD]` | daily SNOTEL data; `--force` re-looks-up the stations by name |
+| `smoke [--since …]` / `smoke-lake` | NOAA HMS smoke over the lake; smoky vs clear days |
 | `oxygen-check` | which atmosphere each instrument references |
-| `record-shape` | field names per sensor type — **run before any new backfill** |
-| `probe` | resolve endpoints, write nothing |
-| `watch` | report upstream changes (read-only locally) |
-| `setup-git` | register the parquet merge driver (once per clone) |
+| `glenbrook` | why Glenbrook 2 is wet (unexplained) |
+| `record-shape` | field names per sensor type; run before any new backfill |
+| `drop-undated` | remove undated rows; refuses if any has no dated copy |
+| `store-status`, `watch`, `setup-git` | store sizes; upstream changes (read-only); merge driver |
 
 ---
 
@@ -176,233 +156,112 @@ TEON's to within 6 records at every site.
 
 **Solid**
 
-- **Oxygen saturation.** TEON's EXO sondes reference saturation to sea level —
-  **all five, each fitting to 0.004 mg/L on its own** (162,201 readings); its
-  MiniDOTs correctly reference lake pressure (0.142 mg/L across 265,316). At
-  1,898 m that makes EXO read ~78–85 % where the water is really ~99–107 %.
-  5,765 impossible readings are set aside and counted: Sunnyside 5,170 (its
-  whole sonde scrambled 2026-04-30 to 06-25), 4H Camp 568 (optical channels
-  scrambled 2026-07-17 to 07-24), Blackwood 3 22 (handled at an April 30
-  service visit), Glenbrook (the lake sonde) 5 isolated zeros.
-- **43 listed sensors are 13 physical devices.**
-- **The hand-collected sondes are the most complete records** (98.8 %);
-  telemetry buys timeliness, not completeness.
-- **Sunnyside turbidity has a −2.11 FNU zero offset**, confirmed against USGS.
-  4H Camp's reads about −2.4 too.
+- **Oxygen saturation**: all five EXO sondes reference sea level (each fits to
+  0.004 mg/L); the MiniDOTs reference lake pressure. At 1,898 m, EXO reads
+  ~78–85 % where the water is ~99–107 %.
+- **Two channel scrambles**: Sunnyside 2026-04-30 to 06-25 (every channel) and
+  4H Camp 2026-07-17 to 07-24 (optical channels). Probably recoverable upstream.
+- **Glenbrook 1 isn't charging, since July 2025; Glenbrook 5 isn't, since June
+  2026.** Test: no daily peak above 13 V in 14 days (charging stations peak
+  14.0–14.4 V). Both live on battery swaps; a power failure's gap never
+  backfills. Glenbrook 5's June 2026 outage was one. Glenbrook 4's charging was
+  repaired in September 2025 and is the model.
+- **Outages on working batteries come back**: Blackwood 2 uploaded every
+  reading of a 99-day outage. Power failures don't.
+- **pH works only on the hand-collected sondes**; the soil pH layer averages
+  empty cells as zero in 38 of 60 catchments (recoverable).
+- **TEON's Blackwood 2 rain gauge** caught 57 % of Ward Creek #3's precipitation
+  on rain days and 24 % on snow days; it's missing 136 days.
 
-**Transect (Homewood west vs Glenbrook 5 east, 376 days)**
+**Answered as a range**
 
-- **Total wetting ratio 2.32×** against a catchment rainfall ratio of 2.12×.
-  Encouraging, not settled: it leans on a few big west-shore storms.
-- **15 of 18 shared storms reached the west shore first.**
-- **The lag in hours can't be measured** at daily detection resolution. Earlier
-  "+3.7 h" and "+11.7 h" figures were artifacts. Don't reintroduce them.
+- **The transect** (Homewood west, Glenbrook 5 east): soil wetting **2.32×**;
+  precipitation **2.16×** with Ward Creek #3 (7 km from Homewood, closest to
+  its catchment's long-term 1,463 mm) but **1.20×** with Rubicon #2 (10 km).
+  West-shore precipitation varies sharply over short distances. In 10 real
+  storms, the wetter shore by rain was the wetter by soil 7 times.
+- **Snowmelt**: 5 of 8 no-rain wetting events coincide with a measured
+  snowpack loss (up to 53 mm in days); 3 unexplained, likely melt at the soil
+  stations' lower elevation, which the gauges can't see.
+
+**A careful null**
+
+- **Wildfire smoke**: 114 smoke days over the lake since June 2024, mostly
+  light. The lake sondes have no summer-2024 data. In 2025–26, with each
+  month's trend removed, 3 of 60 tests below p = 0.05 (chance level); no
+  cooling of forest daytime highs. A raw within-month comparison showed a
+  striking Glenbrook algae "effect" (p = 0.001) that was a late-summer trend.
+  Worth watching: oxygen ~0.06 mg/L lower a week after smoke at two sondes.
 
 **Open**
 
-- **Glenbrook 2 is wet** (46 % vs 11–16 % at its neighbours over a year). Three
-  cheap methods failed to explain it; the weak signal points away from a stream
-  connection. Next step is sampling the source rasters at each station point.
-
-**Station outages**
-
-- **Field visit, Monday 2026-09-28:** all six nearshore sites serviced by boat
-  in three hours (Lake Forest 13:00, Incline 13:45, Tallac 15:15, Camp
-  Richardson 15:30, Tahoe Keys 15:45, Lakeside 16:02), ~9,900 readings each;
-  pulled. **Lakeside's HOBO** hasn't reported since 2025-08-08. **Blackwood 3
-  and Meeks** (hand-collected EXO) last read 2026-07-09 — due a visit.
-  **Blackwood 2** went quiet again from 2026-09-25 12:00, on a healthy battery.
-- **Three outages on working batteries came back (late Sept 2026).** Blackwood
-  2, silent since 06-18, uploaded its whole outage: +9,519 records to 09-25 12:00,
-  every 15-minute reading in 99 days. **Pull it**: `backfill --stage live --site
-  "Blackwood 2"` and `--stage blackwood --site "Blackwood 2"`. Glenbrook 5's
-  09-27..09-30 gap filled completely (+288). Glenbrook 2 is back, but its
-  09-22..09-28 gap hadn't filled as of 10-01. Blackwood 2's rain gauge is a
-  separate device and stopped 2026-08-14.
-- **New tree-stress sensors** appeared at Blackwood 2 (40,180 records) and
-  Homewood (5,560) around 2026-09-30. `backfill --stage live --site ...` pulls them.
-- **Glenbrook 5 is not being charged either**, since June 2026: battery swaps
-  in May and September, no charging voltage since. Weekly peaks fell 12.87 →
-  11.44 V June–August; it's falling again from 12.5 V. Its June 2026 outage
-  was a power failure (battery to 10.9 V), which is why it never came back.
-- **Glenbrook 1 is not being charged, and hasn't been since July 2025.** Its
-  daily charging swing vanished that month; since then its supply has only
-  fallen, apart from an apparent battery swap in mid-January 2026, to 11.40 V
-  on 2026-09-28 (recently 0.054 V/week). Fifteen months on swaps. It was
-  mislabelled "stuck" until 2026-09-28.
-- **Glenbrook 4's charging was repaired around September 2025**: daily peaks
-  jumped from ~13 V to 14.2–14.6 V (a working charge controller) and winter
-  2025–26 held above 12 V, where the winter before collapsed to ~7 V. It's
-  the model for what Glenbrook 1 needs. **Most time-sensitive item for TEON**: preventable, and a
-  power failure's gap never backfills.
-- **Glenbrook 4** dropped out 2026-09-23 to 09-24 and **recovered every
-  reading** (watcher Issue #4). It had lost ~68 days to earlier outages that
-  never came back. Winter 2024–25 outages followed battery collapses to
-  6.8–8.1 V (power failures); fall 2025 outages happened on healthy batteries,
-  including 21 days from 2025-10-15, the day the season's first storm arrived.
-- **Glenbrook 5**'s air/humidity probe was out June–August 2025 while soil kept
-  logging.
-- **The not-charging test**: no daily peak above 13 V in 14 days
-  (`CHARGE_PEAK_V`). Charging stations peak 14.0–14.4 V; the old "flat and
-  falling" rule, kept as a second test, missed Glenbrook 5.
-
-**pH**
-
-- **pH works on the two hand-collected sondes** (Blackwood 3 7.91, Meeks 7.83)
-  **and fails on the three telemetered ones**: Glenbrook and 4H Camp mostly 0,
-  Sunnyside no longer reporting, 4H Camp once 89.4. Blackwood 2's stream sensor
-  reads a plausible 8.06.
-- **The watershed soil pH layer averages empty cells as zero — confirmed.**
-  22 of 60 catchments average below 4.5. A mix of zeros and real soil has a
-  predictable mean and spread, and the layer's own `pHStDev` matches it:
-  Cave Rock's 1.79 ± 2.75 is a 70/30 mix of 0 and pH 6.0. Solving
-  `true = (mean² + sd²) / mean`, 38 of 60 catchments contain zeros (up to
-  70 %), and every one comes out at pH 5.6–6.4, in line with the clean
-  catchments (5.7–6.6). Glenbrook Creek is 58 % zeros; don't use its
-  published pH.
+- **Glenbrook 2 is wet** (46 % vs 11–16 % nearby). Needs rasters sampled at
+  each station point.
 
 ---
 
 ## 7. Where we left off
 
-### Queries run on 2026-09-28, and what they showed
+**Out in the world, as of 2026-10-02**
 
-All of these were run against the committed store; the SQL is in the
-conversation history and easy to rebuild from `docs/querying.md`.
+- **TEON**: email sent 2026-10-02 to Carina Seitz (TEON's contact address) and
+  Sudeep Chandra (TEON lead), from Brooks's personal Gmail. It leads with the
+  two batteries and links `docs/teon-note-2026-09-28.md`, which has since
+  gained an addendum on the Blackwood 2 gauge. **If no reply by ~2026-10-09**,
+  a short follow-up to both; Katie Senft (research vessel) for the field side.
+- **Then**, Kylie Papson (Tahoe Institute communications) and the UNR alumni
+  association; then social posts (drafts in the old chat: celebrate the open
+  data, don't list faults).
+- **Batteries**: no swap or repair seen yet. Glenbrook 1 ~11.36 V, Glenbrook 5
+  peaks ~12.1 V and falling. `status` will show a repair or a swap.
+- **Stations**: Blackwood 2 quiet since 2026-09-25 on a healthy battery.
+  Blackwood 3 and Meeks (hand-collected EXO) last read 2026-07-09, due a
+  visit. Lakeside's HOBO silent since 2025-08-08. A boat crew serviced all six
+  nearshore sites on 2026-09-28.
 
-- **Soil pH sort**: layer-wide nodata-as-zero, above.
-- **Frozen-channel sweep** (one repeated value all week): nothing new.
-  Glenbrook's dead pH, Sunnyside's salinity (really 0.04, recorded to two
-  decimals) and Glenbrook 2's deepest soil sensor on its final day.
-- **Glenbrook 1 and 4 battery histories**: above.
-- **Impossible-reading scan**: 28 episodes across four sondes, now run
-  automatically by the watcher (see below).
+**Next, roughly in order**
 
-The two queries worth keeping to hand:
-
-Holes in one station's record (change the site):
-
-```sql
-SELECT prev_reading, next_reading, next_reading - prev_reading AS gap
-FROM (
-  SELECT lag(timestamp) OVER (ORDER BY timestamp) AS prev_reading,
-         timestamp AS next_reading
-  FROM (SELECT DISTINCT timestamp FROM obs
-        WHERE site = 'Glenbrook 5' AND variable = 'Soil_VWC')
-)
-WHERE next_reading - prev_reading > INTERVAL 2 HOUR
-ORDER BY prev_reading;
-```
-
-Every variable during a bad stretch against the rest of the month — how the
-channel scrambles were decoded (change site, month and the condition):
-
-```sql
-WITH bad AS (
-  SELECT DISTINCT timestamp FROM obs
-  WHERE site = '4H Camp' AND variable = 'Do_percent' AND value < 50
-)
-SELECT o.variable,
-       round(avg(o.value) FILTER (WHERE b.timestamp IS NOT NULL), 2) AS during_bad,
-       round(avg(o.value) FILTER (WHERE b.timestamp IS NULL), 2) AS normal
-FROM obs o LEFT JOIN bad b USING (timestamp)
-WHERE o.site = '4H Camp' AND o.year = 2026 AND o.month = 7
-GROUP BY o.variable ORDER BY o.variable;
-```
-
-### Next steps, in order
-
-**Sharing the project (decided 2026-10-02):** tell TEON first, privately,
-before anything public — the README discusses faults in their network.
-Order: (1) a short heads-up email to the TEON team with the dashboard link and
-the two battery warnings, the full note linked; (2) after they've had a few
-days, the Tahoe Institute's communications coordinator (Kylie Papson) and the
-alumni association; (3) then social posts that celebrate the open data rather
-than list its faults. People, from UNR's own pages: Sudeep Chandra (Tahoe
-Institute director, TEON lead), Scott Allen and Joanna Blaszczak (TEON
-investigators), Katie Senft (faculty, research vessel), Emily Carlson (sensor
-diving and uploads).
-
-1. **Send TEON a second note.** An earlier note went through their contact
-   form about the oxygen issue, plus a UX survey. **Lead with Glenbrook 1** — a
-   battery not being charged, heading for a power failure that can still be
-   prevented. Then: all five EXO sondes on sea level (4H Camp included), 4H
-   Camp's July 2026 and Sunnyside's April–June 2026 channel scrambles (probably
-   recoverable by remapping),
-   unflagged service-visit readings, the two dark stations (healthy
-   batteries), Glenbrook
-   4's recovered outage versus its unrecovered earlier ones and the winter
-   battery collapses, Glenbrook 5's probe outage, the oxygen split with its full
-   numbers, pH working only on the hand-collected sondes, the turbidity
-   offsets, and the soil pH layer (38 of 60 catchments, recoverable). The draft is `docs/teon-note-2026-09-28.md`.
-   Useful questions: do
-   the loggers buffer during a dropout, and did something change after 2025?
-   Was the power system upgraded in spring 2025? What happened on 2025-10-15?
-2. **The transect against rainfall — done (2026-10-02):** precipitation ratio 2.16 with Ward Creek #3 but 1.20 with Rubicon #2 (a range, soil 2.32 at its top); 8 of 18 shared events were probably snowmelt; 7 of 10 real storms agree. SNOTEL runs in CI after the parquet reset (it has no raw buffer). Next: confirm the melt events with SNOTEL snow-water equivalent (`WTEQ`).
-   Earlier note: **in progress (2026-10-02).** `pixi run snotel --since 2024-06-01`, then `pixi run transect-rain`; see `docs/snotel.md`. TEON's own gauge can't settle it alone: it's missing 136 days, mostly the wet season, and there's none on the east shore.
-   Previously: **The transect against rainfall.** Blackwood 2's gauge holds 593,507
-   readings. First check whether its values are per-interval amounts or a
-   running total — that decides how to sum them.
-3. **Small polish:** run `pixi lock` once to upgrade the lock file format and
-   silence a CI warning (needs conda-forge access, so do it locally). Watcher
-   alerts are now grouped by station. The backfill's skip check still
-   refetches the four stations with air-probe gaps — harmless; left alone
-   because fixing it properly means persisting per-endpoint fetch state.
-4. **For fun:** the tree dendrometer history landed on 2026-09-23 and nobody
-   has looked at it. Stems swell and shrink daily with water content.
-5. **Longer:** Glenbrook 2 raster sampling; camera imagery (the bucket refuses
-   anonymous reads — needs TEON); TERC's Secchi record from EDI package
-   `edi.1340`.
+1. **Answer TEON** when they reply; adjust anything they ask about the page.
+2. **Reliable hourly downloads.** The store fix made them affordable; GitHub's
+   scheduler is the obstacle. An external trigger (a workflow_dispatch call
+   from a cron service, with a narrowly scoped token) is the usual fix.
+3. **The tree sensors** at Blackwood 2 and Homewood, new since 2026-09-30, plus
+   the older dendrometer history nobody has looked at. Stems swell and shrink
+   daily with water.
+4. **Glenbrook 2's wetness**: sample soil depth, texture and aspect rasters at
+   each station.
+5. **Smoke, as the seasons accumulate**: rerun `smoke-lake` after each summer;
+   the oxygen lead needs more episodes.
+6. **Housekeeping**: `pixi lock` once locally (silences a CI warning); close
+   old watcher issues; TERC's Secchi record (EDI `edi.1340`) for clarity.
 
 ---
 
 ## 8. How to work on this without breaking it
 
-Most bugs in this project were self-inflicted and **reported success while
-doing nothing**. These rules came out of that.
+Most bugs here were self-inflicted and **reported success while doing nothing**.
+The README's mistakes table lists 45; these rules came out of them.
 
-- **Run `pixi run -e dev test` before every commit.** The capability test is a
-  list of what must exist — CLI modes, transform functions, dashboard features,
-  the backfill's writer, the merge driver. It has caught several silent deletions.
-- **Never rebuild a file from an older copy of it.** Features were lost that
-  way at least five times, when a change was assembled on top of a stale version. Edit the
-  current file in place.
-- **When replacing text in a file, confirm the target exists exactly once**
-  before replacing. A replace that matches nothing does nothing, quietly.
-- **Check the thing you care about, not a proxy.** Count the rows. Ask
-  `git check-attr` rather than reading `.gitattributes`. Query the store rather
-  than trusting a log line.
-- **Synthetic tests check logic, not assumptions.** Every analysis here passed
-  its synthetic test and then met something real — naive timestamps, a daily
-  cycle, midnight-stamped onsets. The first real run is where assumptions get
-  audited; expect it.
-- **A statistic that can't tell your hypothesis from the null isn't weak
-  evidence; it's no evidence.** And be suspicious of results stronger than
-  expected: every correction to the transect moved toward the null.
-- **Quarantine scrambled windows before analysing any lake variable.** Two
-  sondes had channels filed under the wrong names: **Sunnyside 2026-04-30
-  11:30 to 06-25 09:15, every channel** (its "temperature" reads 85–102), and
-  **4H Camp 2026-07-17 14:15 to 07-24 13:15, the optical channels**. Inside
-  those windows, values in other columns can look plausible (a turbidity
-  "spike" of 7.7 NTU). Nothing analyses those variables yet; exclude the
-  windows, or any timestamp where the watcher's impossible-reading rules
-  fire. A monthly lake-temperature query will otherwise show Sunnyside at
-  ~79 °C in May 2026.
-- **The watcher scans for impossible readings** every six hours
-  (`IMPOSSIBLE` in `src/secchi/sources/watch.py`) and reports each episode
-  (site, variable, month) once, remembering what it raised in the baseline.
-  Its first run after 2026-09-28 reports the 28 known episodes in one issue.
-- **Backfills append then compact.** Read-merge-write is quadratic at bulk
-  scale and filled the disk once. All store writes are atomic.
-- **Detect events on daily means.** Soil moisture has a strong daily cycle.
-- **Honour TEON's visibility flag, and fail closed** if it can't be read.
-
-**Working with Claude:** in claude.ai, Claude can't touch your disk, so changes
-arrive as zip bundles with a `LANDING.md` of `Move-Item` commands — and the
-stale-copy bugs came from assembling those bundles. With **Claude Code** on
-your own machine, Claude edits the repo directly, which removes that whole
-class of error. `CLAUDE.md` in the repo root carries the key rules and is
-loaded automatically at the start of each Claude Code session.
+- **Run `pixi run -e dev test` before every commit.**
+- **Never rebuild a file from an older copy of it.** Edit the current file.
+  When replacing text, confirm the target exists exactly once first.
+- **Check the thing itself, not a proxy**: count rows, query the store,
+  `git check-attr` rather than reading `.gitattributes`.
+- **A check that couldn't run must say so**, never report as passing.
+- **A missing file isn't a zero, and an error page isn't an empty file.**
+- **Quarantine the two scrambled windows** before analysing any lake variable.
+- **Within-month comparisons need the month's trend removed** (the smoke trap).
+  **One gauge isn't a shore**: compare across gauges and report a range.
+- **Detect soil events on daily means**; soil moisture has a daily cycle.
+- **Store**: day files from October 2026, fixed row order, never rewrite
+  unchanged files; backfills append then compact; writes are atomic.
+- **Anything writing straight into `data/processed/` runs after CI's reset.**
+- **The page**: each section renders in its own `try`; calendar days go through
+  `fmtDay`, never `new Date("YYYY-MM-DD")`; catchment shading uses one ramp
+  (pale low, deep high) over the 5th–95th percentile; non-TEON data lives under
+  "Beyond TEON". Test with jsdom, the real Leaflet inlined, in
+  `TZ=America/Los_Angeles`.
+- **Honour TEON's visibility flag, and fail closed.**
 
 ---
 
@@ -410,31 +269,27 @@ loaded automatically at the start of each Claude Code session.
 
 | Doc | About |
 |---|---|
-| `docs/dissolved-oxygen.md` | the altitude correction and the EXO vs MiniDOT split |
-| `docs/transect-result.md`, `transect-method.md`, `transect-status.md` | the transect, its three detection attempts, and corrections |
-| `docs/glenbrook-result.md` | why three methods couldn't explain Glenbrook 2 |
-| `docs/station-outages.md` | outages, batteries, what backfills and what doesn't |
-| `docs/endpoint-projections.md` | shared rows are not shared columns |
-| `docs/data-loss-incident.md` | the disk-full run and the ~76,000 recovered records |
-| `docs/write-amplification.md` | why backfills append then compact |
-| `docs/parquet-conflicts.md` | the merge driver |
-| `docs/querying.md` | the DuckDB shell and three silent DuckDB behaviours |
-| `docs/backlog-banner.md` | the on-page banner for data waiting to be pulled |
-| `docs/fail-closed.md` | the visibility flag and failing closed |
-| `docs/silent-failures.md` | the general pattern |
+| `docs/teon-note-2026-09-28.md` | what was sent to TEON, with the 2026-10-02 addendum |
+| `docs/dissolved-oxygen.md` | the altitude correction; EXO vs MiniDOT |
+| `docs/station-outages.md` | outages and batteries; what backfills and what doesn't |
+| `docs/snotel.md` | SNOTEL, the rainfall transect and snowmelt |
+| `docs/smoke.md` | the HMS smoke record and the smoke-vs-lake null |
+| `docs/transect-result.md`, `transect-method.md` | the soil transect and its corrections |
+| `docs/glenbrook-result.md` | Glenbrook 2, unexplained |
+| `docs/storage.md`, `parquet-conflicts.md` | the store layout, growth fixes, merge driver |
+| `docs/querying.md` | the DuckDB shell and its pitfalls |
+| `docs/silent-failures.md` | the general pattern behind most bugs |
 
-## The page, as of 2026-10-02
+---
 
-TEON first, in the order a visitor cares about: the lake (live sondes, then
-hand-collected), the map, forest stations, the two-shore transect, cameras,
-the USGS lake level and tributaries, then **Beyond TEON** — SNOTEL's rain
-panel, collapsed, with a one-line result in its summary — and the
-inventory. Jump links under the status line. The map legend shows only the
-states actually on the map. SNOTEL stations are outlined triangles drawn
-beneath TEON's pins, in a layer labelled as outside TEON.
+## 10. Starting a new Claude chat
 
-Each section's render is isolated: the map and the rain panel each have
-their own `try`, because `load()`'s handler treats any error as "the
-snapshot didn't load" and blanks the page. Test the page with jsdom and
-the real Leaflet inlined, in `TZ=America/Los_Angeles`.
+Paste this as the first message, adjusting the last line:
 
+> I'm continuing work on **secchi**, a Lake Tahoe dashboard and data archive
+> built on UNR's TEON sensor network: repo `git@github.com:bdgroves/secchi.git`,
+> live at https://brooksgroves.com/secchi/, local `C:\data\01_Projects\secchi`
+> on Windows with pixi. Please read `HANDOFF.md` and `CLAUDE.md` in the repo
+> first (clone it, or I'll paste them). Key rules: run the tests before every
+> commit, never rebuild a file from an older copy, and check results against
+> the real data rather than trusting a log line. Today I'd like to …

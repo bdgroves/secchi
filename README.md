@@ -335,7 +335,10 @@ Picking this up on a new machine, or in a new Claude session? Start with **[`HAN
 | `backfill --stage …` | full history for one fleet, straight to parquet |
 | `transect` | do the two shores respond differently to the same storm |
 | `glenbrook` | why is one station three to four times wetter than its neighbours |
-| `station-health` | logger battery per station: power failure, or something else |
+| `station-health` | logger battery per station: charging, not charging, power failure |
+| `transect-rain` | the transect against SNOTEL precipitation and snowpack on both shores |
+| `snotel` / `smoke` | daily SNOTEL data; NOAA's satellite smoke over the lake |
+| `smoke-lake` | smoky days against clear days, for the lake sondes and forest air temperature |
 | `oxygen-check` | which atmosphere each instrument family references |
 | `record-shape` | field names per sensor type — **run before any new backfill** |
 | `status` | **one screen: stations, batteries, lake, data waiting, impossible readings, what to do** |
@@ -352,7 +355,8 @@ Needs a free [USGS API key](https://api.waterdata.usgs.gov/signup/) in `USGS_API
 
 - **3,468 camera frames** in a bucket named *Snow photos*, back to November 2025. The bucket refuses anonymous reads. A winter of snowpack from five angles, one email away.
 - **Why Glenbrook 2 is wet.** Needs rasters sampled at each station point.
-- **Snowmelt in the transect.** Eight wetting events had no precipitation; matching them to SNOTEL's snow-water equivalent would confirm melt.
+- **Three wettings with neither rain nor melt.** SNOTEL's gauges sit above the soil stations, so snow can melt at the soil while the gauges' snowpack holds; a snow sensor at the soil stations would settle it.
+- **Smoke in the smokiest summer.** The lake sondes weren't running in summer 2024, which had 43 of the 114 smoke days. More smoke seasons are what the oxygen lead needs.
 - **Ground truth for a clarity model.** TERC's Secchi record is in the [EDI repository](https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340), versioned and DOI-bearing, back to 1968. Their 2025 report shows why any model must be **seasonal**: winter clarity is stable, summer is degrading, and 2025's summer average of 53.4 ft was the fifth poorest on record.
 
 TERC — which *is* UC Davis, not a separate organisation — also began in 2025 assembling decades of clarity-driver data alongside Secchi depth. That's the same analysis this project's nowcast idea sketches, by the people with the instruments, the fifty-eight-year record and the funding.
