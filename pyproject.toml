@@ -176,6 +176,11 @@ query = "python -m secchi.query"
 # One screen: stations, batteries, lake, data waiting, impossible readings,
 # and what (if anything) needs doing. Reads only what's on disk.
 status = "python -m secchi.status"
+# Daily precipitation and air temperature from SNOTEL (Ward Creek #3,
+# Rubicon #2, Marlette Lake). First run: pixi run snotel --since 2024-06-01
+snotel = "python -m secchi.ingest --mode snotel"
+# The transect against measured precipitation on both shores.
+transect-rain = "python -m secchi.ingest --mode transect-rain"
 # One-time, per clone: teach git to merge store partitions as sets of
 # readings instead of stopping on a binary conflict. See .gitattributes.
 setup-git = "git config merge.parquet-union.name \"set merge for the partitioned parquet store\" && git config merge.parquet-union.driver \"pixi run python -m secchi.merge_parquet %O %A %B %P\""

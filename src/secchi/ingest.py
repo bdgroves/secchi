@@ -627,7 +627,23 @@ def run_usgs(mode: str, codes: list[str] | None = None) -> int:
 def run(mode: str = "live-exo", codes: list[str] | None = None,
         force: bool = False, update_baseline: bool = False,
         stage: str | None = None, site: str | None = None,
-        page_size: int = 200, dry_run: bool = False) -> int:
+        page_size: int = 200, dry_run: bool = False,
+        since: str | None = None) -> int:
+    if mode == "snotel":
+        # Daily precipitation and air temperature from SNOTEL, for the
+        # transect. --force re-resolves the station IDs by name.
+        from datetime import date as _date
+        from secchi.sources.snotel import SnotelShapeError, ingest as snotel_ingest
+        try:
+            snotel_ingest(since=_date.fromisoformat(since) if since else None,
+                          refresh_stations=force)
+        except SnotelShapeError as exc:
+            log.error("SNOTEL response not as expected: %s", exc)
+            return 1
+        return 0
+    if mode == "transect-rain":
+        from secchi.analysis.transect_rain import report as rain_report
+        return rain_report()
     if mode == "prune":
         prune_raw()
         return 0
@@ -840,7 +856,7 @@ def main(argv: list[str] | None = None) -> int:
                  "record-shape", "drop-undated", "purge-hidden",
                  "repair-sensor-types", "oxygen-check", "transect", "glenbrook",
                  "station-health",
-                 "terc-discover", "prune"),
+                 "terc-discover", "prune", "snotel", "transect-rain"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -924,6 +940,12 @@ def main(argv: list[str] | None = None) -> int:
         help="For `reference`: refetch even if already cached.",
     )
     parser.add_argument(
+        "--since",
+        metavar="YYYY-MM-DD",
+        help="For `snotel`: first day to fetch (default: 30 days back, or "
+             "2024-06-01 on a first run).",
+    )
+    parser.add_argument(
         "--codes",
         nargs="+",
         metavar="CODE",
@@ -939,7 +961,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(mode=args.mode, codes=args.codes, force=args.force,
                    update_baseline=args.update_baseline, stage=args.stage,
                    site=args.site, page_size=args.page_size,
-                   dry_run=args.dry_run)
+                   dry_run=args.dry_run, since=args.since)
     except Exception:
         log.exception("ingest failed")
         return 1
