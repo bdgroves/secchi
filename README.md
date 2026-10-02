@@ -2,7 +2,7 @@
 
 ### A modern Secchi disk for Lake Tahoe
 
-**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 11.6 million observations, twenty-seven months, updating hourly and watching itself
+**[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 12.0 million observations, twenty-seven months, updating hourly and watching itself
 
 ---
 
@@ -18,11 +18,13 @@ One hundred and sixty-one years later it is still the world standard for lake tr
 
 On **September 15, 2026**, the University of Nevada, Reno switched on the [Tahoe Environmental Observatory Network](https://tahoeenvironmentalobservatorynetwork.org/). I saw it in the alumni newsletter and went to look at the API.
 
-There was no documentation. There still isn't.
+There was no API documentation yet — normal for a network this new — so everything here started by probing it.
 
 ---
 
 ## What this found
+
+TEON had been live for days when this started, and all of it was found because the network publishes its data openly to anyone. These are the growing pains of a new observatory seen from outside, and every one has been, or is being, passed back to the TEON team.
 
 ### 1. Half of TEON's oxygen saturation is referenced to the wrong atmosphere
 
@@ -121,7 +123,9 @@ So: unexplained. Sampling the source rasters at each station point — soil dept
 
 ## The ones you have to swim out to
 
-Fourteen instruments across eight sites are self-logging — read by boat and snorkel, roughly monthly. TEON labels only two; the rest are MiniDOTs and HOBOs, which have no telemetry as a product category, and all twelve stop on **2026-06-10**, the same day.
+Fourteen instruments across eight sites are self-logging — read by boat and snorkel, roughly monthly. TEON labels only two; the rest are MiniDOTs and HOBOs, which have no telemetry as a product category.
+
+You can watch a field crew's day in the data. On **Monday 2026-09-28** someone serviced all six nearshore sites in three hours — Lake Forest at 1:00 pm, Incline at 1:45, then after the long crossing Tallac at 3:15, Camp Richardson 3:30, Tahoe Keys 3:45 and Lakeside 4:02 — each handing over about 9,900 readings, HOBO first and MiniDOT a minute later on the same mooring. Lakeside's HOBO is the exception: it hasn't reported since 2025-08-08. The two hand-collected EXO sondes, Blackwood 3 and Meeks, were last read on 2026-07-09.
 
 | Sonde | Telemetry | Complete |
 |---|---|---|
@@ -152,7 +156,7 @@ They get coverage cards rather than live cards — period of record held, what's
 
 **Instruments go quiet without the logger noticing.** At Glenbrook 5 the air temperature and humidity probe was offline from early June to mid-August 2025 while its soil sensors logged straight through — temperature and humidity always drop out together, the signature of one probe. The same station nearly vanished for June 2026, with 31 readings all month, and that month never came back upstream; its battery had collapsed to 10.9 V, so that one was a power failure.
 
-**Outages that came back.** In late September three stations went dark on working batteries, and all three returned. Blackwood 2, silent since June 18, uploaded its whole outage at once: 9,519 new records to September 25, which at one reading every 15 minutes is every reading in those 99 days. Glenbrook 5's three-day gap filled completely too, and Glenbrook 2 is back, though its September 22–28 gap hasn't (yet). A logger that loses only its link keeps recording; one that loses power records nothing.
+**Outages that came back.** In late September three stations went dark on working batteries, and all three returned. Blackwood 2, silent since June 18, uploaded its whole outage at once: 9,519 new records to September 25, which at one reading every 15 minutes is every reading in those 99 days — then went quiet again from September 25, on a healthy battery. Glenbrook 5's three-day gap filled completely too, and Glenbrook 2 is back, though its September 22–28 gap hasn't (yet). A logger that loses only its link keeps recording; one that loses power records nothing.
 
 **An outage's cause is written in the battery.** Glenbrook 4 lost about 68 days to outages in 2024–25 that never came back. Before each winter outage its battery had collapsed to 6.8–8.1 V: power failures, with the logger shut down and nothing recorded to recover. This September it dropped out for a day on a healthy battery, and every reading came back when it reconnected — the logger had kept recording while it couldn't transmit. `pixi run station-health` tells the two apart for every station.
 
@@ -183,7 +187,7 @@ data/processed/observations/
     source=teon/year=2026/month=10/part.d02.parquet  ...only today's file changes
 ```
 
-**11,626,099 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
+**12,023,843 observations, June 2024 to now** — twenty-seven months. Every reachable TEON record, across four backfill stages, plus USGS and 60 catchments. The network was built out progressively: Blackwood 2 first in June 2024, then UNR and the Glenbrook stations through late 2024, Glenbrook 2 in mid-2025, and Homewood last, in September 2025.
 
 `pixi run query` opens a SQL shell over all of it, reading the parquet in place. A filtered aggregate over the whole store answers in under a tenth of a second.
 
@@ -218,7 +222,7 @@ Not at :00. GitHub delays scheduled runs at busy times and drops some outright, 
 
 ## The bugs were mostly mine
 
-Thirty-nine errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Forty errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -250,6 +254,7 @@ Thirty-nine errors shipped or nearly shipped. Every one produced **plausible-loo
 | A freshness check timed from now, not from the snapshot | Two healthy stations reported dark by the new `status` |
 | An unstable sort, and rewriting files that hadn't changed | **Identical data stored again on every run; 1.1 GB in two weeks** |
 | Undated duplicates counted in the total | 740,660 phantom observations in the headline figure |
+| A check that couldn't run, reported as passing | `status` said "all stations fine" with DuckDB missing |
 
 ### The pattern
 
@@ -271,14 +276,14 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
 ## By the numbers
 
 ```
-  11,626,099   observations stored, Jun 2024 to now
+  12,023,843   observations stored, Jun 2024 to now
      427,517   paired readings behind the oxygen finding
    1,490,116   rows that once landed with no timestamp, recovered
       76,361   records lost to a non-atomic write, all recovered
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          39   of my own bugs caught before or shortly after shipping
+          40   of my own bugs caught before or shortly after shipping
           13   actual physical devices
           13   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin
@@ -337,7 +342,9 @@ So this isn't a novel scientific result. What it is: a fast, public, reproducibl
 
 ## Data & attribution
 
-Sensor data from the **Tahoe Environmental Observatory Network** (Tahoe Institute for Global Sustainability, University of Nevada, Reno) and the **U.S. Geological Survey**. All provisional.
+Sensor data from the **[Tahoe Environmental Observatory Network](https://tahoeenvironmentalobservatorynetwork.org/)** (Tahoe Institute for Global Sustainability, University of Nevada, Reno, with the U.S. Forest Service Pacific Southwest Research Station and the Tahoe Science Advisory Council) and the **U.S. Geological Survey**. TEON asks that its website be acknowledged in derived products; this is one, and it's acknowledged here and on every page.
+
+All data is **provisional**, as TEON's own disclaimer says: raw or lightly processed, and subject to instrument performance, maintenance cycles and field conditions. Nothing here is an official TEON or USGS product.
 
 `secchi` honours TEON's `/site-visibility/disabled` flags in both display and ingest.
 
@@ -349,7 +356,7 @@ Clarity context from UC Davis TERC and the Lake Tahoe TMDL. If you use anything 
 
 🌲 **Environmental Intelligence Lab** · [Brooks Labs](https://github.com/bdgroves)
 
-MIT licensed. Built by [Brooks Groves](https://brooksgroves.com), GISP® — who did his undergraduate degree at the university that built the network this reads from, and found out about it from the alumni newsletter.
+MIT licensed. Built by [Brooks Groves](https://brooksgroves.com), GISP® — University of Nevada, Reno, B.S. Biology 1994 — who read about TEON in the alumni newsletter and loves the lake.
 
 ---
 

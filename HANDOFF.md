@@ -15,7 +15,7 @@ documentation; everything about it was worked out by probing. The live page is
 **https://brooksgroves.com/secchi/**, and it updates hourly on its own.
 
 The project holds a complete, verified copy of everything TEON's API exposes —
-about **11.6 million observations, June 2024 to now** — in a partitioned
+about **12.0 million observations, June 2024 to now** — in a partitioned
 parquet store committed to the repo, queryable in place with DuckDB. Its most
 useful work so far has been finding problems in TEON's published data, with
 evidence, and reporting them back.
@@ -202,6 +202,12 @@ TEON's to within 6 records at every site.
 
 **Station outages**
 
+- **Field visit, Monday 2026-09-28:** all six nearshore sites serviced by boat
+  in three hours (Lake Forest 13:00, Incline 13:45, Tallac 15:15, Camp
+  Richardson 15:30, Tahoe Keys 15:45, Lakeside 16:02), ~9,900 readings each;
+  pulled. **Lakeside's HOBO** hasn't reported since 2025-08-08. **Blackwood 3
+  and Meeks** (hand-collected EXO) last read 2026-07-09 — due a visit.
+  **Blackwood 2** went quiet again from 2026-09-25 12:00, on a healthy battery.
 - **Three outages on working batteries came back (late Sept 2026).** Blackwood
   2, silent since 06-18, uploaded its whole outage: +9,519 records to 09-25 12:00,
   every 15-minute reading in 99 days. **Pull it**: `backfill --stage live --site
@@ -301,6 +307,17 @@ GROUP BY o.variable ORDER BY o.variable;
 ```
 
 ### Next steps, in order
+
+**Sharing the project (decided 2026-10-02):** tell TEON first, privately,
+before anything public — the README discusses faults in their network.
+Order: (1) a short heads-up email to the TEON team with the dashboard link and
+the two battery warnings, the full note linked; (2) after they've had a few
+days, the Tahoe Institute's communications coordinator (Kylie Papson) and the
+alumni association; (3) then social posts that celebrate the open data rather
+than list its faults. People, from UNR's own pages: Sudeep Chandra (Tahoe
+Institute director, TEON lead), Scott Allen and Joanna Blaszczak (TEON
+investigators), Katie Senft (faculty, research vessel), Emily Carlson (sensor
+diving and uploads).
 
 1. **Send TEON a second note.** An earlier note went through their contact
    form about the oxygen issue, plus a UX survey. **Lead with Glenbrook 1** — a
