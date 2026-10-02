@@ -162,6 +162,52 @@
   .transect-head .tside.e { color: var(--dry); text-align: right; }
   .transect-head .tmid { font-size: 0.7rem; color: var(--muted);
                          letter-spacing: 0.05em; padding: 0 0.5rem; white-space: nowrap; }
+  /* Jump links. Plain, and quiet: they help someone navigate a long page,
+     they aren't a feature. */
+  .jump { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin: 1rem 0 0;
+          font-size: 0.85rem; }
+  .jump a { color: var(--slate); text-decoration: none; border-bottom: 1px solid var(--line);
+            padding-bottom: 1px; }
+  .jump a:hover, .jump a:focus-visible { color: var(--ember); border-bottom-color: var(--ember); }
+  h2[id] { scroll-margin-top: 1.25rem; }
+  /* Disclosures: the oxygen explainer, and context from outside TEON. */
+  details.explainer, details.context { border: 1px solid var(--line); margin: 0.25rem 0 1rem; }
+  details.explainer > summary, details.context > summary {
+    cursor: pointer; padding: 0.7rem 1.1rem; list-style-position: inside; }
+  details.explainer > summary { font-size: 0.88rem; color: var(--slate); }
+  details > summary:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+  details.explainer > p { padding: 0 1.1rem; font-size: 0.9rem; color: var(--slate); }
+  details.context > summary { padding: 0.95rem 1.1rem; }
+  .ctx-title { font-weight: 600; }
+  .ctx-sub { display: block; margin: 0.2rem 0 0 1.1rem; font-size: 0.85rem; color: var(--muted); }
+  .ctx-body { padding: 0 1.1rem 1.1rem; border-top: 1px solid var(--line); }
+  .ctx-body > p:first-child { margin-top: 1rem; }
+  /* Rain on both shores (SNOTEL). West is --wet and east is --dry, as in
+     the transect above, so the colours mean the same thing everywhere. */
+  .ratio { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .rain-chart { margin-top: 1.25rem; border: 1px solid var(--line); padding: 0.85rem 1rem 0.5rem; }
+  .rain-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .rain-chart .bar-w { fill: var(--wet); }
+  .rain-chart .bar-e { fill: var(--dry); }
+  .rain-chart .lake { stroke: var(--ink); stroke-width: 1.25; }
+  .rain-chart .tick { stroke: var(--line); }
+  .rain-chart text { fill: var(--muted); font-size: 11px; }
+  .rain-key { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+              font-size: 0.82rem; margin-bottom: 0.4rem; }
+  .rain-key .w { color: var(--wet); font-weight: 600; }
+  .rain-key .e { color: var(--dry); font-weight: 600; }
+  .rain-storms { margin-top: 1.25rem; overflow-x: auto; }
+  .rain-storms table { border-collapse: collapse; width: 100%; font-size: 0.85rem;
+                       font-variant-numeric: tabular-nums; }
+  .rain-storms th, .rain-storms td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line);
+                                     text-align: right; white-space: nowrap; }
+  .rain-storms th { font-weight: 500; color: var(--muted); font-size: 0.78rem; }
+  .rain-storms th:first-child, .rain-storms td:first-child,
+  .rain-storms .verdict { text-align: left; }
+  .rain-storms .w { color: var(--wet); }
+  .rain-storms .e { color: var(--dry); }
+  .rain-storms tr.melt td { color: var(--muted); }
+  .rain-storms tr.differ .verdict { color: var(--ember); }
   .tval { font-variant-numeric: tabular-nums; font-size: 1.15rem;
           font-weight: 500; padding: 0.7rem 1.25rem; }
   .tval.e { text-align: right; }
@@ -293,6 +339,13 @@
   .pin-offline { background: var(--muted); border: 2px solid var(--ember); }
   .pin-manual-pending { background: var(--ember); border: 2px solid var(--paper); }
   .pin-gauge   { background: var(--wet); border-radius: 2px; transform: rotate(45deg); }
+  /* SNOTEL: a triangle, for a mountain snow station. Drawn as SVG so it
+     can carry the same pale outline as the other pins; a clipped div
+     can't, and on the basemap it disappeared. */
+  .pin-tri { display: block; overflow: visible;
+             filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.45)); }
+  .pin-tri path { fill: var(--slate); stroke: var(--paper); stroke-width: 2;
+                  stroke-linejoin: round; }
 
   /* Watershed choropleth */
   .ws-control {
@@ -336,6 +389,9 @@
   .lg-offline { background: var(--muted); border: 2px solid var(--ember); }
   .lg-manual-pending { background: var(--ember); }
   .lg-gauge { background: var(--wet); border-radius: 1px; }
+  .lg-snotel { background: var(--slate); border: 0; border-radius: 0;
+               clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .map-legend span[hidden] { display: none; }
   .lg-transect { width: 1.4rem; height: 0; border-top: 2px dashed var(--ember);
                  border-radius: 0; }
 
@@ -388,7 +444,53 @@
     </span>
   </div>
 
-  <h2>The network</h2>
+  <nav class="jump" aria-label="On this page">
+    <a href="#the-lake">The lake</a>
+    <a href="#the-network">Map</a>
+    <a href="#forest-stations">Forest</a>
+    <a href="#two-shores">Two shores</a>
+    <a href="#field-cameras">Cameras</a>
+    <a href="#lake-and-outlet">USGS gauges</a>
+    <a href="#beyond-teon">Beyond TEON</a>
+    <a href="#observatory-inventory">Inventory</a>
+  </nav>
+
+  <h2 id="the-lake">Three anchors on the lake</h2>
+  <p>
+    The three telemetered sondes, reporting from the lake itself every
+    fifteen minutes. Each card shows the latest reading and its last two days.
+  </p>
+  <details class="explainer">
+    <summary>Why oxygen appears three ways</summary>
+    <p>
+    Oxygen appears three ways on purpose. <strong>DO</strong> is the
+    concentration. <strong>DO sat</strong> is TEON's published saturation
+    percentage, which is referenced to a sea-level atmosphere.
+    <strong>DO sat (local)</strong> is the same water measured against air
+    pressure at the lake surface — 1,898 m, about 79.5 % of sea level.
+    The difference is not cosmetic: 81 % reads as oxygen-stressed water,
+    while 102 % of what the water can actually hold there means
+    photosynthesis is running ahead of respiration. Derived from TEON's
+    own concentration and temperature, so it depends on their measurements
+    rather than their saturation assumption.
+    </p>
+  </details>
+  <section class="cards" id="cards" aria-label="Lake sonde readings"></section>
+  <p class="offline" id="offline"></p>
+
+  <h2>Hand-collected sondes</h2>
+  <p>
+    Two of the five lake sondes are self-logging: they store to internal
+    memory and are read by boat and snorkel, roughly monthly. Their
+    records are the <em>most complete</em> in the network — 98.8 % against
+    73.6–96.8 % for the telemetered ones, because there is no radio link
+    to drop packets. What they are not is current. These cards show the
+    period of record we hold rather than a live reading, and what the
+    next collection would extend from.
+  </p>
+  <section class="cards two" id="manual-cards" aria-label="Hand-collected sonde coverage"></section>
+
+  <h2 id="the-network">The network</h2>
   <p>
     Every instrument in the basin with a coordinate — TEON's lake sondes,
     forest loggers, stream gauge and cameras, plus the USGS creek gauges.
@@ -429,10 +531,21 @@
     <span><i class="lg-manual-pending"></i>uploaded, not yet pulled</span>
     <span><i class="lg-offline"></i>station offline</span>
     <span><i class="lg-gauge"></i>USGS gauge</span>
+    <span><i class="lg-snotel"></i>SNOTEL gauge, outside TEON</span>
     <span><i class="lg-transect"></i>transect</span>
   </div>
 
-  <h2>Same weather, two watersheds</h2>
+  <h2 id="forest-stations">Forest stations</h2>
+  <p>
+    Each station is a Campbell logger reading soil moisture and temperature
+    at two depths, air temperature and humidity, and at three Glenbrook
+    sites a set of eight band dendrometers measuring stem diameter — which
+    both grows through the season and swells and shrinks daily with the
+    tree's water content.
+  </p>
+  <section class="cards" id="stations" aria-label="Terrestrial station readings"></section>
+
+  <h2 id="two-shores">Same weather, two watersheds</h2>
   <p>
     Homewood and Glenbrook 5 sit 64 metres apart in latitude on opposite
     shores of the lake — the same line across the map, one side facing the
@@ -443,35 +556,13 @@
   </p>
   <section id="transect" aria-label="East-west transect comparison"></section>
 
-  <h2>Three anchors on the lake</h2>
-  <p class="aside">
-    Oxygen appears three ways on purpose. <strong>DO</strong> is the
-    concentration. <strong>DO sat</strong> is TEON's published saturation
-    percentage, which is referenced to a sea-level atmosphere.
-    <strong>DO sat (local)</strong> is the same water measured against air
-    pressure at the lake surface — 1,898 m, about 79.5 % of sea level.
-    The difference is not cosmetic: 81 % reads as oxygen-stressed water,
-    while 102 % of what the water can actually hold there means
-    photosynthesis is running ahead of respiration. Derived from TEON's
-    own concentration and temperature, so it depends on their measurements
-    rather than their saturation assumption.
+  <h2 id="field-cameras">Field cameras</h2>
+  <p id="camera-intro">
+    Five stations carry cameras logging into TEON's LoggerNet bucket.
   </p>
-  <section class="cards" id="cards" aria-label="Lake sonde readings"></section>
-  <p class="offline" id="offline"></p>
+  <section id="cameras" aria-label="Field camera status"></section>
 
-  <h2>Hand-collected sondes</h2>
-  <p>
-    Two of the five lake sondes are self-logging: they store to internal
-    memory and are read by boat and snorkel, roughly monthly. Their
-    records are the <em>most complete</em> in the network — 98.8 % against
-    73.6–96.8 % for the telemetered ones, because there is no radio link
-    to drop packets. What they are not is current. These cards show the
-    period of record we hold rather than a live reading, and what the
-    next collection would extend from.
-  </p>
-  <section class="cards two" id="manual-cards" aria-label="Hand-collected sonde coverage"></section>
-
-  <h2>The lake and its outlet</h2>
+  <h2 id="lake-and-outlet">The lake and its outlet</h2>
   <p>
     Lake Tahoe's surface elevation, and the single channel every drop
     leaving it passes through. Daily mean outflow at the outlet has been
@@ -490,35 +581,34 @@
   </p>
   <section class="cards" id="gauges-trib" aria-label="Tributary gauge readings"></section>
 
-  <h2>Forest stations</h2>
+  <h2 id="beyond-teon">Beyond TEON</h2>
   <p>
-    Each station is a Campbell logger reading soil moisture and temperature
-    at two depths, air temperature and humidity, and at three Glenbrook
-    sites a set of eight band dendrometers measuring stem diameter — which
-    both grows through the season and swells and shrinks daily with the
-    tree's water content.
+    Context from outside the network, kept apart from TEON's own readings.
   </p>
-  <section class="cards" id="stations" aria-label="Terrestrial station readings"></section>
-
-  <h2>Field cameras</h2>
-  <p id="camera-intro">
-    Five stations carry cameras logging into TEON's LoggerNet bucket.
+  <details class="context">
+    <summary>
+      <span class="ctx-title">Where the rain fell</span>
+      <span class="ctx-sub" id="rain-summary">Precipitation from three SNOTEL gauges, beside the transect's soil</span>
+    </summary>
+    <div class="ctx-body">
+    <p>
+      The soil tells you a storm arrived; it doesn't say how much fell. For
+      that, secchi reads three stations of SNOTEL, the federal snow-survey
+      network: Ward Creek #3 and Rubicon #2 on the west shore, Marlette Lake
+      on the east. Each bar is a month of precipitation, rain and snow
+      together, with the west shore above the line and the east below it.
+    </p>
+      <section id="rain" aria-label="Precipitation on the west and east shores"></section>
+    </div>
+  </details>
+  <p class="aside" style="margin-top:1.25rem">
+    <strong>Next: wildfire smoke.</strong> Smoke can carry nutrients to the
+    lake and block the light algae grow on. Lining satellite smoke maps up
+    against the sondes' chlorophyll and turbidity would show whether smoky
+    days leave a mark in the water.
   </p>
-  <section id="cameras" aria-label="Field camera status"></section>
 
-  <h2>Wildfire in the water</h2>
-  <p>
-    Smoke deposition delivers nutrients to the lake; nutrients feed algae;
-    algae erode clarity. Overlaying NASA FIRMS active-fire detections and
-    HRRR-Smoke plume forecasts on the chlorophyll and turbidity signals
-    above lets us watch a fire's fingerprint arrive in the lake.
-  </p>
-  <div class="placeholder-card">
-    <strong>Coming soon.</strong> Fire overlay and chlorophyll
-    event-detection are the next feature landing on this page.
-  </div>
-
-  <h2>Observatory inventory</h2>
+  <h2 id="observatory-inventory">Observatory inventory</h2>
   <p>
     TEON launched publicly on Sept 15, 2026 and is still building out.
     Below is every sensor in the current inventory. Green dots are
@@ -826,6 +916,186 @@
         ${rows}
       </div>
       ${meta}`;
+  }
+
+  // ---- Rain on both shores (SNOTEL) -------------------------------------
+  const fmt1 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+  const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  /** Precipitation in the active units: whole millimetres, or inches to 0.1. */
+  function rainParts(mm) {
+    if (mm == null || !isFinite(mm)) return null;
+    const c = convert(mm, "mm");
+    const v = c.units === "in" ? fmt1.format(c.value) : fmtInt.format(Math.round(c.value));
+    return { v, units: c.units };
+  }
+  function rainText(mm) {
+    const p = rainParts(mm);
+    return p ? `${p.v}<span class="units">${p.units}</span>` : "—";
+  }
+  function rainPlain(mm) {
+    const p = rainParts(mm);
+    return p ? `${p.v} ${p.units}` : "—";
+  }
+  /** A calendar day ("2025-09-02") in local time. new Date("2025-09-02")
+   *  is midnight UTC, which west of Greenwich is the previous evening:
+   *  every date would show one day early in Pacific time. */
+  function fmtDay(ymd) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || "");
+    if (!m) return fmtDate(ymd);
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined,
+      { year: "numeric", month: "short", day: "numeric" });
+  }
+  const sideWord = (k) => ({ W: "west", E: "east", "=": "even" }[k] || "");
+  const wetter = (w, e) => (w > e ? "W" : e > w ? "E" : "=");
+
+  /** Months mirrored across a line standing for the lake: west above, east below. */
+  function rainChart(m) {
+    const n = (m && m.months || []).length;
+    if (!n) return "";
+    const W = 720, half = 96, mid = half + 4, H = mid + half + 22;
+    const hi = Math.max(1, ...m.west, ...m.east);
+    const step = W / n, bw = Math.max(2, step * 0.64);
+    let bars = "", ticks = "";
+    m.months.forEach((ym, i) => {
+      const [y, mo] = ym.split("-").map(Number);
+      const label = `${MONTH_ABBR[mo - 1]} ${y}`;
+      const x = i * step + (step - bw) / 2;
+      const hw = (m.west[i] / hi) * half, he = (m.east[i] / hi) * half;
+      bars += `<rect class="bar-w" x="${x.toFixed(1)}" y="${(mid - hw).toFixed(1)}" width="${bw.toFixed(1)}" height="${hw.toFixed(1)}"><title>${label}: ${esc(m.west_gauge)} ${rainPlain(m.west[i])}</title></rect>`;
+      bars += `<rect class="bar-e" x="${x.toFixed(1)}" y="${mid}" width="${bw.toFixed(1)}" height="${he.toFixed(1)}"><title>${label}: ${esc(m.east_gauge)} ${rainPlain(m.east[i])}</title></rect>`;
+      if (mo === 1 || i === 0) {
+        const cx = i * step;
+        ticks += `<line class="tick" x1="${cx.toFixed(1)}" x2="${cx.toFixed(1)}" y1="${mid - half}" y2="${mid + half}"/>`;
+        ticks += `<text x="${(cx + 3).toFixed(1)}" y="${H - 4}">${mo === 1 ? y : label}</text>`;
+      }
+    });
+    const peak = Math.max(...m.west), at = m.west.indexOf(peak);
+    const [py, pm] = m.months[at].split("-").map(Number);
+    return `
+      <figure class="rain-chart" style="margin-left:0;margin-right:0">
+        <div class="rain-key">
+          <span class="w">West shore, ${esc(m.west_gauge)}</span>
+          <span class="e">East shore, ${esc(m.east_gauge)}</span>
+        </div>
+        <svg viewBox="0 0 ${W} ${H}" role="img"
+             aria-label="Monthly precipitation, west shore above the line and east shore below">
+          ${ticks}${bars}
+          <line class="lake" x1="0" x2="${W}" y1="${mid}" y2="${mid}"/>
+        </svg>
+        <figcaption class="observed" style="margin:0.35rem 0 0">
+          Wettest month: ${MONTH_ABBR[pm - 1]} ${py}, ${rainPlain(peak)} at ${esc(m.west_gauge)}
+          against ${rainPlain(m.east[at])} at ${esc(m.east_gauge)}. Hover a bar for its total.
+        </figcaption>
+      </figure>`;
+  }
+
+  function renderRain(rain) {
+    if (!rain) {
+      return `<div class="placeholder-card">No SNOTEL data stored yet. Run
+        <code>pixi run snotel --since 2024-06-01</code> to fetch the record.</div>`;
+    }
+    const t = rain.transect;
+    let compare = "";
+    if (t) {
+      const alt = (t.west_alternatives || []).find(a => a.gauge !== t.west_gauge);
+      const row = (wv, label, ev) => `
+        <div class="transect-row">
+          <div class="tval">${wv}</div>
+          <div class="tlabel">${label}</div>
+          <div class="tval e">${ev}</div>
+        </div>`;
+      compare = `
+        <div class="transect">
+          <div class="transect-row transect-head">
+            <div class="tside w">West shore</div>
+            <div class="tmid">${esc(fmtDay(t.start))} to ${esc(fmtDay(t.end))}</div>
+            <div class="tside e">East shore</div>
+          </div>
+          ${row(rainText(t.precip_mm[0]), `precipitation <span class="ratio">${t.precip_ratio.toFixed(2)}×</span>`, rainText(t.precip_mm[1]))}
+          ${alt ? row(rainText(alt.mm), `with ${esc(alt.gauge)} as the west <span class="ratio">${alt.ratio.toFixed(2)}×</span>`, rainText(t.precip_mm[1])) : ""}
+          ${row(`${fmt1.format(t.soil_points[0])}<span class="units">pts</span>`, `soil wetting <span class="ratio">${t.soil_ratio.toFixed(2)}×</span>`, `${fmt1.format(t.soil_points[1])}<span class="units">pts</span>`)}
+          ${row(`${fmtInt.format(t.snow_share[0])}<span class="units">%</span>`, "fell as snow", `${fmtInt.format(t.snow_share[1])}<span class="units">%</span>`)}
+        </div>
+        <p class="observed" style="margin-top:0.75rem">
+          Precipitation at ${esc(t.west_gauge)} and ${esc(t.east_gauge)}; soil at
+          ${esc(t.west_soil)} and ${esc(t.east_soil)}. Soil wetting is the summed rise
+          in soil moisture over every wetting event, in percentage points.
+        </p>`;
+    }
+
+    let storms = "";
+    if (t && t.storms && t.storms.length) {
+      const rows = t.storms.map(st => {
+        const melt = st.kind !== "rain";
+        const byRain = wetter(st.rain_mm[0], st.rain_mm[1]);
+        const bySoil = wetter(st.soil_points[0], st.soil_points[1]);
+        const verdict = melt ? "no rain at either gauge, probably snowmelt"
+          : byRain === bySoil ? `wetter ${sideWord(byRain)} by both`
+          : `more rain ${sideWord(byRain)}, wetter soil ${sideWord(bySoil)}`;
+        const cls = melt ? "melt" : byRain === bySoil ? "" : "differ";
+        return `<tr class="${cls}">
+          <td>${esc(fmtDay(st.day))}</td>
+          <td class="w">${rainPlain(st.rain_mm[0])}</td><td class="e">${rainPlain(st.rain_mm[1])}</td>
+          <td class="w">${fmt1.format(st.soil_points[0])}</td><td class="e">${fmt1.format(st.soil_points[1])}</td>
+          <td class="verdict">${verdict}</td></tr>`;
+      }).join("");
+      storms = `
+        <h3 class="sub">Every time both soils wetted together</h3>
+        <p>${fmtInt.format(t.events)} times both soils got wetter at once. In
+          ${fmtInt.format(t.melt_events)} of them no precipitation fell at either gauge,
+          all between October and April, so they were most likely snowmelt. In the
+          other ${fmtInt.format(t.rain_events)}, the shore that got more rain also wetted
+          more ${fmtInt.format(t.agree)} times. Rain is summed from the day before each
+          wetting to the day after.</p>
+        <div class="rain-storms"><table>
+          <thead><tr><th>Wetting began</th><th>Rain, west</th><th>Rain, east</th>
+            <th>Soil, west</th><th>Soil, east</th><th class="verdict">Which shore</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>`;
+    }
+
+    const order = { west: 0, east: 1 };
+    const cards = (rain.stations || []).slice()
+      .sort((a, b) => (order[a.side] ?? 2) - (order[b.side] ?? 2))
+      .map(st => {
+        const elev = st.elevation_ft != null ? convert(st.elevation_ft, "ft") : null;
+        const elevTxt = elev ? `${fmtInt.format(Math.round(elev.value))} ${elev.units}` : "";
+        return `
+          <article class="card">
+            <div class="card-head">
+              <h3 class="card-title">${esc(st.name)}</h3>
+              <span class="shore">${esc(st.side || "")} shore</span>
+            </div>
+            <p class="observed">SNOTEL ${esc(st.triplet || "")}${elevTxt ? `, ${elevTxt}` : ""}.
+              Last report ${esc(fmtDay(st.last_day))}.</p>
+            <div class="readings">
+              <div class="reading"><span class="reading-value">${rainText(st.last7_mm)}</span>
+                <span class="reading-label">last 7 days</span></div>
+              <div class="reading"><span class="reading-value">${rainText(st.water_year_mm)}</span>
+                <span class="reading-label">since ${esc(fmtDay(rain.water_year_start))}</span></div>
+              <div class="reading"><span class="reading-value">${rainText(st.last_water_year_mm)}</span>
+                <span class="reading-label">${esc(rain.last_water_year || "last")} water year</span></div>
+            </div>
+          </article>`;
+      }).join("");
+
+    const tg = t && t.teon_gauge;
+    const aside = t ? `
+      <p class="aside" style="margin-top:1.25rem">
+        Read the precipitation ratio as a range, not a number. West-shore precipitation
+        changes sharply over short distances: Ward Creek #3 is 7 km north of Homewood and
+        Rubicon #2 is 10 km south, and over the same days they differ by nearly half. Ward
+        Creek is the closer match to Homewood's catchment, whose long-term average is about
+        1,460 mm. Marlette Lake also sits about 1,100 ft higher than Ward Creek, and higher
+        gauges usually catch more.${tg && tg.rain_pct != null ? ` TEON's own gauge at
+        Blackwood 2 recorded ${fmtInt.format(tg.rain_pct)}% of Ward Creek's precipitation on
+        rain days and ${fmtInt.format(tg.snow_pct)}% on snow days, over the
+        ${fmtInt.format(tg.days)} days it reported in full.` : ""}
+      </p>` : "";
+
+    return `${compare}${rainChart(rain.monthly)}${storms}
+      <h3 class="sub">The gauges</h3>
+      <section class="cards" aria-label="SNOTEL stations">${cards}</section>${aside}`;
   }
 
   function renderManualCards(cards) {
@@ -1314,7 +1584,43 @@
       marker.addTo(groupFor(p));
       bounds.push([p.lat, p.lng]);
     }
+    // SNOTEL stations, from the rain section.
+    const snotelGroup = L.layerGroup();
+    for (const st of ((snap.rain && snap.rain.stations) || [])) {
+      if (st.lat == null || st.lng == null) continue;
+      const elev = st.elevation_ft != null ? convert(st.elevation_ft, "ft") : null;
+      L.marker([st.lat, st.lng], {
+        title: st.name,
+        // Beneath TEON's own pins: this is context, not the network.
+        zIndexOffset: -500,
+        icon: L.divIcon({ className: "", iconSize: [18, 16], iconAnchor: [9, 10],
+          html: `<svg class="pin-tri" width="18" height="16" viewBox="0 0 18 16" aria-hidden="true">
+                   <path d="M9 1.5 L16.5 14.5 L1.5 14.5 Z"/></svg>` }),
+      }).bindPopup(
+        `<div class="pop-title">${esc(st.name)}</div>
+         <div class="pop-meta">SNOTEL ${esc(st.triplet || "")}, ${esc(st.side || "")} shore${elev
+           ? `, ${fmtInt.format(Math.round(elev.value))} ${elev.units}` : ""}</div>
+         <div class="pop-types">Last 7 days ${rainPlain(st.last7_mm)}.
+           ${esc((snap.rain && snap.rain.last_water_year) || "Last")} water year
+           ${rainPlain(st.last_water_year_mm)}.</div>`, { maxWidth: 280 }
+      ).addTo(snotelGroup);
+      bounds.push([st.lat, st.lng]);
+    }
+    if (snotelGroup.getLayers().length) groups["SNOTEL gauges (outside TEON)"] = snotelGroup;
     Object.values(groups).forEach(g => g.addTo(map));
+
+    // The legend lists only what this map actually shows. Ten entries, most
+    // of them states nothing is in today, made the key harder to read than
+    // the map.
+    const shown = new Set(pts.filter(p => p.lat != null && p.lng != null)
+                             .map(p => pinClass(p).replace(/^pin-/, "")));
+    if (snotelGroup.getLayers().length) shown.add("snotel");
+    if (snap.transect_line) shown.add("transect");
+    document.querySelectorAll("#map-legend span").forEach(span => {
+      const i = span.querySelector("i");
+      const key = i && [...i.classList].find(c => c.startsWith("lg-"));
+      if (key) span.hidden = !shown.has(key.slice(3));
+    });
 
     // The transect, drawn so the same-latitude claim is checkable by eye.
     const overlays = { ...groups };
@@ -1402,6 +1708,24 @@
       // Transect
       $("transect").innerHTML = renderTransect(snap.transect);
 
+      // Rain on both shores. Isolated, so a problem here can't blank the
+      // sections after it.
+      try {
+        $("rain").innerHTML = renderRain(snap.rain);
+        const rt = snap.rain && snap.rain.transect;
+        if (rt) {
+          const alt = (rt.west_alternatives || []).find(a => a.gauge !== rt.west_gauge);
+          $("rain-summary").textContent =
+            `The west shore got ${rt.precip_ratio.toFixed(2)} times the east's precipitation at the ` +
+            `nearest gauges${alt ? ` (${alt.ratio.toFixed(2)} with ${alt.gauge})` : ""}, and its soil ` +
+            `wetted ${rt.soil_ratio.toFixed(2)} times as much.`;
+        }
+      } catch (err) {
+        console.error("rain panel:", err);
+        $("rain").innerHTML = `<div class="placeholder-card">The rain panel couldn't
+          be drawn from this snapshot.</div>`;
+      }
+
       // Station cards
       const stations = snap.stations || {};
       const stationNames = Object.keys(stations);
@@ -1480,7 +1804,17 @@
       // Map — initialise once; a unit switch re-renders the cards around
       // it but must not re-instantiate Leaflet on the same container.
       if (!MAP_DRAWN) {
-        renderMap(snap);
+        // Isolated. Any error in render() used to fall through to load()'s
+        // handler, which blanks the forest, camera and inventory sections
+        // and reports "Couldn't load the latest snapshot" — when the data
+        // had loaded fine and only the map had failed.
+        try {
+          renderMap(snap);
+        } catch (err) {
+          console.error("map:", err);
+          $("map").innerHTML = `<div class="placeholder-card" style="border:0">The map
+            couldn't be drawn (${esc(err.message)}). The readings below are unaffected.</div>`;
+        }
         MAP_DRAWN = true;
       }
 

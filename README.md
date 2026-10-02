@@ -79,7 +79,9 @@ The overlap is about a year because Homewood is the youngest forest station, rep
 | **Soil wetting** | 146 points | 63 points | **2.32** |
 | Catchments' long-term average | | | 2.12 |
 
-**The rain shadow reaches the soil in about the same proportion it falls,** and this was an ordinary year for it. Marlette Lake sits about 1,000 ft above Ward Creek #3, and higher gauges usually catch more, so the true contrast at the soil stations is probably a little larger than 2.16 — closer still to the soil's 2.32.
+**With the gauge that best matches Homewood's catchment, the soil's 2.32 sits right beside the rain's 2.16 — but the west-shore number depends on the gauge.** Rubicon #2, 10 km south of Homewood where Ward Creek #3 is 7 km north, caught only 917 mm over the same days: a ratio of **1.20**. West-shore precipitation changes sharply over short distances. Ward Creek is the better stand-in — it's closer, and its year (1,649 mm) is near Homewood's catchment's long-term 1,463 mm, where Rubicon's was 955 — but the honest statement is a range, **1.2 to 2.2**, with the soil at its top. Marlette Lake also sits 1,110 ft above Ward Creek, and higher gauges usually catch more, which would push the true contrast upward.
+
+On the dashboard this sits under **Beyond TEON**, collapsed by default, since SNOTEL is context rather than part of the network: **Where the rain fell**, the months mirrored across a line for the lake, west shore above and east below, the storm-by-storm table, and the three gauges, also on the map as triangles.
 
 Two things the rain revealed. **Eight of the 18 shared wetting events had no precipitation at either gauge** — all between October and April, almost certainly snowmelt, warming both shores at once. And in the **10 real storms, the shore that got more rain also wetted more in 7.** Of the storms the soil didn't register, most fell as snow, which wets soil only later, as it melts.
 
@@ -232,7 +234,7 @@ Not at :00. GitHub delays scheduled runs at busy times and drops some outright, 
 
 ## The bugs were mostly mine
 
-Forty errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Forty-three errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -265,6 +267,9 @@ Forty errors shipped or nearly shipped. Every one produced **plausible-looking o
 | An unstable sort, and rewriting files that hadn't changed | **Identical data stored again on every run; 1.1 GB in two weeks** |
 | Undated duplicates counted in the total | 740,660 phantom observations in the headline figure |
 | A check that couldn't run, reported as passing | `status` said "all stations fine" with DuckDB missing |
+| One gauge taken to stand for a whole shore | "Soil tracks rain, 2.32 vs 2.16" — the other west gauge gives 1.20 |
+| `new Date("2025-09-02")` for a calendar day | Every date in the rain panel one day early in Pacific time (caught in testing) |
+| One error handler for the whole page render | A map failure blanked the forest, camera and inventory sections and said the data hadn't loaded |
 
 ### The pattern
 
@@ -293,7 +298,7 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          40   of my own bugs caught before or shortly after shipping
+          43   of my own bugs caught before or shortly after shipping
           13   actual physical devices
           13   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin

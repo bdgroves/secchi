@@ -19,6 +19,7 @@ asked anything.
 |---|---|
 | `obs` | Every TEON observation. One row per reading per variable: `uuid, source, site, sensor_type, timestamp, lat, lng, variable, value`, plus `year` and `month` |
 | `usgs` | The USGS gauge observations, including the `approval` flag |
+| `snotel` | daily SNOTEL precipitation (`PRCP`, `PREC`, mm) and air temperature (`TAVG`, °C) at Ward Creek #3, Rubicon #2 and Marlette Lake |
 | `assets` | Camera frame references |
 | `stations` | One row per mapped location, with the catchment it sits in |
 | `catchments` | The 60 catchments and their attributes |

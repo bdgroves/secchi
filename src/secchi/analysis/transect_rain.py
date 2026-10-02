@@ -114,6 +114,15 @@ def analyse(df: pd.DataFrame | None = None, snotel: pd.DataFrame | None = None) 
         return float(w.sum()), float(e.sum())
 
     all_w, all_e = totals()
+    # Every west gauge over the same days. On 2026-10-02 the choice moved
+    # the ratio from 2.16 (Ward Creek #3, 7 km north of Homewood) to 1.20
+    # (Rubicon #2, 10 km south): west-shore precipitation changes sharply
+    # over short distances, so the result is a range, not one number.
+    west_alts = {}
+    for g in WEST_GAUGES:
+        sg = _daily(snotel, g, "PRCP")
+        if not sg.empty:
+            west_alts[g] = float(sg.reindex(days).sum())
     rain_w, rain_e = (totals(tw > SNOW_BELOW_C, te > SNOW_BELOW_C)
                       if not tw.empty and not te.empty else (None, None))
     soil_w = sum(e.magnitude for e in tr.west_events)
@@ -178,6 +187,7 @@ def analyse(df: pd.DataFrame | None = None, snotel: pd.DataFrame | None = None) 
         "west_gauge": west_g, "east_gauge": east_g, "west_soil": tr.west, "east_soil": tr.east,
         "days": len(days), "start": days.min() if len(days) else None, "end": days.max() if len(days) else None,
         "all": (all_w, all_e), "rain": (rain_w, rain_e), "soil": (soil_w, soil_e),
+        "west_alternatives": west_alts,
         "events": events,
         "missed_west": missed(pw, tw, tr.west_events),
         "missed_east": missed(pe, te, tr.east_events),
@@ -190,6 +200,60 @@ def analyse(df: pd.DataFrame | None = None, snotel: pd.DataFrame | None = None) 
 
 def _ratio(a, b):
     return None if a is None or b in (None, 0) else a / b
+
+
+def _wetter(w, e) -> str:
+    return "W" if w > e else "E" if e > w else "="
+
+
+def summary(r: dict) -> dict:
+    """The analysis as plain numbers, for the dashboard.
+
+    Same rules as ``report`` — rain versus melt, agreement only over real
+    storms, Blackwood split by rain and snow days — so the page and
+    ``pixi run transect-rain`` can't disagree.
+    """
+    ev = [e for e in r["events"] if e["kind"] is not None]
+    rain = [e for e in ev if e["kind"] == "rain"]
+    agree = sum(_wetter(e["rain_w"], e["rain_e"]) == _wetter(e["soil_w"], e["soil_e"])
+                for e in rain)
+    (aw, ae), (sw, se) = r["all"], r["soil"]
+    teon = None
+    td = r.get("teon_daily")
+    if td is not None and len(td):
+        full = td[td["minutes"] >= 1380]
+        both = (full.join(r["snotel_west"].rename("snotel"), how="inner")
+                    .join(r["snotel_west_temp"].rename("t"), how="left"))
+        def pct(mask):
+            part = both[mask.fillna(False)]
+            return (round(100 * part["mm"].sum() / part["snotel"].sum())
+                    if len(part) and part["snotel"].sum() else None)
+        if len(both):
+            teon = {"days": int(len(both)), "rain_pct": pct(both["t"] > SNOW_BELOW_C),
+                    "snow_pct": pct(both["t"] <= SNOW_BELOW_C)}
+    rnd = lambda v, n=1: None if v is None else round(float(v), n)
+    return {
+        "west_gauge": r["west_gauge"], "east_gauge": r["east_gauge"],
+        "west_soil": r["west_soil"], "east_soil": r["east_soil"],
+        "start": r["start"].date().isoformat() if r["start"] is not None else None,
+        "end": r["end"].date().isoformat() if r["end"] is not None else None,
+        "precip_mm": [rnd(aw, 0), rnd(ae, 0)], "precip_ratio": rnd(_ratio(aw, ae), 2),
+        "west_alternatives": [{"gauge": g, "mm": rnd(v, 0), "ratio": rnd(_ratio(v, ae), 2)}
+                              for g, v in r.get("west_alternatives", {}).items()],
+        "soil_points": [rnd(sw * 100), rnd(se * 100)], "soil_ratio": rnd(_ratio(sw, se), 2),
+        "snow_share": [rnd(x * 100, 0) if x is not None else None for x in r["snow_share"]],
+        "events": len(ev), "rain_events": len(rain), "melt_events": len(ev) - len(rain),
+        "agree": agree,
+        "storms": [{"day": e["day"].date().isoformat(), "kind": e["kind"],
+                    "rain_mm": [rnd(e["rain_w"], 0), rnd(e["rain_e"], 0)],
+                    "soil_points": [rnd(e["soil_w"] * 100), rnd(e["soil_e"] * 100)]}
+                   for e in ev],
+        "missed": [len(r["missed_west"]), len(r["missed_east"])],
+        "storm_counts": [r["storms_west"], r["storms_east"]],
+        "missed_snowy": [sum(x["snow_share"] >= 0.5 for x in r["missed_west"]),
+                         sum(x["snow_share"] >= 0.5 for x in r["missed_east"])],
+        "teon_gauge": teon,
+    }
 
 
 def report() -> int:
@@ -211,6 +275,11 @@ def report() -> int:
         if sw_ is not None and se_ is not None:
             print(f"  {'share that fell as snow':28}{100*sw_:>9.0f}%{100*se_:>9.0f}%")
     print(f"  {'soil wetting (VWC points)':28}{sw*100:>10.1f}{se*100:>10.1f}{_ratio(sw, se) or 0:>8.2f}")
+    for g, total in r.get("west_alternatives", {}).items():
+        if g != r["west_gauge"]:
+            print(f"  {'with ' + g + ' as the west':28}{total:>10,.0f}{ae:>10,.0f}{_ratio(total, ae) or 0:>8.2f}")
+    print("\n  West-shore precipitation varies sharply over short distances, so the")
+    print("  precipitation ratio is a range across the west gauges, not one number.")
     print("\n  The gauges differ in elevation (Marlette Lake ~1,000 ft higher), so")
     print("  the precipitation ratio is a lower bound on the contrast at the")
     print("  soil stations, not a measurement of it. The higher gauge is also")

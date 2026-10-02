@@ -1689,6 +1689,82 @@ def write_web_watersheds(web_dir: Path = WEB_DIR) -> dict | None:
     }
 
 
+def build_rain(df_long: pd.DataFrame) -> dict | None:
+    """SNOTEL precipitation for the dashboard: stations, months, transect.
+
+    Returns None when no SNOTEL data is stored, so the page shows its
+    empty state rather than zeros. The transect numbers come from
+    ``analysis.transect_rain`` — the same code ``pixi run transect-rain``
+    prints — so the page and the terminal can't disagree.
+    """
+    root = PROCESSED_DIR / "snotel_observations"
+    if not root.exists() or not any(root.rglob("part*.parquet")):
+        return None
+    from secchi.analysis.transect_rain import EAST_GAUGES, WEST_GAUGES, analyse, summary
+    from secchi.sources.snotel import STATION_CACHE
+    from secchi.store import read_partitions
+
+    snotel = read_partitions(root)
+    if snotel is None or snotel.empty:
+        return None
+    meta = json.loads(STATION_CACHE.read_text(encoding="utf-8")) if STATION_CACHE.exists() else {}
+    snotel = snotel.assign(day=pd.to_datetime(snotel["timestamp"]).dt.normalize())
+    prcp = snotel[snotel["variable"] == "PRCP"]
+    if prcp.empty:
+        return None
+    newest = prcp["day"].max()
+    wy_start = pd.Timestamp(newest.year if newest.month >= 10 else newest.year - 1, 10, 1)
+
+    stations = []
+    for name, m in meta.items():
+        sp = prcp[prcp["site"] == name]
+        if sp.empty:
+            continue
+        last = sp["day"].max()
+        stations.append({
+            "name": name, "side": m.get("side"), "triplet": m.get("triplet"),
+            "lat": m.get("lat"), "lng": m.get("lng"), "elevation_ft": m.get("elevation_ft"),
+            "last_day": last.date().isoformat(),
+            "last7_mm": round(float(sp[sp["day"] > last - pd.Timedelta(days=7)]["value"].sum()), 1),
+            "water_year_mm": round(float(sp[sp["day"] >= wy_start]["value"].sum()), 1),
+            # The previous water year in full: in the first weeks of a new
+            # one, "so far" is near zero and says nothing.
+            "last_water_year_mm": round(float(sp[(sp["day"] >= wy_start - pd.DateOffset(years=1))
+                                                 & (sp["day"] < wy_start)]["value"].sum()), 1),
+        })
+
+    # Monthly totals for the primary gauge on each side, last 24 months.
+    have = set(prcp["site"])
+    west = next((g for g in WEST_GAUGES if g in have), None)
+    east = next((g for g in EAST_GAUGES if g in have), None)
+    monthly = None
+    if west and east:
+        m = (prcp[prcp["site"].isin([west, east])]
+             .assign(month=lambda d: d["day"].dt.to_period("M"))
+             .pivot_table(index="month", columns="site", values="value", aggfunc="sum")
+             .sort_index())
+        # Only complete months: a month one day old would draw as a dry bar.
+        if newest != newest + pd.offsets.MonthEnd(0):
+            m = m[m.index < newest.to_period("M")]
+        m = m.tail(24)
+        monthly = {"months": [str(p) for p in m.index],
+                   "west": [round(float(v), 1) for v in m[west].fillna(0)],
+                   "east": [round(float(v), 1) for v in m[east].fillna(0)],
+                   "west_gauge": west, "east_gauge": east}
+
+    transect = None
+    try:
+        r = analyse(df=df_long, snotel=snotel.drop(columns=["day"]))
+        transect = summary(r) if r else None
+    except Exception as exc:                 # the page must still build
+        log.warning("rain transect unavailable: %s", exc)
+
+    return {"stations": stations, "water_year_start": wy_start.date().isoformat(),
+            "last_water_year": f"{wy_start.year - 1}-{wy_start.year}",
+            "newest_day": newest.date().isoformat(), "monthly": monthly,
+            "transect": transect}
+
+
 def build_dashboard_snapshot(df_wide: pd.DataFrame,
                              df_long: pd.DataFrame,
                              df_assets: pd.DataFrame,
@@ -1725,6 +1801,7 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "manual_cards": manual_cards,
         "upload_alert": build_upload_alert(manual_cards, inv, df_long,
                                            sorted(disabled)),
+        "rain": build_rain(df_long),
     }
 
 

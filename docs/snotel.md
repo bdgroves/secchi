@@ -57,8 +57,9 @@ that error, and the fix is usually one field name.
 
 ## The first result (2026-10-02)
 
-September 2025 to June 2026: precipitation west 1,643 mm, east 762 mm
-(**2.16**), against soil wetting **2.32** and a long-term catchment ratio of
+September 2025 to June 2026: precipitation west 1,643 mm at Ward Creek #3,
+east 762 mm (**2.16**), against soil wetting **2.32** — but Rubicon #2, the
+other west gauge, caught 917 mm (**1.20**), so the honest result is a range and a long-term catchment ratio of
 2.12. Of 18 shared wetting events, 8 had no precipitation at either gauge
 (probable snowmelt); in the other 10, the wetter shore by rain was the
 wetter by soil in 7. 59% of Marlette Lake's precipitation fell on days

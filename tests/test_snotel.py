@@ -126,3 +126,35 @@ def test_rainfall_transect_runs_end_to_end():
     assert aw / ae == pytest.approx(2.0)
     assert sw / se == pytest.approx(2.0, rel=0.25)
     assert r["events"] and all(e["rain_w"] > e["rain_e"] for e in r["events"] if e["rain_w"] is not None)
+
+
+def test_summary_matches_the_analysis_and_stays_json_ready():
+    """The page reads summary(); it must agree with the analysis it summarises."""
+    import json as _json
+    from secchi.analysis import transect_rain as TR
+
+    days = pd.date_range("2025-09-01", "2026-05-31", freq="D")
+    gauges = []
+    for site, mm in (("Ward Creek #3", 20.0), ("Rubicon #2", 10.0), ("Marlette Lake", 8.0)):
+        for d in days:
+            gauges += [{"site": site, "variable": "PRCP", "timestamp": d, "value": mm if d.day == 1 else 0.0,
+                        "uuid": f"{site}P{d}"},
+                       {"site": site, "variable": "TAVG", "timestamp": d, "value": 2.0, "uuid": f"{site}T{d}"}]
+    from secchi.analysis.transect import SOIL_VARIABLE, TRANSECT_PAIR
+    idx = pd.date_range("2025-09-01", "2026-05-31", freq="15min")
+    soil = []
+    for site, size in zip(TRANSECT_PAIR, (0.05, 0.02)):
+        v = np.full(len(idx), 0.08)
+        for s in pd.date_range("2025-10-01", "2026-05-01", freq="MS"):
+            age = (idx - s).total_seconds() / 86400
+            v += np.where(age >= 0, size * np.exp(-np.clip(age, 0, None) / 4), 0)
+        soil.append(pd.DataFrame({"uuid": [f"{site}{i}" for i in range(len(idx))], "site": site,
+                                  "variable": SOIL_VARIABLE, "timestamp": idx, "value": v,
+                                  "sensor_type": "SoilEnvironmentalConditions"}))
+    r = TR.analyse(df=pd.concat(soil, ignore_index=True), snotel=pd.DataFrame(gauges))
+    s = TR.summary(r)
+    _json.dumps(s)                                         # no timestamps or numpy left in it
+    assert s["events"] == len(s["storms"]) == s["rain_events"] + s["melt_events"]
+    assert s["precip_ratio"] == pytest.approx(2.5, rel=0.01)
+    alts = {a["gauge"]: a["ratio"] for a in s["west_alternatives"]}
+    assert alts["Rubicon #2"] == pytest.approx(1.25, rel=0.01)   # the range the page shows

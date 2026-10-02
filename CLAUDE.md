@@ -33,3 +33,15 @@ next steps are there. `README.md` is the public write-up.
 - Say plainly when something was wrong, including earlier conclusions. Several
   findings here were corrected after the first real run, and the corrections
   are part of the record.
+- In the page, calendar days ("2025-09-02") go through `fmtDay`, never
+  `new Date(...)`: a date-only string parses as midnight UTC, which shows
+  the previous day anywhere west of Greenwich. Test the page with
+  `TZ=America/Los_Angeles`.
+- The rain panel's numbers come from `transect_rain.summary()`, the same
+  code `pixi run transect-rain` prints. Change the analysis there, not in
+  the page.
+- New page sections render inside their own `try`. `load()` treats any
+  error from `render()` as a failed fetch and blanks the page.
+- SNOTEL (and anything else not TEON) is context: it lives under
+  "Beyond TEON", collapsed, and its map layer sits beneath TEON's pins.
+

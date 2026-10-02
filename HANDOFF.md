@@ -151,7 +151,7 @@ TEON's to within 6 records at every site.
 | Task | What |
 |---|---|
 | `snotel` | daily precipitation and temperature from SNOTEL; first run `--since 2024-06-01` |
-| `transect-rain` | the transect against measured precipitation on both shores |
+| `transect-rain` | the transect against measured precipitation on both shores (also on the page, under "Beyond TEON") |
 | `status` | **start here** — one screen of what's live, dark, failing or waiting, and a to-do list |
 | `pipeline` | ingest both agencies, transform, prune |
 | `transform` | rebuild the store and the page's data |
@@ -336,7 +336,7 @@ diving and uploads).
    Useful questions: do
    the loggers buffer during a dropout, and did something change after 2025?
    Was the power system upgraded in spring 2025? What happened on 2025-10-15?
-2. **The transect against rainfall — done (2026-10-02):** precipitation ratio 2.16 vs soil 2.32; 8 of 18 shared events were probably snowmelt; 7 of 10 real storms agree. SNOTEL runs in CI after the parquet reset (it has no raw buffer). Next: confirm the melt events with SNOTEL snow-water equivalent (`WTEQ`).
+2. **The transect against rainfall — done (2026-10-02):** precipitation ratio 2.16 with Ward Creek #3 but 1.20 with Rubicon #2 (a range, soil 2.32 at its top); 8 of 18 shared events were probably snowmelt; 7 of 10 real storms agree. SNOTEL runs in CI after the parquet reset (it has no raw buffer). Next: confirm the melt events with SNOTEL snow-water equivalent (`WTEQ`).
    Earlier note: **in progress (2026-10-02).** `pixi run snotel --since 2024-06-01`, then `pixi run transect-rain`; see `docs/snotel.md`. TEON's own gauge can't settle it alone: it's missing 136 days, mostly the wet season, and there's none on the east shore.
    Previously: **The transect against rainfall.** Blackwood 2's gauge holds 593,507
    readings. First check whether its values are per-interval amounts or a
@@ -420,3 +420,19 @@ loaded automatically at the start of each Claude Code session.
 | `docs/backlog-banner.md` | the on-page banner for data waiting to be pulled |
 | `docs/fail-closed.md` | the visibility flag and failing closed |
 | `docs/silent-failures.md` | the general pattern |
+
+## The page, as of 2026-10-02
+
+TEON first, in the order a visitor cares about: the lake (live sondes, then
+hand-collected), the map, forest stations, the two-shore transect, cameras,
+the USGS lake level and tributaries, then **Beyond TEON** — SNOTEL's rain
+panel, collapsed, with a one-line result in its summary — and the
+inventory. Jump links under the status line. The map legend shows only the
+states actually on the map. SNOTEL stations are outlined triangles drawn
+beneath TEON's pins, in a layer labelled as outside TEON.
+
+Each section's render is isolated: the map and the rain panel each have
+their own `try`, because `load()`'s handler treats any error as "the
+snapshot didn't load" and blanks the page. Test the page with jsdom and
+the real Leaflet inlined, in `TZ=America/Los_Angeles`.
+

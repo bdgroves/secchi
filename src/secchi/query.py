@@ -181,6 +181,7 @@ def connect(verbose: bool = False):
 
     for view, folder in (("obs", "observations"),
                          ("usgs", "usgs_observations"),
+                         ("snotel", "snotel_observations"),
                          ("assets", "assets")):
         g = _glob(folder)
         if g is None:
