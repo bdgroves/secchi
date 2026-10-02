@@ -336,7 +336,8 @@ diving and uploads).
    Useful questions: do
    the loggers buffer during a dropout, and did something change after 2025?
    Was the power system upgraded in spring 2025? What happened on 2025-10-15?
-2. **The transect against rainfall — in progress (2026-10-02).** `pixi run snotel --since 2024-06-01`, then `pixi run transect-rain`; see `docs/snotel.md`. TEON's own gauge can't settle it alone: it's missing 136 days, mostly the wet season, and there's none on the east shore.
+2. **The transect against rainfall — done (2026-10-02):** precipitation ratio 2.16 vs soil 2.32; 8 of 18 shared events were probably snowmelt; 7 of 10 real storms agree. SNOTEL runs in CI after the parquet reset (it has no raw buffer). Next: confirm the melt events with SNOTEL snow-water equivalent (`WTEQ`).
+   Earlier note: **in progress (2026-10-02).** `pixi run snotel --since 2024-06-01`, then `pixi run transect-rain`; see `docs/snotel.md`. TEON's own gauge can't settle it alone: it's missing 136 days, mostly the wet season, and there's none on the east shore.
    Previously: **The transect against rainfall.** Blackwood 2's gauge holds 593,507
    readings. First check whether its values are per-interval amounts or a
    running total — that decides how to sum them.

@@ -53,3 +53,17 @@ The response layout was taken from the documentation and independent
 clients; it couldn't be tested from where this was written. The parser
 stops with a sample of what arrived rather than storing nothing — paste
 that error, and the fix is usually one field name.
+
+
+## The first result (2026-10-02)
+
+September 2025 to June 2026: precipitation west 1,643 mm, east 762 mm
+(**2.16**), against soil wetting **2.32** and a long-term catchment ratio of
+2.12. Of 18 shared wetting events, 8 had no precipitation at either gauge
+(probable snowmelt); in the other 10, the wetter shore by rain was the
+wetter by soil in 7. 59% of Marlette Lake's precipitation fell on days
+below 0 °C, against 24% at Ward Creek #3, so the rain-only ratio (3.98)
+mostly reflects the higher gauge's colder climate.
+
+SNOTEL's daily increments (`PRCP`) match the day-to-day change in its
+running total (`PREC`) to 0.00 mm over 849 days at both stations.

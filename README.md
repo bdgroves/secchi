@@ -71,7 +71,17 @@ The overlap is about a year because Homewood is the youngest forest station, rep
 
 **Getting here took five wrong answers, and every correction moved toward the null:** 3.31× from averaging ratios, 2.82× from counting the daily cycle as storms, 1.29× from matching at the wrong resolution, and the two lag figures. The number that survived is the one defined, before its value was known, to be compared against rainfall.
 
-**What would settle it:** the 593,507 precipitation records now in the store, at a west-shore site, covering the same winter. That converts *"did both stations wet at the same time?"* — inferring storms from responses, where all four bugs lived — into *"how much did each wet after this much rain?"*
+**Checked against the rain that actually fell (2026-10-02).** TEON's only rain gauge couldn't settle it: it's on the west shore, it's missing 136 days — mostly the wet season — and on snow days it catches about a quarter of what a SNOTEL gauge nearby records. So secchi now also reads three NRCS **SNOTEL** stations: Ward Creek #3 and Rubicon #2 on the west, Marlette Lake on the east (`pixi run transect-rain`, `docs/snotel.md`).
+
+| September 2025 to June 2026 | West | East | Ratio |
+|---|---|---|---|
+| **Precipitation, measured** | 1,643 mm | 762 mm | **2.16** |
+| **Soil wetting** | 146 points | 63 points | **2.32** |
+| Catchments' long-term average | | | 2.12 |
+
+**The rain shadow reaches the soil in about the same proportion it falls,** and this was an ordinary year for it. Marlette Lake sits about 1,000 ft above Ward Creek #3, and higher gauges usually catch more, so the true contrast at the soil stations is probably a little larger than 2.16 — closer still to the soil's 2.32.
+
+Two things the rain revealed. **Eight of the 18 shared wetting events had no precipitation at either gauge** — all between October and April, almost certainly snowmelt, warming both shores at once. And in the **10 real storms, the shore that got more rain also wetted more in 7.** Of the storms the soil didn't register, most fell as snow, which wets soil only later, as it melts.
 
 ---
 
@@ -331,7 +341,7 @@ Needs a free [USGS API key](https://api.waterdata.usgs.gov/signup/) in `USGS_API
 
 - **3,468 camera frames** in a bucket named *Snow photos*, back to November 2025. The bucket refuses anonymous reads. A winter of snowpack from five angles, one email away.
 - **Why Glenbrook 2 is wet.** Needs rasters sampled at each station point.
-- **The transect against rainfall.** The precipitation record is now in the store; the analysis hasn't been rebuilt on it.
+- **Snowmelt in the transect.** Eight wetting events had no precipitation; matching them to SNOTEL's snow-water equivalent would confirm melt.
 - **Ground truth for a clarity model.** TERC's Secchi record is in the [EDI repository](https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340), versioned and DOI-bearing, back to 1968. Their 2025 report shows why any model must be **seasonal**: winter clarity is stable, summer is degrading, and 2025's summer average of 53.4 ft was the fifth poorest on record.
 
 TERC — which *is* UC Davis, not a separate organisation — also began in 2025 assembling decades of clarity-driver data alongside Secchi depth. That's the same analysis this project's nowcast idea sketches, by the people with the instruments, the fifty-eight-year record and the funding.

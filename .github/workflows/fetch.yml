@@ -112,6 +112,32 @@ jobs:
         # not accumulated now is lost.
         run: pixi run transform
 
+      - name: Ingest SNOTEL
+        id: snotel
+        # AFTER the reset to the remote's parquet above, not with the other
+        # ingests. SNOTEL writes straight into data/processed/ — it has no
+        # raw buffer — so the reset would wipe its rows every run and the
+        # job would quietly commit nothing. Fetches the last 30 days; the
+        # store rewrites only days that changed. Non-fatal, and visible
+        # below, like USGS.
+        continue-on-error: true
+        run: pixi run snotel
+
+      - name: Surface a SNOTEL failure
+        if: always()
+        run: |
+          if [ "${{ steps.snotel.outcome }}" = "failure" ]; then
+            echo "::warning title=SNOTEL ingest failed::pixi run snotel exited non-zero. TEON and USGS data still collected."
+            {
+              echo "### SNOTEL ingest failed"
+              echo ""
+              echo "\`pixi run snotel\` exited non-zero. TEON and USGS were unaffected."
+              echo "Run it locally: a changed response layout stops with a sample of what arrived."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "SNOTEL ingest ok"
+          fi
+
       - name: Prune the raw buffer
         run: pixi run prune
 
