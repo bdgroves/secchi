@@ -83,6 +83,10 @@ The overlap is about a year because Homewood is the youngest forest station, rep
 
 On the dashboard this sits under **Beyond TEON**, collapsed by default, since SNOTEL is context rather than part of the network: **Where the rain fell**, the months mirrored across a line for the lake, west shore above and east below, the storm-by-storm table, and the three gauges, also on the map as triangles.
 
+**Snowmelt, measured.** SNOTEL also records the water held in the snowpack. Of those no-rain wetting events, five came as a gauge's snowpack shrank, by as much as 53 mm of water in a few days; three remain unexplained by the gauges, which sit higher than the soil stations, so snow at the soil can melt while the gauge's holds.
+
+**Wildfire smoke.** NOAA's satellite smoke analysis put smoke over the lake on 114 days since June 2024, mostly light. In 2025 and 2026, about 65 of those days with sonde data, it left no mark that can be told from chance, in the lake's chlorophyll, blue-green algae, turbidity, oxygen or temperature, or in the forest's daytime highs (`pixi run smoke-lake`, `docs/smoke.md`). With each month's trend left in, Glenbrook's algae looked clearly higher after smoke; the trend explained all of it.
+
 Two things the rain revealed. **Eight of the 18 shared wetting events had no precipitation at either gauge** — all between October and April, almost certainly snowmelt, warming both shores at once. And in the **10 real storms, the shore that got more rain also wetted more in 7.** Of the storms the soil didn't register, most fell as snow, which wets soil only later, as it melts.
 
 ---
@@ -234,7 +238,7 @@ Not at :00. GitHub delays scheduled runs at busy times and drops some outright, 
 
 ## The bugs were mostly mine
 
-Forty-four errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Forty-five errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -271,6 +275,7 @@ Forty-four errors shipped or nearly shipped. Every one produced **plausible-look
 | `new Date("2025-09-02")` for a calendar day | Every date in the rain panel one day early in Pacific time (caught in testing) |
 | One error handler for the whole page render | A map failure blanked the forest, camera and inventory sections and said the data hadn't loaded |
 | A dark-mode colour ramp over a light basemap | On dark-mode machines the catchment shading read backwards: the wet west pale, the dry east dark |
+| Comparing within months, but not removing the month's trend | "Smoke boosts algae at Glenbrook, p = 0.001" — a late-summer rise, coinciding with late-month smoke (caught before publishing) |
 
 ### The pattern
 
@@ -299,7 +304,7 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          44   of my own bugs caught before or shortly after shipping
+          45   of my own bugs caught before or shortly after shipping
           13   actual physical devices
           13   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin

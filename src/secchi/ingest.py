@@ -652,6 +652,9 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
             log.error("HMS file not as expected: %s", exc)
             return 1
         return 0
+    if mode == "smoke-lake":
+        from secchi.analysis.smoke_lake import report as smoke_report
+        return smoke_report()
     if mode == "transect-rain":
         from secchi.analysis.transect_rain import report as rain_report
         return rain_report()
@@ -867,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
                  "record-shape", "drop-undated", "purge-hidden",
                  "repair-sensor-types", "oxygen-check", "transect", "glenbrook",
                  "station-health",
-                 "terc-discover", "prune", "snotel", "transect-rain", "smoke"),
+                 "terc-discover", "prune", "snotel", "transect-rain", "smoke", "smoke-lake"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "

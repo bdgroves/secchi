@@ -185,8 +185,14 @@ def ingest(since: date | None = None, until: date | None = None, pause: float = 
 
     root = PROCESSED_DIR / "smoke_observations"
     if since is None:
-        since = (date.today() - timedelta(days=14)
-                 if any(root.rglob("part*.parquet")) else FIRST_DAY)
+        since = FIRST_DAY
+        if any(root.rglob("part*.parquet")):
+            # From two days before the newest stored day: a few requests a
+            # run, not a fortnight's, since CI calls this every hour.
+            from secchi.store import read_partitions
+            have = read_partitions(root)
+            newest = pd.to_datetime(have["timestamp"]).max().date() if len(have) else FIRST_DAY
+            since = max(FIRST_DAY, newest - timedelta(days=2))
     # HMS posts a day's analysis the next morning; today has no file yet.
     until = until or (date.today() - timedelta(days=1))
 

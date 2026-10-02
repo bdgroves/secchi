@@ -69,6 +69,7 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.analysis.transect_rain", "analyse"),
     ("secchi.sources.smoke", "parse_kml"),
     ("secchi.sources.smoke", "density_over_lake"),
+    ("secchi.analysis.smoke_lake", "detrend"),
     ("secchi.sources.watch", "_grouped_lines"),
     ("secchi.probe_shape", "probe_record_shapes"),
     ("secchi.sources.reference", "reproject_geojson"),

@@ -138,6 +138,24 @@ jobs:
             echo "SNOTEL ingest ok"
           fi
 
+      - name: Ingest HMS smoke
+        id: smoke
+        # After the parquet reset, like SNOTEL: it writes straight into
+        # data/processed/. Fetches from two days before the newest stored
+        # day, so a few requests a run.
+        continue-on-error: true
+        run: pixi run smoke
+
+      - name: Surface an HMS smoke failure
+        if: always()
+        run: |
+          if [ "${{ steps.smoke.outcome }}" = "failure" ]; then
+            echo "::warning title=HMS smoke ingest failed::pixi run smoke exited non-zero. Other data still collected."
+            echo "### HMS smoke ingest failed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "HMS smoke ingest ok"
+          fi
+
       - name: Prune the raw buffer
         run: pixi run prune
 
