@@ -365,10 +365,6 @@
     background: linear-gradient(to right,
       #f7fbfd 0%, #cfe3ee 25%, #8dbcd4 50%, #4a8fb0 75%, #1d5a7a 100%);
   }
-  .ws-ramp[data-dark="1"] {
-    background: linear-gradient(to right,
-      #14303d 0%, #1d5a7a 25%, #4a8fb0 50%, #8dbcd4 75%, #cfe3ee 100%);
-  }
   .ws-bound { color: var(--muted); font-variant-numeric: tabular-nums; }
   .ws-note { color: var(--muted); font-size: 0.75rem; }
 
@@ -1030,7 +1026,11 @@
         const melt = st.kind !== "rain";
         const byRain = wetter(st.rain_mm[0], st.rain_mm[1]);
         const bySoil = wetter(st.soil_points[0], st.soil_points[1]);
-        const verdict = melt ? "no rain at either gauge, probably snowmelt"
+        const lost = (st.melt_mm || []).map((v, i) => v != null && v >= 5
+          ? `${["west", "east"][i]} ${rainPlain(v)}` : null).filter(Boolean);
+        const verdict = st.kind === "melt" ? `snowmelt: the snowpack lost ${lost.join(", ")}`
+          : st.kind === "unexplained" ? "no rain, and no melt at the gauges"
+          : melt ? "no rain at either gauge, probably snowmelt"
           : byRain === bySoil ? `wetter ${sideWord(byRain)} by both`
           : `more rain ${sideWord(byRain)}, wetter soil ${sideWord(bySoil)}`;
         const cls = melt ? "melt" : byRain === bySoil ? "" : "differ";
@@ -1043,11 +1043,15 @@
       storms = `
         <h3 class="sub">Every time both soils wetted together</h3>
         <p>${fmtInt.format(t.events)} times both soils got wetter at once. In
-          ${fmtInt.format(t.melt_events)} of them no precipitation fell at either gauge,
-          all between October and April, so they were most likely snowmelt. In the
-          other ${fmtInt.format(t.rain_events)}, the shore that got more rain also wetted
-          more ${fmtInt.format(t.agree)} times. Rain is summed from the day before each
-          wetting to the day after.</p>
+          ${fmtInt.format(t.melt_events)} of them no precipitation fell at either gauge${
+            (t.measured_melt || t.unexplained)
+              ? `; in ${fmtInt.format(t.measured_melt)} of those the snowpack measurably shrank,
+                 so they were snowmelt${t.unexplained ? `, and ${fmtInt.format(t.unexplained)}
+                 had neither rain nor melt at the gauges` : ""}.`
+              : `, all between October and April, so they were most likely snowmelt.`}
+          In the other ${fmtInt.format(t.rain_events)}, the shore that got more rain also
+          wetted more ${fmtInt.format(t.agree)} times. Rain is summed from the day before
+          each wetting to the day after.</p>
         <div class="rain-storms"><table>
           <thead><tr><th>Wetting began</th><th>Rain, west</th><th>Rain, east</th>
             <th>Soil, west</th><th>Soil, east</th><th class="verdict">Which shore</th></tr></thead>
@@ -1427,11 +1431,29 @@
 
   // Sequential ramp, light to dark. Reversed in dark mode so "more" still
   // reads as "stronger" against the background rather than vanishing.
-  const WS_RAMP_LIGHT = ["#f7fbfd","#cfe3ee","#8dbcd4","#4a8fb0","#1d5a7a"];
-  const WS_RAMP_DARK  = ["#14303d","#1d5a7a","#4a8fb0","#8dbcd4","#cfe3ee"];
+  // One ramp, pale for low and deep for high, whatever the page theme.
+  // There used to be a dark-mode ramp running the other way, chosen by the
+  // system's colour scheme. But every basemap here is light (streets,
+  // terrain, imagery), so on a dark-mode machine the wet west shore came
+  // out PALE and the dry east DARK, and the map read backwards.
+  const WS_RAMP = ["#f7fbfd","#cfe3ee","#8dbcd4","#4a8fb0","#1d5a7a"];
 
-  function wsColor(value, min, max, dark) {
-    const ramp = dark ? WS_RAMP_DARK : WS_RAMP_LIGHT;
+  /** The 5th-95th percentile of a layer's values. A plain min-max range let
+   *  one catchment wash out the rest: Marlette Creek's impossible wetness
+   *  index of 833.9 put 59 of 60 catchments in the palest shade. Values
+   *  beyond these bounds take the end colours. */
+  function wsRange(values) {
+    const v = values.filter(x => x != null && isFinite(x)).sort((a, b) => a - b);
+    if (v.length < 2) return null;
+    const q = (p) => { const i = (v.length - 1) * p, lo = Math.floor(i);
+      return v[lo] + (v[Math.min(lo + 1, v.length - 1)] - v[lo]) * (i - lo); };
+    let lo = q(0.05), hi = q(0.95);
+    if (hi <= lo) { lo = v[0]; hi = v[v.length - 1]; }
+    return { min: lo, max: hi, clippedLow: v[0] < lo, clippedHigh: v[v.length - 1] > hi };
+  }
+
+  function wsColor(value, min, max) {
+    const ramp = WS_RAMP;
     if (value == null || !isFinite(value) || max === min) return ramp[0];
     const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
     return ramp[Math.min(ramp.length - 1, Math.floor(t * ramp.length))];
@@ -1451,8 +1473,6 @@
       return null;
     }
 
-    const dark = window.matchMedia
-      && window.matchMedia("(prefers-color-scheme: dark)").matches;
     const ranges = meta.ranges || {};
     // Only offer variables the file actually carries a usable range for.
     const available = WS_VARS.filter(([key]) => ranges[key]);
@@ -1482,7 +1502,9 @@
 
     function restyle() {
       const [key, , , scale] = current;
-      const r = ranges[key] || { min: 0, max: 1 };
+      const vals = [];
+      layer.eachLayer((lyr) => vals.push((lyr.feature.properties || {})[key]));
+      const r = wsRange(vals) || ranges[key] || { min: 0, max: 1 };
       layer.eachLayer((lyr) => {
         // Deliberately the RAW value against the RAW range: the colour
         // ramp only needs a 0-1 position, and normalising in stored units
@@ -1491,7 +1513,7 @@
         // its conversion has an offset.
         const raw = (lyr.feature.properties || {})[key];
         lyr.setStyle({
-          fillColor: wsColor(raw, r.min, r.max, dark),
+          fillColor: wsColor(raw, r.min, r.max),
           fillOpacity: opacity,
           weight: 0.7,
           color: "#ffffff",
@@ -1500,8 +1522,11 @@
       const unit = current[2];
       const lo = wsValue(r.min, unit, scale);
       const hi = wsValue(r.max, unit, scale);
-      document.getElementById("ws-min").textContent = lo ? fmt.format(lo.value) : "";
-      document.getElementById("ws-max").textContent = hi ? fmt.format(hi.value) : "";
+      // "-" and "+" mark a bound that some catchments fall beyond.
+      document.getElementById("ws-min").textContent = lo
+        ? fmt.format(lo.value) + (r.clippedLow ? "\u2212" : "") : "";
+      document.getElementById("ws-max").textContent = hi
+        ? fmt.format(hi.value) + (r.clippedHigh ? "+" : "") : "";
       const shownUnit = (hi && hi.units) || unit;
       document.getElementById("ws-note").textContent =
         `${meta.features} catchments${shownUnit ? " · " + shownUnit : ""}`;
@@ -1523,7 +1548,6 @@
       restyle();
     });
 
-    document.getElementById("ws-ramp").dataset.dark = dark ? "1" : "0";
     document.getElementById("ws-control").hidden = false;
 
     WS_RESTYLE = restyle;

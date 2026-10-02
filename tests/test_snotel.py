@@ -158,3 +158,43 @@ def test_summary_matches_the_analysis_and_stays_json_ready():
     assert s["precip_ratio"] == pytest.approx(2.5, rel=0.01)
     alts = {a["gauge"]: a["ratio"] for a in s["west_alternatives"]}
     assert alts["Rubicon #2"] == pytest.approx(1.25, rel=0.01)   # the range the page shows
+
+
+def test_no_rain_wettings_are_tested_against_the_snowpack():
+    """Melt where the snowpack shrank; unexplained where it didn't."""
+    from secchi.analysis import transect_rain as TR
+    from secchi.analysis.transect import SOIL_VARIABLE, TRANSECT_PAIR
+
+    idx = pd.date_range("2026-01-01", "2026-05-31", freq="15min")
+    onsets = pd.to_datetime(["2026-02-01", "2026-03-01", "2026-04-01"])
+    soil = []
+    for site in TRANSECT_PAIR:
+        v = np.full(len(idx), 0.08)
+        for s in onsets:
+            age = (idx - s).total_seconds() / 86400
+            v += np.where(age >= 0, 0.04 * np.exp(-np.clip(age, 0, None) / 4), 0)
+        soil.append(pd.DataFrame({"uuid": [f"{site}{i}" for i in range(len(idx))], "site": site,
+                                  "variable": SOIL_VARIABLE, "timestamp": idx, "value": v,
+                                  "sensor_type": "SoilEnvironmentalConditions"}))
+    days = pd.date_range("2025-12-01", "2026-06-30", freq="D")
+    rows = []
+    for site in ("Ward Creek #3", "Marlette Lake"):
+        for d in days:
+            # Snowpack 400 mm, melting 20 mm/day through February only.
+            swe = 400.0 - (20.0 * (d - pd.Timestamp("2026-01-29")).days
+                           if pd.Timestamp("2026-01-29") <= d <= pd.Timestamp("2026-02-15") else 0.0)
+            if d > pd.Timestamp("2026-02-15"):
+                swe = 60.0                                    # then flat: no melt
+            rows += [{"site": site, "variable": "PRCP", "timestamp": d, "value": 0.0, "uuid": f"{site}P{d}"},
+                     {"site": site, "variable": "TAVG", "timestamp": d, "value": 1.0, "uuid": f"{site}T{d}"},
+                     {"site": site, "variable": "WTEQ", "timestamp": d, "value": swe, "uuid": f"{site}W{d}"}]
+    r = TR.analyse(df=pd.concat(soil, ignore_index=True), snotel=pd.DataFrame(rows))
+    kinds = {e["day"].strftime("%m-%d"): e["kind"] for e in r["events"]}
+    assert kinds["02-01"] == "melt"
+    assert kinds["03-01"] == "unexplained" and kinds["04-01"] == "unexplained"
+    s = TR.summary(r)
+    assert (s["measured_melt"], s["unexplained"], s["untested"]) == (1, 2, 0)
+
+    no_swe = pd.DataFrame([x for x in rows if x["variable"] != "WTEQ"])
+    r2 = TR.analyse(df=pd.concat(soil, ignore_index=True), snotel=no_swe)
+    assert {e["kind"] for e in r2["events"]} == {"melt?"}     # untested, not guessed

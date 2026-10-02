@@ -641,6 +641,17 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
             log.error("SNOTEL response not as expected: %s", exc)
             return 1
         return 0
+    if mode == "smoke":
+        # NOAA HMS smoke over the lake, one value per day. Missing days are
+        # recorded as "not analysed", never as "no smoke".
+        from datetime import date as _date
+        from secchi.sources.smoke import SmokeShapeError, ingest as smoke_ingest
+        try:
+            smoke_ingest(since=_date.fromisoformat(since) if since else None)
+        except SmokeShapeError as exc:
+            log.error("HMS file not as expected: %s", exc)
+            return 1
+        return 0
     if mode == "transect-rain":
         from secchi.analysis.transect_rain import report as rain_report
         return rain_report()
@@ -856,7 +867,7 @@ def main(argv: list[str] | None = None) -> int:
                  "record-shape", "drop-undated", "purge-hidden",
                  "repair-sensor-types", "oxygen-check", "transect", "glenbrook",
                  "station-health",
-                 "terc-discover", "prune", "snotel", "transect-rain"),
+                 "terc-discover", "prune", "snotel", "transect-rain", "smoke"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -942,8 +953,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--since",
         metavar="YYYY-MM-DD",
-        help="For `snotel`: first day to fetch (default: 30 days back, or "
-             "2024-06-01 on a first run).",
+        help="For `snotel` and `smoke`: first day to fetch (default: the last "
+             "few weeks, or 2024-06-01 on a first run).",
     )
     parser.add_argument(
         "--codes",

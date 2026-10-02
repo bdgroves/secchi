@@ -181,6 +181,8 @@ status = "python -m secchi.status"
 snotel = "python -m secchi.ingest --mode snotel"
 # The transect against measured precipitation on both shores.
 transect-rain = "python -m secchi.ingest --mode transect-rain"
+# NOAA HMS wildfire smoke over the lake, daily. First run: pixi run smoke --since 2024-06-01
+smoke = "python -m secchi.ingest --mode smoke"
 # One-time, per clone: teach git to merge store partitions as sets of
 # readings instead of stopping on a binary conflict. See .gitattributes.
 setup-git = "git config merge.parquet-union.name \"set merge for the partitioned parquet store\" && git config merge.parquet-union.driver \"pixi run python -m secchi.merge_parquet %O %A %B %P\""

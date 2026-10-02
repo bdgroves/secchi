@@ -152,6 +152,7 @@ TEON's to within 6 records at every site.
 |---|---|
 | `snotel` | daily precipitation and temperature from SNOTEL; first run `--since 2024-06-01` |
 | `transect-rain` | the transect against measured precipitation on both shores (also on the page, under "Beyond TEON") |
+| `smoke` | NOAA HMS smoke over the lake, daily; first run `--since 2024-06-01` (see `docs/smoke.md`) |
 | `status` | **start here** — one screen of what's live, dark, failing or waiting, and a to-do list |
 | `pipeline` | ingest both agencies, transform, prune |
 | `transform` | rebuild the store and the page's data |

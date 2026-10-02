@@ -27,6 +27,9 @@ Elements:
     PRCP   precipitation increment for the day
     PREC   precipitation accumulated since the water year began (Oct 1)
     TAVG   average air temperature for the day — tells rain from snow
+    WTEQ   snow water equivalent at midnight: the water held in the
+           snowpack. A fall with no precipitation is melt, which is how
+           the transect's "no rain" wetting events are tested.
 
 Both precipitation forms are kept so one can check the other. Values are
 stored in millimetres and degrees Celsius; SNOTEL reports inches and
@@ -62,7 +65,7 @@ SNOTEL_STATIONS: dict[str, str] = {
     "Rubicon #2": "west",
     "Marlette Lake": "east",
 }
-ELEMENTS = ("PRCP", "PREC", "TAVG")
+ELEMENTS = ("PRCP", "PREC", "TAVG", "WTEQ")
 
 # The first day of TEON's record; a first run fetches from here.
 FIRST_DAY = date(2024, 6, 1)
@@ -147,7 +150,7 @@ def fetch_daily(client, triplets: list[str], begin: date, end: date):
 
 def _convert(element: str, unit: str | None, value: float) -> tuple[float, str]:
     u = _norm(unit)
-    if element in ("PRCP", "PREC"):
+    if element in ("PRCP", "PREC", "WTEQ"):
         if u in ("in", "inch", "inches"):
             return value * 25.4, "mm"
         if u in ("mm", "millimeter", "millimeters"):

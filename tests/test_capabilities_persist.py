@@ -67,6 +67,8 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.sources.snotel", "parse"),
     ("secchi.sources.snotel", "resolve_stations"),
     ("secchi.analysis.transect_rain", "analyse"),
+    ("secchi.sources.smoke", "parse_kml"),
+    ("secchi.sources.smoke", "density_over_lake"),
     ("secchi.sources.watch", "_grouped_lines"),
     ("secchi.probe_shape", "probe_record_shapes"),
     ("secchi.sources.reference", "reproject_geojson"),

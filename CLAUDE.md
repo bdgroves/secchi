@@ -44,4 +44,8 @@ next steps are there. `README.md` is the public write-up.
   error from `render()` as a failed fetch and blanks the page.
 - SNOTEL (and anything else not TEON) is context: it lives under
   "Beyond TEON", collapsed, and its map layer sits beneath TEON's pins.
+- Catchment shading: one ramp, pale = low and deep = high, regardless of
+  the page theme (every basemap is light). Colours span the 5th-95th
+  percentile so one outlier can't wash out a layer; the legend marks a
+  clipped bound with "+" or "−".
 

@@ -234,7 +234,7 @@ Not at :00. GitHub delays scheduled runs at busy times and drops some outright, 
 
 ## The bugs were mostly mine
 
-Forty-three errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
+Forty-four errors shipped or nearly shipped. Every one produced **plausible-looking output** rather than a crash. The instructive ones:
 
 | What broke | How it looked |
 |---|---|
@@ -270,6 +270,7 @@ Forty-three errors shipped or nearly shipped. Every one produced **plausible-loo
 | One gauge taken to stand for a whole shore | "Soil tracks rain, 2.32 vs 2.16" — the other west gauge gives 1.20 |
 | `new Date("2025-09-02")` for a calendar day | Every date in the rain panel one day early in Pacific time (caught in testing) |
 | One error handler for the whole page render | A map failure blanked the forest, camera and inventory sections and said the data hadn't loaded |
+| A dark-mode colour ramp over a light basemap | On dark-mode machines the catchment shading read backwards: the wet west pale, the dry east dark |
 
 ### The pattern
 
@@ -298,7 +299,7 @@ Nine probe commands exist for the same reason. A few dozen lines each; eight rea
          375   days of overlapping transect history
           60   stream catchments, 164 attributes each
           43   sensors listed by the API
-          43   of my own bugs caught before or shortly after shipping
+          44   of my own bugs caught before or shortly after shipping
           13   actual physical devices
           13   data-quality faults found upstream
         3.03×  rain-shadow gradient across the basin

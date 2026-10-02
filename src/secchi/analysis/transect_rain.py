@@ -49,6 +49,12 @@ EVENT_WINDOW = (-1, 1)          # days around a wetting onset
 BIG_STORM_MM = 10.0             # a storm this wet should register in the soil
 RAIN_EVENT_MM = 5.0             # a wetting with less than this at both gauges wasn't a storm
 STORM_DAY_MM = 1.0              # consecutive days at or above this are one storm
+# Snowmelt, tested with snow water equivalent (SNOTEL WTEQ, midnight values):
+# a wetting with no rain is MEASURED melt if a gauge's snowpack lost at
+# least MELT_MM of water between MELT_LOOKBACK days before the onset and its
+# lowest point from the day before to the day after.
+MELT_MM = 5.0
+MELT_LOOKBACK = 3
 SNOW_BELOW_C = 0.0              # daily mean air temperature at or below = snow
 TEON_GAUGE = ("Blackwood 2", "Accu_NRT")
 
@@ -59,6 +65,17 @@ def _daily(snotel: pd.DataFrame, site: str, variable: str) -> pd.Series:
         return pd.Series(dtype=float)
     return (sub.assign(day=pd.to_datetime(sub["timestamp"]).dt.normalize())
                .groupby("day")["value"].mean().sort_index())
+
+
+def _swe(series: pd.Series, day: pd.Timestamp) -> tuple[float | None, float | None]:
+    """(snowpack before, water it lost) around a wetting onset, in mm."""
+    if series.empty:
+        return None, None
+    before = series.get(day - pd.Timedelta(days=MELT_LOOKBACK))
+    around = series.loc[day - pd.Timedelta(days=1): day + pd.Timedelta(days=1)]
+    if before is None or pd.isna(before) or around.empty:
+        return None, None
+    return float(before), float(before - around.min())
 
 
 def _first_available(snotel: pd.DataFrame, names: tuple[str, ...]) -> str | None:
@@ -98,6 +115,7 @@ def analyse(df: pd.DataFrame | None = None, snotel: pd.DataFrame | None = None) 
         return None
     pw, pe = _daily(snotel, west_g, "PRCP"), _daily(snotel, east_g, "PRCP")
     tw, te = _daily(snotel, west_g, "TAVG"), _daily(snotel, east_g, "TAVG")
+    ww, we = _daily(snotel, west_g, "WTEQ"), _daily(snotel, east_g, "WTEQ")
 
     # The shared record: the transect's overlap, on days both gauges reported.
     ev = tr.west_events + tr.east_events
@@ -136,11 +154,22 @@ def analyse(df: pd.DataFrame | None = None, snotel: pd.DataFrame | None = None) 
         # On 2026-10-02, 7 of the 18 shared events were like this, all in
         # winter and spring — most likely snowmelt, which wets both shores
         # in the same warm spell.
+        day = w.start.normalize()
+        pack_w, lost_w = _swe(ww, day)
+        pack_e, lost_e = _swe(we, day)
         kind = None
         if rw is not None and re_ is not None:
-            kind = "rain" if max(rw, re_) >= RAIN_EVENT_MM else "melt?"
-        events.append({"day": w.start.normalize(), "rain_w": rw, "rain_e": re_,
-                       "soil_w": w.magnitude, "soil_e": e.magnitude, "kind": kind})
+            if max(rw, re_) >= RAIN_EVENT_MM:
+                kind = "rain"
+            elif lost_w is None and lost_e is None:
+                kind = "melt?"                 # no snowpack data to test it
+            elif max(lost_w or 0, lost_e or 0) >= MELT_MM:
+                kind = "melt"                  # measured: the snowpack shrank
+            else:
+                kind = "unexplained"           # no rain, and no melt at the gauges
+        events.append({"day": day, "rain_w": rw, "rain_e": re_,
+                       "soil_w": w.magnitude, "soil_e": e.magnitude, "kind": kind,
+                       "snowpack": (pack_w, pack_e), "melt": (lost_w, lost_e)})
 
     # Storms a soil sensor didn't register. Consecutive wet days are one
     # storm: counted day by day, the 2025-12-20 storm the soil DID register
@@ -243,10 +272,15 @@ def summary(r: dict) -> dict:
         "soil_points": [rnd(sw * 100), rnd(se * 100)], "soil_ratio": rnd(_ratio(sw, se), 2),
         "snow_share": [rnd(x * 100, 0) if x is not None else None for x in r["snow_share"]],
         "events": len(ev), "rain_events": len(rain), "melt_events": len(ev) - len(rain),
+        "measured_melt": sum(e["kind"] == "melt" for e in ev),
+        "unexplained": sum(e["kind"] == "unexplained" for e in ev),
+        "untested": sum(e["kind"] == "melt?" for e in ev),
         "agree": agree,
         "storms": [{"day": e["day"].date().isoformat(), "kind": e["kind"],
                     "rain_mm": [rnd(e["rain_w"], 0), rnd(e["rain_e"], 0)],
-                    "soil_points": [rnd(e["soil_w"] * 100), rnd(e["soil_e"] * 100)]}
+                    "soil_points": [rnd(e["soil_w"] * 100), rnd(e["soil_e"] * 100)],
+                    "snowpack_mm": [rnd(x, 0) for x in e.get("snowpack", (None, None))],
+                    "melt_mm": [rnd(x, 0) for x in e.get("melt", (None, None))]}
                    for e in ev],
         "missed": [len(r["missed_west"]), len(r["missed_east"])],
         "storm_counts": [r["storms_west"], r["storms_east"]],
@@ -289,8 +323,12 @@ def report() -> int:
     ev = [e for e in r["events"] if e["kind"] is not None]
     if ev:
         rain = [e for e in ev if e["kind"] == "rain"]
+        melt = [e for e in ev if e["kind"] == "melt"]
+        odd = [e for e in ev if e["kind"] == "unexplained"]
+        untested = [e for e in ev if e["kind"] == "melt?"]
         print(f"  shared wetting events: {len(ev)} — {len(rain)} with precipitation, "
-              f"{len(ev) - len(rain)} with none at either gauge (probably snowmelt)\n")
+              f"{len(melt)} measured snowmelt, {len(odd)} unexplained"
+              + (f", {len(untested)} not yet tested (fetch WTEQ)" if untested else "") + "\n")
         print(f"  {'onset':12}{'rain W':>8}{'rain E':>8}{'soil W':>8}{'soil E':>8}   wetter by rain / by soil")
         agree = 0
         for e in ev:
@@ -299,6 +337,12 @@ def report() -> int:
                 by_rain = "W" if e["rain_w"] > e["rain_e"] else "E" if e["rain_e"] > e["rain_w"] else "="
                 agree += by_rain == by_soil
                 tag = f"{by_rain} / {by_soil}"
+            elif e["kind"] == "melt":
+                lw, le = e["melt"]
+                parts = [f"{side} -{v:.0f}" for side, v in (("W", lw), ("E", le)) if v is not None and v >= MELT_MM]
+                tag = "melt: snowpack " + ", ".join(parts) + " mm"
+            elif e["kind"] == "unexplained":
+                tag = "no rain, no melt"
             else:
                 tag = "melt?"
             print(f"  {e['day']:%Y-%m-%d}  {e['rain_w']:>7.0f} {e['rain_e']:>7.0f} "

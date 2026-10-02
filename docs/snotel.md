@@ -24,7 +24,8 @@ up again.
 Data comes from the NRCS Air and Water Database REST API
 (`https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/`, endpoints
 `stations` and `data`): daily `PRCP` (precipitation increment), `PREC`
-(water-year accumulation) and `TAVG` (mean air temperature), converted to
+(water-year accumulation), `TAVG` (mean air temperature) and `WTEQ` (snow
+water equivalent at midnight, used to test the transect's snowmelt events), converted to
 millimetres and °C using the units SNOTEL states. Daily values run
 midnight to midnight Pacific Standard Time.
 
