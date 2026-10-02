@@ -67,6 +67,11 @@ def report() -> int:
 
     now = datetime.now(timezone.utc)
     todo: list[str] = []
+    # Checks that could not run. A check that didn't run must never be
+    # reported as passing: a missing DuckDB once made this print "all
+    # reporting stations fine" and "nothing needs doing" with two
+    # stations failing.
+    unavailable: list[str] = []
 
     print(f"\n  secchi status  {now.astimezone():%Y-%m-%d %H:%M}\n")
 
@@ -107,6 +112,7 @@ def report() -> int:
                             f"undated rows inflate the totals")
     except Exception as exc:                         # never fail the report
         print(f"    (store summary unavailable: {exc})")
+        unavailable.append("store summary")
 
     # ---- stations, by the map's rule -----------------------------------
     inventory = load_latest_json(RAW_DIR, "inventory")
@@ -155,6 +161,7 @@ def report() -> int:
             health = (analyse(batt) or {}).get("stations", {})
     except Exception as exc:
         print(f"    (battery check unavailable: {exc})")
+        unavailable.append("battery check")
 
     for site, v in sorted(dark.items(), key=lambda kv: kv[1]["last"] or now):
         since = v["last"].astimezone() if v["last"] else None
@@ -187,7 +194,10 @@ def report() -> int:
         elif h.get("weeks_to_floor") is not None and h["weeks_to_floor"] < 12:
             warn.append(f"{site:16} {h['weeks_to_floor']:.0f} weeks to the 11.5 V floor at this rate")
     print("\n  BATTERIES")
-    print("    " + ("\n    ".join(warn) if warn else "all reporting stations fine"))
+    if "battery check" in unavailable:
+        print("    COULD NOT CHECK - see above")
+    else:
+        print("    " + ("\n    ".join(warn) if warn else "all reporting stations fine"))
 
     # ---- lake sondes ---------------------------------------------------
     lake = [r for r in rows if r["category"] == "lake"]
@@ -234,6 +244,7 @@ def report() -> int:
     # ---- impossible readings ------------------------------------------
     print("\n  IMPOSSIBLE READINGS")
     try:
+        import duckdb  # noqa: F401  — the scan quietly returns nothing without it
         from secchi.sources.watch import load_baseline, scan_readings
         base = load_baseline(REFERENCE_DIR) or {}
         known = base.get("quality_reported")
@@ -248,9 +259,13 @@ def report() -> int:
         else:
             print("    none new since the watcher's last report")
     except Exception as exc:
-        print(f"    (scan unavailable: {exc})")
+        print(f"    COULD NOT CHECK ({exc})")
+        unavailable.append("impossible-reading scan")
 
     # ---- to do ---------------------------------------------------------
+    if unavailable:
+        todo.insert(0, f"some checks could not run ({', '.join(unavailable)}) - "
+                       f"run `pixi install`, then `pixi run status` again")
     print("\n  TO DO")
     for t in dict.fromkeys(todo):
         print(f"    - {t}")
