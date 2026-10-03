@@ -156,6 +156,56 @@ jobs:
             echo "HMS smoke ingest ok"
           fi
 
+      # ---- Beyond TEON, added 2026-10-02 -----------------------------------
+      # All after the reset, all non-fatal, all surfaced. TERC and the Snow
+      # Lab write to data/reference/ (small CSVs, rewritten only when their
+      # content changes); airports write to data/processed/asos_observations.
+      # The Snow Lab's daily SNOTEL data comes with the SNOTEL step above.
+
+      - name: Refresh TERC Secchi record
+        id: terc
+        # Two small index queries a run; downloads only when TERC publishes
+        # a new revision of edi.1340 (a few times a year).
+        continue-on-error: true
+        run: pixi run terc
+
+      - name: Refresh Snow Lab climatology
+        id: cssl
+        # 147 rows that change once a year: once a day is plenty, at 13 UTC,
+        # or whenever the file is missing.
+        continue-on-error: true
+        run: |
+          if [ -f data/reference/cssl_snow_climatology.csv ] && [ "$(date -u +%H)" != "13" ]; then
+            echo "Snow Lab climatology: not the daily hour, skipped"
+          else
+            pixi run cssl
+          fi
+
+      - name: Ingest airport weather
+        id: asos
+        # Self-limiting: does nothing once yesterday is held, and IEM being
+        # over capacity is a warning (exit 0), retried next run.
+        continue-on-error: true
+        run: pixi run asos
+
+      - name: Surface a Beyond-TEON failure
+        if: always()
+        run: |
+          for s in "terc:TERC Secchi" "cssl:Snow Lab climatology" "asos:airport weather"; do
+            id="${s%%:*}"; name="${s#*:}"
+            case "$id" in
+              terc) outcome="${{ steps.terc.outcome }}" ;;
+              cssl) outcome="${{ steps.cssl.outcome }}" ;;
+              asos) outcome="${{ steps.asos.outcome }}" ;;
+            esac
+            if [ "$outcome" = "failure" ]; then
+              echo "::warning title=${name} failed::pixi run ${id} exited non-zero. TEON data still collected."
+              echo "### ${name} failed (\`pixi run ${id}\`)" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "${name}: ${outcome}"
+            fi
+          done
+
       - name: Prune the raw buffer
         run: pixi run prune
 

@@ -495,10 +495,13 @@ def report_catchment_join() -> int:
 
 
 def discover_terc() -> int:
-    """Report what the TERC Secchi data package contains."""
-    from secchi.sources.terc import TercClient
-    with TercClient() as client:
-        return client.discover()
+    """Report what the TERC Secchi data package contains.
+
+    Through DataONE: EDI's own API (TercClient.discover) answers 403 to
+    datacenter addresses. The PASTA client is kept for a machine it serves.
+    """
+    from secchi.sources.terc import discover_dataone
+    return discover_dataone()
 
 
 def probe_camera_assets() -> int:
@@ -650,6 +653,40 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
             smoke_ingest(since=_date.fromisoformat(since) if since else None)
         except SmokeShapeError as exc:
             log.error("HMS file not as expected: %s", exc)
+            return 1
+        return 0
+    if mode == "terc":
+        # TERC's Secchi record via DataONE; downloads only when TERC has
+        # published a revision newer than the one held. --force refetches.
+        from secchi.sources.terc import TercShapeError, ingest as terc_ingest
+        try:
+            terc_ingest(force=force)
+        except TercShapeError as exc:
+            log.error("TERC Secchi package not as expected: %s", exc)
+            return 1
+        return 0
+    if mode == "cssl":
+        # The Snow Lab's snowfall climatology since 1879. Its daily data
+        # comes with `snotel` (station "Css Lab").
+        from secchi.sources.cssl import CsslShapeError, ingest as cssl_ingest
+        try:
+            cssl_ingest()
+        except CsslShapeError as exc:
+            log.error("Snow Lab climatology not as expected: %s", exc)
+            return 1
+        return 0
+    if mode == "asos":
+        # Daily weather at the South Lake Tahoe and Truckee airports.
+        # IEM being busy is a warning and exit 0: next run catches up.
+        from datetime import date as _date
+        from secchi.sources.asos import AsosBusyError, AsosShapeError, ingest as asos_ingest
+        try:
+            asos_ingest(since=_date.fromisoformat(since) if since else None)
+        except AsosBusyError as exc:
+            log.warning("ASOS: IEM busy, will retry next run (%s)", exc)
+            return 0
+        except AsosShapeError as exc:
+            log.error("ASOS reply not as expected: %s", exc)
             return 1
         return 0
     if mode == "smoke-lake":
@@ -870,7 +907,8 @@ def main(argv: list[str] | None = None) -> int:
                  "record-shape", "drop-undated", "purge-hidden",
                  "repair-sensor-types", "oxygen-check", "transect", "glenbrook",
                  "station-health",
-                 "terc-discover", "prune", "snotel", "transect-rain", "smoke", "smoke-lake"),
+                 "terc-discover", "prune", "snotel", "transect-rain", "smoke", "smoke-lake",
+                 "terc", "cssl", "asos"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -913,6 +951,10 @@ def main(argv: list[str] | None = None) -> int:
             "catchment-join: assign each station to its catchment and report "
             "the attributes that would attach. "
             "terc-discover: report what the TERC Secchi data package holds. "
+            "terc: refresh TERC's Secchi record (data/reference/terc_secchi.csv) "
+            "when a new revision is published. "
+            "cssl: refresh the Snow Lab's snowfall climatology since 1879. "
+            "asos: daily weather at the South Lake Tahoe and Truckee airports. "
             "prune: delete raw snapshots past the retention window."
         ),
     )
@@ -956,7 +998,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--since",
         metavar="YYYY-MM-DD",
-        help="For `snotel` and `smoke`: first day to fetch (default: the last "
+        help="For `snotel`, `smoke` and `asos`: first day to fetch (default: the last "
              "few weeks, or 2024-06-01 on a first run).",
     )
     parser.add_argument(

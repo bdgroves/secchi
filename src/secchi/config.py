@@ -824,6 +824,23 @@ EDI_API_BASE = "https://pasta.lternet.edu/package"
 EDI_SCOPE = "edi"
 EDI_SECCHI_IDENTIFIER = 1340
 
+# DataONE mirrors EDI. PASTA refuses datacenter IPs (403, GitHub's runners
+# included); DataONE's search index and resolver don't. See sources/terc.py.
+DATAONE_CN = "https://cn.dataone.org/cn/v2"
+
+# The two Secchi stations, keyed by the file each lives in. Coordinates are
+# from the package's own metadata (edi.1340.17, boundingCoordinates). The
+# metadata describes both as "Index station (LTP)" — a copy-paste slip in
+# the second one; MLTP is the mid-lake station, 450 m of water.
+TERC_SECCHI_STATIONS: dict[str, dict] = {
+    "Secchi_LTP.csv": {"code": "LTP", "name": "TERC index station",
+                       "lat": 39.0972, "lng": -120.155, "depth_m": 165,
+                       "since": "1967-07-28"},
+    "Secchi_MLTP.csv": {"code": "MLTP", "name": "TERC mid-lake station",
+                        "lat": 39.1417, "lng": -120.0153, "depth_m": 450,
+                        "since": "1980-04-29"},
+}
+
 # Known reference points from TERC's published reports, for sanity-checking
 # whatever the API returns. If a parsed annual mean disagrees with these by
 # more than a foot or so, the parse is wrong, not the report.

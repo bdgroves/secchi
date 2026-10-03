@@ -197,6 +197,12 @@ catchment-join = "python -m secchi.ingest --mode catchment-join"
 # any clarity model, and this command is how we replace guessed column
 # names with actual ones.
 terc-discover = "python -m secchi.ingest --mode terc-discover"
+# Beyond TEON, added 2026-10-02. TERC's Secchi record (refreshes only when
+# TERC publishes a new revision; --force refetches), the Snow Lab's snowfall
+# climatology since 1879, and daily weather at two airports.
+terc = "python -m secchi.ingest --mode terc"
+cssl = "python -m secchi.ingest --mode cssl"
+asos = "python -m secchi.ingest --mode asos"
 transform  = "python -m secchi.transform"
 # Delete raw snapshots past RAW_RETENTION_DAYS. Safe only because
 # transform accumulates into data/processed/*.parquet, which is the

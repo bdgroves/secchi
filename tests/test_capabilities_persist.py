@@ -45,6 +45,8 @@ REQUIRED_MODES = {
     "repair-sensor-types",
     # Monitoring
     "watch",
+    # Beyond TEON (added 2026-10-02)
+    "snotel", "smoke", "smoke-lake", "transect-rain", "terc", "cssl", "asos",
 }
 
 # Modules that must remain importable, with a callable each. Catches a
@@ -75,6 +77,13 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.sources.reference", "reproject_geojson"),
     ("secchi.sources.simplify", "simplify_collection"),
     ("secchi.sources.watch", "diff_state"),
+    ("secchi.sources.terc", "ingest"),
+    ("secchi.sources.terc", "parse_csv"),
+    ("secchi.sources.terc", "candidate_pids"),
+    ("secchi.sources.cssl", "ingest"),
+    ("secchi.sources.cssl", "parse"),
+    ("secchi.sources.asos", "ingest"),
+    ("secchi.sources.asos", "parse"),
 ]
 
 # Functions that must remain in transform.py. write_web_watersheds was
@@ -89,6 +98,11 @@ REQUIRED_TRANSFORM_FUNCTIONS = {
     "build_upload_alert",
     "build_backlog_entries",
     "_stages_for",
+    # Beyond TEON, added 2026-10-02
+    "build_rain",
+    "build_clarity",
+    "build_snowlab",
+    "build_airports",
 }
 
 

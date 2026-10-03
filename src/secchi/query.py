@@ -183,6 +183,7 @@ def connect(verbose: bool = False):
                          ("usgs", "usgs_observations"),
                          ("snotel", "snotel_observations"),
                          ("smoke", "smoke_observations"),
+                         ("asos", "asos_observations"),
                          ("assets", "assets")):
         g = _glob(folder)
         if g is None:
@@ -216,6 +217,19 @@ def connect(verbose: bool = False):
         con.execute(f"CREATE TABLE {name} AS SELECT * FROM _{name}_df")
         con.unregister(f"_{name}_df")
         made.append(name)
+
+    # Reference records kept as one CSV each (small, versioned upstream).
+    # terc: every Secchi reading, both stations, local time, metres.
+    # cssl_climo: the Snow Lab's snowfall and peak depth per water year.
+    for view, fname in (("terc", "terc_secchi.csv"),
+                        ("cssl_climo", "cssl_snow_climatology.csv")):
+        path = REFERENCE_DIR / fname
+        if not path.exists():
+            skipped.append(f"{view} (run `pixi run {'terc' if view == 'terc' else 'cssl'}`)")
+            continue
+        con.execute(f"CREATE VIEW {view} AS SELECT * FROM read_csv_auto("
+                    f"'{path.as_posix()}', header = true)")
+        made.append(view)
 
     if verbose:
         # Only what's MISSING — the shell lists the tables itself.

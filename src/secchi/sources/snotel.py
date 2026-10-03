@@ -59,13 +59,20 @@ SNOTEL_ROOT = "https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/"
 STATION_CACHE = REFERENCE_DIR / "snotel_stations.json"
 SNOTEL_STATES = ("CA", "NV")
 
-# name -> which shore it represents
+# name -> which shore it represents. "snowlab" is UC Berkeley's Central
+# Sierra Snow Laboratory at Donner Summit (SNOTEL 428, listed as "Css
+# Lab"): outside the basin, on the wet side of the crest, so it is context
+# only and never one of the transect's shores. Readers that want the
+# shores filter on "west"/"east".
 SNOTEL_STATIONS: dict[str, str] = {
     "Ward Creek #3": "west",
     "Rubicon #2": "west",
     "Marlette Lake": "east",
+    "Css Lab": "snowlab",
 }
-ELEMENTS = ("PRCP", "PREC", "TAVG", "WTEQ")
+SHORE_SIDES = ("west", "east")
+# SNWD (snow depth) was added with the Snow Lab, 2026-10-02.
+ELEMENTS = ("PRCP", "PREC", "TAVG", "WTEQ", "SNWD")
 
 # The first day of TEON's record; a first run fetches from here.
 FIRST_DAY = date(2024, 6, 1)
@@ -121,9 +128,16 @@ def resolve_stations(client, refresh: bool = False) -> dict[str, dict]:
             "elevation_ft": st.get("elevation"),
             "side": side,
         }
+    # A context station (the Snow Lab) going missing must not take the
+    # shores down with it: warn and carry on without it. A shore missing
+    # is still fatal — the transect means nothing with one side gone.
+    context_missing = [n for n in missing if SNOTEL_STATIONS[n] not in SHORE_SIDES]
+    if context_missing:
+        log.warning("SNOTEL context station(s) not found by name, skipped: %s", context_missing)
+        missing = [n for n in missing if n not in context_missing]
     if missing:
         near = sorted(n for n in by_name
-                      if any(w in n for w in ("ward", "rubicon", "marlette")))
+                      if any(w in n for w in ("ward", "rubicon", "marlette", "css", "snow lab")))
         raise SnotelShapeError(
             f"stations not found by name: {missing}. Similar names in SNOTEL's "
             f"list: {near}. Adjust SNOTEL_STATIONS in sources/snotel.py.")
@@ -156,6 +170,13 @@ def _convert(element: str, unit: str | None, value: float) -> tuple[float, str]:
         if u in ("mm", "millimeter", "millimeters"):
             return value, "mm"
         raise SnotelShapeError(f"{element}: unexpected unit {unit!r}")
+    if element == "SNWD":
+        # Snow depth, in centimetres: the unit the Snow Lab's own record uses.
+        if u in ("in", "inch", "inches"):
+            return value * 2.54, "cm"
+        if u in ("cm", "centimeter", "centimeters"):
+            return value, "cm"
+        raise SnotelShapeError(f"SNWD: unexpected unit {unit!r}")
     if element == "TAVG":
         if u in ("degf", "f", "degrees fahrenheit", "fahrenheit"):
             return (value - 32) * 5 / 9, "degC"
@@ -210,10 +231,25 @@ def ingest(since: date | None = None, refresh_stations: bool = False) -> int:
     import httpx
     from secchi.store import write_partitions
 
+    from secchi.store import read_partitions
+
     root = PROCESSED_DIR / "snotel_observations"
     if since is None:
-        since = (date.today() - timedelta(days=30)
-                 if any(root.rglob("part*.parquet")) else FIRST_DAY)
+        since = date.today() - timedelta(days=30)
+        held = read_partitions(root, columns=["site", "variable"]) if root.exists() else None
+        # A station or element with nothing stored yet (a first run, or one
+        # just added, like the Snow Lab and SNWD) needs the whole record,
+        # not the usual last few weeks — otherwise it starts the day it
+        # was added and nobody notices the missing history.
+        if held is None or held.empty:
+            since = FIRST_DAY
+        else:
+            new_sites = set(SNOTEL_STATIONS) - set(held["site"])
+            new_vars = set(ELEMENTS) - set(held["variable"])
+            if new_sites or new_vars:
+                log.info("SNOTEL: nothing held for %s; fetching from %s",
+                         sorted(new_sites | new_vars), FIRST_DAY)
+                since = FIRST_DAY
     end = date.today()
 
     with httpx.Client(timeout=90, follow_redirects=True) as client:

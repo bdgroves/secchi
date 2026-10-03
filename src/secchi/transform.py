@@ -1717,6 +1717,10 @@ def build_rain(df_long: pd.DataFrame) -> dict | None:
 
     stations = []
     for name, m in meta.items():
+        # The shores only. The Snow Lab (side "snowlab") is SNOTEL too, but
+        # it is off the transect and has its own panel.
+        if m.get("side") not in ("west", "east"):
+            continue
         sp = prcp[prcp["site"] == name]
         if sp.empty:
             continue
@@ -1765,6 +1769,163 @@ def build_rain(df_long: pd.DataFrame) -> dict | None:
             "transect": transect}
 
 
+def build_clarity() -> dict | None:
+    """TERC's Secchi record for the "Beyond TEON" clarity panel and map.
+
+    Reads ``data/reference/terc_secchi.csv`` (``pixi run terc``). Yearly
+    means are a plain average of the index station's readings — secchi's
+    own figure, which differs from TERC's published annual averages by up
+    to ~1.5 ft — and the payload carries both so the page can say so.
+    """
+    from secchi.config import (TERC_ANNUAL_MEANS_FT, TERC_CLARITY_TARGET_M,
+                               TERC_SECCHI_STATIONS)
+    from secchi.sources.terc import PACKAGE_STATE, SECCHI_CSV
+
+    if not SECCHI_CSV.exists():
+        return None
+    df = pd.read_csv(SECCHI_CSV, parse_dates=["date_time_local"])
+    if df.empty:
+        return None
+    state = json.loads(PACKAGE_STATE.read_text(encoding="utf-8")) if PACKAGE_STATE.exists() else {}
+
+    stations = []
+    for meta in TERC_SECCHI_STATIONS.values():
+        sub = df[df["station"] == meta["code"]].sort_values("date_time_local")
+        if sub.empty:
+            continue
+        last = sub.iloc[-1]
+        stations.append({
+            "code": meta["code"], "name": meta["name"], "lat": meta["lat"], "lng": meta["lng"],
+            "water_depth_m": meta["depth_m"], "readings": int(len(sub)),
+            "first_day": sub["date_time_local"].iloc[0].strftime("%Y-%m-%d"),
+            "last_day": last["date_time_local"].strftime("%Y-%m-%d"),
+            "last_m": round(float(last["secchi_m"]), 2),
+        })
+
+    ltp = df[df["station"] == "LTP"]
+    yearly = (ltp.groupby(ltp["date_time_local"].dt.year)["secchi_m"]
+                 .agg(["mean", "count"]).reset_index())
+    years = [{"year": int(r["date_time_local"]), "mean_m": round(float(r["mean"]), 2),
+              "n": int(r["count"])} for _, r in yearly.iterrows()]
+
+    recent = (df.sort_values("date_time_local").tail(10).iloc[::-1])
+    return {
+        "package": "edi.1340",
+        "revision": (state.get("revisions_used") or {}).get("Secchi_LTP.csv"),
+        "newest_day": df["date_time_local"].max().strftime("%Y-%m-%d"),
+        "target_m": TERC_CLARITY_TARGET_M,
+        "stations": stations,
+        "years": years,
+        "published_ft": {str(k): v for k, v in sorted(TERC_ANNUAL_MEANS_FT.items())},
+        "recent": [{"day": r["date_time_local"].strftime("%Y-%m-%d"), "station": r["station"],
+                    "m": round(float(r["secchi_m"]), 2),
+                    "viewing": None if pd.isna(r["viewing_condition"]) else int(r["viewing_condition"])}
+                   for _, r in recent.iterrows()],
+    }
+
+
+def build_snowlab() -> dict | None:
+    """The Central Sierra Snow Lab: today's snowpack (SNOTEL 428) and its record since 1879."""
+    from secchi.sources.cssl import CLIMO_CSV, LOCATION, SNOTEL_NAME
+    from secchi.store import read_partitions
+
+    out: dict = {"name": "Central Sierra Snow Lab", **LOCATION}
+    root = PROCESSED_DIR / "snotel_observations"
+    snow = read_partitions(root) if root.exists() else pd.DataFrame()
+    if not snow.empty:
+        snow = snow[snow["site"] == SNOTEL_NAME]
+    if not snow.empty:
+        snow = snow.assign(day=pd.to_datetime(snow["timestamp"]).dt.normalize())
+        newest = snow["day"].max()
+        wy_start = pd.Timestamp(newest.year if newest.month >= 10 else newest.year - 1, 10, 1)
+
+        def last(var):
+            s = snow[snow["variable"] == var].sort_values("day")
+            return None if s.empty else round(float(s["value"].iloc[-1]), 1)
+
+        prcp = snow[snow["variable"] == "PRCP"]
+        swe = snow[snow["variable"] == "WTEQ"].sort_values("day")
+        # Daily SWE across the last two water years, for a small season chart.
+        swe2 = swe[swe["day"] >= wy_start - pd.DateOffset(years=1)]
+        out["daily"] = {
+            "newest_day": newest.date().isoformat(),
+            "water_year_start": wy_start.date().isoformat(),
+            "swe_mm": last("WTEQ"), "depth_cm": last("SNWD"), "tavg_c": last("TAVG"),
+            "last7_mm": round(float(prcp[prcp["day"] > newest - pd.Timedelta(days=7)]["value"].sum()), 1),
+            "water_year_mm": round(float(prcp[prcp["day"] >= wy_start]["value"].sum()), 1),
+            "peak_swe_last_wy_mm": (round(float(swe[(swe["day"] < wy_start)
+                                                     & (swe["day"] >= wy_start - pd.DateOffset(years=1))]
+                                                ["value"].max()), 1)
+                                    if not swe.empty else None),
+            "swe_series": {"days": [d.date().isoformat() for d in swe2["day"]],
+                           "mm": [round(float(v), 1) for v in swe2["value"]]},
+        }
+
+    if CLIMO_CSV.exists():
+        climo = pd.read_csv(CLIMO_CSV)
+        have = climo.dropna(subset=["snowfall_cm"])
+        if not have.empty:
+            latest = have.iloc[-1]
+            ranked = have["snowfall_cm"].rank(ascending=False, method="min")
+            out["climatology"] = {
+                "first_year": int(climo["water_year"].min()),
+                "last_year": int(climo["water_year"].max()),
+                "years": [int(y) for y in climo["water_year"]],
+                "snowfall_cm": [None if pd.isna(v) else round(float(v)) for v in climo["snowfall_cm"]],
+                "max_depth_cm": [None if pd.isna(v) else round(float(v)) for v in climo["max_depth_cm"]],
+                "mean_snowfall_cm": round(float(have["snowfall_cm"].mean())),
+                "latest": {"year": int(latest["water_year"]), "snowfall_cm": round(float(latest["snowfall_cm"])),
+                           "rank": int(ranked.iloc[-1]), "of": int(len(have))},
+            }
+    return out if ("daily" in out or "climatology" in out) else None
+
+
+def build_airports() -> dict | None:
+    """Daily weather at the South Lake Tahoe and Truckee airports (ASOS, via IEM)."""
+    from secchi.sources.asos import ROOT, STATIONS
+    from secchi.store import read_partitions
+
+    df = read_partitions(ROOT) if ROOT.exists() else pd.DataFrame()
+    if df.empty:
+        return None
+    df = df.assign(day=pd.to_datetime(df["timestamp"]).dt.normalize())
+    newest = df["day"].max()
+    wy_start = pd.Timestamp(newest.year if newest.month >= 10 else newest.year - 1, 10, 1)
+    stations = []
+    for code, meta in STATIONS.items():
+        sub = df[df["site"] == meta["name"]]
+        if sub.empty:
+            continue
+        last = sub["day"].max()
+        day = sub[sub["day"] == last].set_index("variable")["value"]
+        p = sub[sub["variable"] == "PRCP"]
+        stations.append({
+            "code": code, "name": meta["name"], "lat": meta["lat"], "lng": meta["lng"],
+            "elevation_m": meta["elevation_m"], "in_basin": meta["in_basin"],
+            "last_day": last.date().isoformat(),
+            "tmax_c": None if "TMAX" not in day else round(float(day["TMAX"]), 1),
+            "tmin_c": None if "TMIN" not in day else round(float(day["TMIN"]), 1),
+            "last7_mm": round(float(p[p["day"] > last - pd.Timedelta(days=7)]["value"].sum()), 1),
+            "water_year_mm": round(float(p[p["day"] >= wy_start]["value"].sum()), 1),
+            "last_water_year_mm": round(float(p[(p["day"] >= wy_start - pd.DateOffset(years=1))
+                                                & (p["day"] < wy_start)]["value"].sum()), 1),
+        })
+    if not stations:
+        return None
+    return {"stations": stations, "newest_day": newest.date().isoformat(),
+            "water_year_start": wy_start.date().isoformat(),
+            "last_water_year": f"{wy_start.year - 1}-{wy_start.year}"}
+
+
+def _beyond(builder) -> dict | None:
+    """Run one Beyond-TEON builder; a failure there must never cost the TEON page."""
+    try:
+        return builder()
+    except Exception as exc:                 # noqa: BLE001 - context is optional
+        log.warning("%s unavailable: %s", builder.__name__, exc)
+        return None
+
+
 def build_dashboard_snapshot(df_wide: pd.DataFrame,
                              df_long: pd.DataFrame,
                              df_assets: pd.DataFrame,
@@ -1802,6 +1963,10 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "upload_alert": build_upload_alert(manual_cards, inv, df_long,
                                            sorted(disabled)),
         "rain": build_rain(df_long),
+        # Beyond TEON, added 2026-10-02. Each isolated: see _beyond.
+        "clarity": _beyond(build_clarity),
+        "snowlab": _beyond(build_snowlab),
+        "airports": _beyond(build_airports),
     }
 
 

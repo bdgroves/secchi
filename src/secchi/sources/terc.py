@@ -27,23 +27,50 @@ API shape (from the PASTA+ Data Package Manager docs):
 environment cannot reach pasta.lternet.edu. ``discover()`` is the
 verification step: it walks revisions and entities and prints what it
 finds, so the first real run tells us the shape rather than assuming it.
+
+**Update, 2026-10-02 — what a real run found.** PASTA answers 403 to
+GitHub's runners as well as to this workspace, whatever the User-Agent,
+and EDI's portal sits behind a Cloudflare challenge. So the PASTA client
+below never gets data. EDI is a DataONE member node, though, and DataONE
+mirrors every package: its search index lists each file of ``edi.1340``
+by revision, and ``cn.dataone.org/cn/v2/resolve/<pid>`` redirects to EDI's
+own DataONE endpoint (``gmn.edirepository.org``), which serves the bytes.
+``ingest()`` uses that route. What arrived:
+
+    Secchi_LTP.csv    index station, 1967-07-28 onward (~1,640 readings)
+    Secchi_MLTP.csv   mid-lake station, 1980-04-29 onward (~570)
+
+    columns  Date_Time_Local (PST/PDT, sometimes a bare date), Secchi (m,
+             the mean of the next two), Secchi_Disappear, Secchi_Reappear
+             (m), Viewing_Condition (0-7, subjective), Lake_Condition (text)
+
+Licence CC BY 4.0. Creator in the metadata: Shohei Watanabe, UC Davis
+TERC; cite the EDI package edi.1340 at the revision used. The published
+record lags the boat by months, and new revisions appear a few times a
+year (revision 17 was published 2026-08-17).
 """
 
 from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
+import re
 from typing import Any
 
 import httpx
 
 from secchi.config import (
+    DATAONE_CN,
     EDI_API_BASE,
     EDI_SCOPE,
     EDI_SECCHI_IDENTIFIER,
     HTTP_TIMEOUT_SECONDS,
+    REFERENCE_DIR,
+    TERC_ANNUAL_MEANS_FT,
     TERC_SECCHI_PRECISION_M,
+    TERC_SECCHI_STATIONS,
     USER_AGENT,
 )
 
@@ -303,6 +330,214 @@ class TercClient:
             "reading_count": len(out_rows),
             "readings": out_rows,
         }
+
+
+# ---------------------------------------------------------------------------
+# The working route: DataONE's mirror of the package
+# ---------------------------------------------------------------------------
+
+SECCHI_CSV = REFERENCE_DIR / "terc_secchi.csv"
+PACKAGE_STATE = REFERENCE_DIR / "terc_package.json"
+EXPECTED_COLUMNS = ["Date_Time_Local", "Secchi", "Secchi_Disappear",
+                    "Secchi_Reappear", "Viewing_Condition", "Lake_Condition"]
+OUT_COLUMNS = ["station", "date_time_local", "secchi_m", "disappear_m",
+               "reappear_m", "viewing_condition", "lake_condition"]
+_PID_RE = re.compile(r"/edi/1340/(\d+)/([0-9a-f]+)$")
+
+
+class TercShapeError(RuntimeError):
+    """The package or a file in it doesn't look as it did when this was written."""
+
+
+def _client() -> httpx.Client:
+    # The resolver redirects to an EDI host, so present the same browser
+    # User-Agent as TercClient does (see the note there).
+    return httpx.Client(timeout=HTTP_TIMEOUT_SECONDS, follow_redirects=True,
+                        headers={"User-Agent": BROWSER_USER_AGENT, "Accept": "*/*"})
+
+
+def _solr(client: httpx.Client, q: str, fl: str) -> list[dict]:
+    resp = client.get(f"{DATAONE_CN}/query/solr/",
+                      params={"q": q, "fl": fl, "rows": 1000, "wt": "json"})
+    resp.raise_for_status()
+    try:
+        return resp.json()["response"]["docs"]
+    except (ValueError, KeyError) as exc:
+        raise TercShapeError(f"DataONE search: unexpected reply {resp.text[:300]!r}") from exc
+
+
+def candidate_pids(data_docs: list[dict], meta_docs: list[dict]) -> tuple[int, dict[str, list[str]]]:
+    """The newest revision, and for each file the identifiers to try, newest first.
+
+    The search index can list a revision's metadata before its data files,
+    and an entity keeps the same hash across revisions, so identifiers for
+    revisions newer than any indexed data file are built from that hash
+    and tried first. Older revisions are tried only down to the newest one
+    the index already lists.
+    """
+    meta_revs = [int(m.group(1)) for d in meta_docs
+                 if (m := re.search(r"/edi/1340/(\d+)$", d.get("id", "")))]
+    by_file: dict[str, dict[int, str]] = {}
+    for d in data_docs:
+        m = _PID_RE.search(d.get("id", ""))
+        name = d.get("fileName")
+        if m and name in TERC_SECCHI_STATIONS:
+            by_file.setdefault(name, {})[int(m.group(1))] = m.group(2)
+    missing = sorted(set(TERC_SECCHI_STATIONS) - set(by_file))
+    if missing:
+        raise TercShapeError(f"DataONE lists no {missing} for edi.1340; found "
+                             f"{sorted({d.get('fileName') for d in data_docs})}")
+    newest = max(meta_revs + [r for revs in by_file.values() for r in revs])
+    out = {}
+    for name, revs in by_file.items():
+        entity = revs[max(revs)]
+        out[name] = [f"https://pasta.lternet.edu/package/data/eml/edi/1340/{r}/{revs.get(r, entity)}"
+                     for r in range(newest, max(revs) - 1, -1)]
+    return newest, out
+
+
+def _download(client: httpx.Client, pid: str) -> str | None:
+    """One file's text via the DataONE resolver, or None if this revision isn't served."""
+    from urllib.parse import quote
+    resp = client.get(f"{DATAONE_CN}/resolve/{quote(pid, safe='')}")
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    text = resp.content.decode("utf-8", "replace")
+    if not text.lstrip().startswith('"Date_Time_Local"'):
+        raise TercShapeError(f"{pid}: not the Secchi CSV; starts {text[:200]!r}")
+    return text
+
+
+def parse_csv(text: str, file_name: str):
+    """One station's file as tidy rows. Strict about columns; lenient about bad cells.
+
+    A reading whose date can't be parsed is dropped and counted rather
+    than stored undated; an unexpected header stops everything, since a
+    renamed column would otherwise store plausible-looking garbage.
+    """
+    import pandas as pd
+
+    df = pd.read_csv(io.StringIO(text), dtype=str, keep_default_na=False)
+    if list(df.columns) != EXPECTED_COLUMNS:
+        raise TercShapeError(f"{file_name}: columns {list(df.columns)}, expected {EXPECTED_COLUMNS}")
+    ts = pd.to_datetime(df["Date_Time_Local"].str.strip(), format="mixed", errors="coerce")
+    bad = int(ts.isna().sum())
+    if bad:
+        log.warning("%s: %d reading(s) with an unreadable date dropped", file_name, bad)
+    num = {c: pd.to_numeric(df[c].str.strip(), errors="coerce")
+           for c in ("Secchi", "Secchi_Disappear", "Secchi_Reappear", "Viewing_Condition")}
+    out = pd.DataFrame({
+        "station": TERC_SECCHI_STATIONS[file_name]["code"],
+        "date_time_local": ts,
+        "secchi_m": num["Secchi"],
+        "disappear_m": num["Secchi_Disappear"],
+        "reappear_m": num["Secchi_Reappear"],
+        "viewing_condition": num["Viewing_Condition"],
+        "lake_condition": df["Lake_Condition"].str.strip(),
+    })
+    out = out[out["date_time_local"].notna() & out["secchi_m"].notna()]
+    # Sanity: Lake Tahoe's Secchi depth has ranged roughly 10-45 m since 1967.
+    # Anything outside 1-60 m is a unit or column error, not a clear day.
+    wild = out[(out["secchi_m"] < 1) | (out["secchi_m"] > 60)]
+    if len(wild):
+        raise TercShapeError(f"{file_name}: {len(wild)} depth(s) outside 1-60 m, e.g. "
+                             f"{wild.head(3).to_dict('records')}")
+    return out
+
+
+def annual_means_ft(df) -> dict[int, float]:
+    """Plain yearly mean of the index station's readings, in feet.
+
+    secchi's own calculation, for a sanity check. It is NOT TERC's
+    published annual average, which it differs from by up to ~1.5 ft
+    (see docs/terc-secchi.md); the page says so wherever it shows one.
+    """
+    ltp = df[df["station"] == "LTP"]
+    g = ltp.groupby(ltp["date_time_local"].dt.year)["secchi_m"].mean()
+    return {int(y): round(float(v) * 3.280839895, 1) for y, v in g.items()}
+
+
+def ingest(force: bool = False) -> int:
+    """Refresh ``data/reference/terc_secchi.csv`` when TERC publishes a new revision.
+
+    Each run asks DataONE's index which revision is newest (two small
+    queries). Nothing is downloaded unless that is newer than the one held,
+    and the CSV is rewritten only if its content changed, so a quiet run
+    commits nothing.
+    """
+    import pandas as pd
+
+    state = json.loads(PACKAGE_STATE.read_text(encoding="utf-8")) if PACKAGE_STATE.exists() else {}
+    with _client() as client:
+        data_docs = _solr(client, "fileName:Secchi_* AND id:*edi/1340/*", "id,fileName")
+        meta_docs = _solr(client, "formatType:METADATA AND id:*edi/1340/*", "id")
+        newest, candidates = candidate_pids(data_docs, meta_docs)
+        if not force and SECCHI_CSV.exists() and state.get("newest_seen") == newest:
+            log.info("TERC Secchi: revision %d already held, nothing to fetch", newest)
+            return 0
+
+        frames, used = [], {}
+        for name, pids in candidates.items():
+            for pid in pids:
+                text = _download(client, pid)
+                if text is not None:
+                    frames.append(parse_csv(text, name))
+                    used[name] = int(_PID_RE.search(pid).group(1))
+                    break
+            else:
+                raise TercShapeError(f"{name}: no revision could be downloaded ({pids[0]} …)")
+
+    df = (pd.concat(frames, ignore_index=True)
+            .drop_duplicates(subset=["station", "date_time_local"], keep="first")
+            .sort_values(["station", "date_time_local"], kind="mergesort")
+            .reset_index(drop=True))
+    csv_text = df.assign(date_time_local=df["date_time_local"].dt.strftime("%Y-%m-%d %H:%M"))[OUT_COLUMNS] \
+                 .to_csv(index=False, lineterminator="\n")
+
+    SECCHI_CSV.parent.mkdir(parents=True, exist_ok=True)
+    old = SECCHI_CSV.read_text(encoding="utf-8") if SECCHI_CSV.exists() else None
+    if csv_text != old:
+        tmp = SECCHI_CSV.with_suffix(".csv.tmp")
+        tmp.write_text(csv_text, encoding="utf-8")
+        tmp.replace(SECCHI_CSV)
+    new_state = {"package": "edi.1340", "newest_seen": newest, "revisions_used": used,
+                 "readings": {s["code"]: int((df["station"] == s["code"]).sum())
+                              for s in TERC_SECCHI_STATIONS.values()},
+                 "newest_reading": df["date_time_local"].max().strftime("%Y-%m-%d")}
+    if new_state != state:
+        PACKAGE_STATE.write_text(json.dumps(new_state, indent=2) + "\n", encoding="utf-8")
+
+    means = annual_means_ft(df)
+    for year, published in sorted(TERC_ANNUAL_MEANS_FT.items()):
+        if year in means:
+            log.info("TERC %d: plain mean of index-station readings %.1f ft; TERC published %.1f ft",
+                     year, means[year], published)
+    log.info("TERC Secchi: %s readings (%s), revisions %s, newest %s%s",
+             f"{len(df):,}", ", ".join(f"{k} {v:,}" for k, v in new_state["readings"].items()),
+             used, new_state["newest_reading"], "" if csv_text != old else "; unchanged")
+    return len(df)
+
+
+def discover_dataone() -> int:
+    """Report what DataONE serves for edi.1340. Writes nothing."""
+    with _client() as client:
+        data_docs = _solr(client, "fileName:Secchi_* AND id:*edi/1340/*", "id,fileName")
+        meta_docs = _solr(client, "formatType:METADATA AND id:*edi/1340/*", "id")
+        newest, candidates = candidate_pids(data_docs, meta_docs)
+        print(f"\n  edi.1340 via DataONE: newest revision {newest}\n")
+        for name, pids in candidates.items():
+            for pid in pids:
+                text = _download(client, pid)
+                if text is None:
+                    print(f"  {name}: revision {_PID_RE.search(pid).group(1)} not served yet")
+                    continue
+                df = parse_csv(text, name)
+                print(f"  {name}: revision {_PID_RE.search(pid).group(1)}, {len(df):,} readings, "
+                      f"{df['date_time_local'].min():%Y-%m-%d} to {df['date_time_local'].max():%Y-%m-%d}")
+                break
+    print()
+    return 0
 
 
 # ---------------------------------------------------------------------------
