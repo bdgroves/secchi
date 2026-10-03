@@ -1,5 +1,5 @@
 name: probe-extras
-# Throwaway: reproduce an ingest on a runner and commit its output here.
+# Throwaway: read-only probes, output committed back to this branch.
 on:
   push:
     branches: ["probe/**"]
@@ -10,13 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -q httpx pandas pyarrow python-dateutil pydantic tzdata duckdb && pip install -q -e .
-      - run: |
-          mkdir -p probe_out
-          (python -m secchi.ingest --mode snotel; echo "exit $?") > probe_out/snotel.txt 2>&1 || true
-          (python -m secchi.ingest --mode snotel; echo "exit $?") > probe_out/snotel_again.txt 2>&1 || true
+      - run: mkdir -p probe_out && (python3 probe_extras.py > probe_out/_log.txt 2>&1 || true)
       - run: |
           git config user.name "secchi-bot"; git config user.email "secchi-bot@users.noreply.github.com"
-          git add -f probe_out && git commit -m "probe: output" && git push -f origin HEAD:probe/extras
+          git add -f probe_out && git commit -m "probe: output" && git push origin HEAD:probe/extras
