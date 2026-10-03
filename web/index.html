@@ -1274,7 +1274,7 @@
     const path = full.map((y, i) => `${i ? "L" : "M"}${X(y.year).toFixed(1)},${Y(y.mean_m).toFixed(1)}`).join("");
     const pts = ys.map((y, i) => {
       const p = partial(y, i);
-      const label = `${y.year}${p ? (i === 0 ? " (from July)" : " so far") : ""}: ${lenPlain(y.mean_m, "m")}, mean of ${y.n} readings`;
+      const label = `${y.year}${p ? (i === 0 ? " (from July)" : " so far") : ""}: ${lenPlain(y.mean_m, "m")}, from ${y.n} readings in ${y.months ?? "?"} months`;
       return `<circle class="pt${y.year === y1 ? " recent" : ""}" cx="${X(y.year).toFixed(1)}" cy="${Y(y.mean_m).toFixed(1)}"
                 r="${p ? 2.2 : 2.6}" ${p ? 'style="fill:var(--paper);stroke:var(--wet);stroke-width:1.2"' : ""}><title>${esc(label)}</title></circle>`;
     }).join("");
@@ -1286,7 +1286,7 @@
     }
     return `
       <figure class="ctx-chart" style="margin-left:0;margin-right:0">
-        <div class="ctx-key">Yearly mean at the index station, ${esc(units)} below the surface — deeper is clearer</div>
+        <div class="ctx-key">Yearly mean at the index station (each month averaged first), ${esc(units)} below the surface — deeper is clearer</div>
         <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Yearly mean Secchi depth at TERC's index station, ${y0} to ${y1}">
           ${grid}<path class="series" d="${path}"/>${pts}${target}
         </svg>
@@ -1323,11 +1323,12 @@
     }).filter(Boolean);
     const worst = diffs.reduce((a, d) => Math.abs(d.mine - d.pub) > Math.abs((a && a.mine - a.pub) || 0) ? d : a, null);
     const caveat = worst ? `
-      <p class="aside">The yearly values are a plain average of the index station's readings,
-        worked out here. TERC calculates its official annual average differently, and the two
-        differ by up to ${fmt1.format(Math.abs(worst.mine - worst.pub))} ft: for ${esc(worst.yr)},
-        TERC reports ${fmt1.format(worst.pub)} ft against ${fmt1.format(worst.mine)} ft here. Quote
-        TERC's figures for anything official.</p>` : "";
+      <p class="aside">Each year here averages the index station's months first, then the year:
+        that reproduces TERC's published 2022 and 2024 figures within a fifth of a foot. Other
+        years can differ because the published record lacks some readings TERC used (it has
+        none for May 2025), by up to ${fmt1.format(Math.abs(worst.mine - worst.pub))} ft: for
+        ${esc(worst.yr)}, TERC reports ${fmt1.format(worst.pub)} ft against
+        ${fmt1.format(worst.mine)} ft here. Quote TERC's figures for anything official.</p>` : "";
 
     const rows = (c.recent || []).map(r => `
       <tr><td>${esc(fmtDay(r.day))}</td><td>${esc((byCode[r.station] || {}).name || r.station)}</td>

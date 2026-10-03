@@ -841,13 +841,18 @@ TERC_SECCHI_STATIONS: dict[str, dict] = {
                         "since": "1980-04-29"},
 }
 
-# Known reference points from TERC's published reports, for sanity-checking
-# whatever the API returns. If a parsed annual mean disagrees with these by
-# more than a foot or so, the parse is wrong, not the report.
+# Known reference points from TERC's published reports, for sanity-checking.
+# 2022 (71.7 ft, 21.9 m) is from TERC's State of the Lake 2023 clarity
+# chapter and 2024 (19.0 m, 27 readings) from its 2024 Clarity Report; 2023
+# and 2025 were here before and their source isn't recorded. The mean of
+# monthly means at the index station reproduces 2022 and 2024 (within
+# 0.2 ft); 2023 and 2025 differ where the published record lacks readings
+# TERC used (see sources/terc.yearly_means_m).
 TERC_ANNUAL_MEANS_FT: dict[int, float] = {
     2025: 69.2,
     2024: 62.3,
     2023: 68.2,
+    2022: 71.7,
 }
 
 # The regulatory target: annual average Secchi depth, being the mean of

@@ -1802,11 +1802,9 @@ def build_clarity() -> dict | None:
             "last_m": round(float(last["secchi_m"]), 2),
         })
 
-    ltp = df[df["station"] == "LTP"]
-    yearly = (ltp.groupby(ltp["date_time_local"].dt.year)["secchi_m"]
-                 .agg(["mean", "count"]).reset_index())
-    years = [{"year": int(r["date_time_local"]), "mean_m": round(float(r["mean"]), 2),
-              "n": int(r["count"])} for _, r in yearly.iterrows()]
+    from secchi.sources.terc import yearly_means_m
+    years = [{"year": int(r.year), "mean_m": round(float(r.mean_m), 2), "n": int(r.n),
+              "months": int(r.months)} for r in yearly_means_m(df).itertuples()]
 
     recent = (df.sort_values("date_time_local").tail(10).iloc[::-1])
     return {

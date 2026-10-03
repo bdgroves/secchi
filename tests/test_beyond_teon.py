@@ -203,3 +203,14 @@ def test_airports_never_store_the_day_in_progress():
     finally:
         A.fetch = real
     assert got and all(e == date(2026, 10, 2) for _, e in got)
+
+
+def test_yearly_means_average_months_first():
+    # Three readings in January at 30 m and one in July at 10 m: averaging
+    # months first gives 20 m, a plain mean would give 25 m.
+    d = pd.DataFrame({"station": "LTP", "secchi_m": [30.0, 30.0, 30.0, 10.0],
+                      "date_time_local": pd.to_datetime(["2024-01-03", "2024-01-15", "2024-01-29",
+                                                         "2024-07-10"])})
+    y = T.yearly_means_m(d).set_index("year")
+    assert y.loc[2024, "mean_m"] == pytest.approx(20.0)
+    assert y.loc[2024, "n"] == 4 and y.loc[2024, "months"] == 2

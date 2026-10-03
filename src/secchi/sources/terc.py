@@ -446,16 +446,33 @@ def parse_csv(text: str, file_name: str):
     return out
 
 
-def annual_means_ft(df) -> dict[int, float]:
-    """Plain yearly mean of the index station's readings, in feet.
+def yearly_means_m(df):
+    """Yearly mean Secchi depth at the index station: average each month, then the year.
 
-    secchi's own calculation, for a sanity check. It is NOT TERC's
-    published annual average, which it differs from by up to ~1.5 ft
-    (see docs/terc-secchi.md); the page says so wherever it shows one.
+    TERC doesn't publish its formula. Tested 2026-10-02 against its
+    published figures, the mean of monthly means reproduces 2022 exactly
+    (21.90 m) and 2024 within 0.06 m (TERC: 19.0 m, 27 readings); a plain
+    mean of readings misses every year by 0.1-0.4 m. Where it still
+    differs (2023 -0.26 m, 2025 +0.65 m) the published file is missing
+    readings TERC used: 25 for 2024 against TERC's 27, and 2025 has no
+    May reading at all. See docs/beyond-teon.md.
+
+    Returns a frame: year, mean_m, months, n (readings).
     """
+    import pandas as pd
+
     ltp = df[df["station"] == "LTP"]
-    g = ltp.groupby(ltp["date_time_local"].dt.year)["secchi_m"].mean()
-    return {int(y): round(float(v) * 3.280839895, 1) for y, v in g.items()}
+    t = ltp["date_time_local"]
+    monthly = ltp.groupby([t.dt.year.rename("year"), t.dt.month.rename("month")])["secchi_m"].mean()
+    by_year = monthly.groupby(level="year")
+    return pd.DataFrame({"mean_m": by_year.mean(), "months": by_year.size(),
+                         "n": ltp.groupby(t.dt.year.rename("year")).size()}).reset_index()
+
+
+def annual_means_ft(df) -> dict[int, float]:
+    """``yearly_means_m`` in feet, the unit TERC reports in."""
+    y = yearly_means_m(df)
+    return {int(r.year): round(float(r.mean_m) * 3.280839895, 1) for r in y.itertuples()}
 
 
 def ingest(force: bool = False) -> int:
