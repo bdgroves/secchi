@@ -1881,7 +1881,7 @@ def build_snowlab() -> dict | None:
 
 
 def build_airports() -> dict | None:
-    """Daily weather at the South Lake Tahoe and Truckee airports (ASOS, via IEM)."""
+    """Daily weather at the South Lake Tahoe and Truckee airports (NWS, via NOAA ACIS)."""
     from secchi.sources.asos import ROOT, STATIONS
     from secchi.store import read_partitions
 

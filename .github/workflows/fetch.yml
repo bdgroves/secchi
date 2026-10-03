@@ -183,7 +183,7 @@ jobs:
 
       - name: Ingest airport weather
         id: asos
-        # Self-limiting: does nothing once yesterday is held, and IEM being
+        # Self-limiting: does nothing once yesterday is held, and ACIS being
         # over capacity is a warning (exit 0), retried next run.
         continue-on-error: true
         run: pixi run asos

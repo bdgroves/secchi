@@ -677,18 +677,18 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
         return 0
     if mode == "asos":
         # Daily weather at the South Lake Tahoe and Truckee airports.
-        # IEM being busy is a warning and exit 0: next run catches up.
+        # The service being down is a warning and exit 0: next run catches up.
         from datetime import date as _date
         from secchi.sources.asos import AsosBusyError, AsosShapeError, ingest as asos_ingest
         try:
             asos_ingest(since=_date.fromisoformat(since) if since else None)
         except AsosBusyError as exc:
-            log.warning("ASOS: IEM busy, will retry next run (%s)", exc)
+            log.warning("ASOS: service busy, will retry next run (%s)", exc)
             # Exit 0 so the run isn't marked failed for a busy server, but
             # say so on the Actions page: a soft failure must not be silent.
             import os
             if os.environ.get("GITHUB_ACTIONS"):
-                print(f"::warning title=Airport weather skipped::IEM busy ({exc}); "
+                print(f"::warning title=Airport weather skipped::service busy ({exc}); "
                       f"next run will catch up.")
             return 0
         except AsosShapeError as exc:

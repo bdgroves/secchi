@@ -157,23 +157,49 @@ def test_a_missing_snow_lab_does_not_stop_the_shores(tmp_path, monkeypatch):
 
 # --- Airports --------------------------------------------------------------------
 
-def test_asos_parses_iem_daily_to_metric():
-    df = A.parse((FX / "iem_daily_tvl.csv").read_text(encoding="utf-8"))
-    assert set(df["site"]) == {"South Lake Tahoe airport"}
-    day = df[df["timestamp"] == pd.Timestamp("2026-09-20")].set_index("variable")["value"]
-    assert day["TMAX"] == pytest.approx((72 - 32) * 5 / 9, abs=1e-3)
+def test_airports_parse_acis_to_metric_and_keep_missing_missing():
+    tvl = A.parse(json.loads((FX / "acis_tvl.json").read_text()), "TVL")
+    assert set(tvl["site"]) == {"South Lake Tahoe airport"}
+    day = tvl[tvl["timestamp"] == pd.Timestamp("2024-06-01")].set_index("variable")["value"]
+    assert day["TMAX"] == pytest.approx((73 - 32) * 5 / 9, abs=1e-3)
     assert day["PRCP"] == 0.0
-    assert df["uuid"].is_unique
+    # South Lake Tahoe doesn't report snow ("M"): absent, not zero.
+    assert "SNOW" not in set(tvl["variable"])
+    # A day that is all "M" stores nothing at all.
+    assert not (tvl["timestamp"] == pd.Timestamp("2026-10-02")).any()
+    assert tvl["uuid"].is_unique
 
 
-def test_asos_blank_stays_missing_and_trace_is_not_zero():
-    text = ("station,day,max_temp_f,min_temp_f,precip_in\n"
-            "TVL,2026-01-01,30,,T\n")
-    df = A.parse(text).set_index("variable")["value"]
-    assert "TMIN" not in df.index
-    assert 0 < df["PRCP"] < 0.01
+def test_truckee_reports_snow_in_centimetres():
+    trk = A.parse(json.loads((FX / "acis_trk.json").read_text()), "TRK")
+    assert {"SNOW", "SNWD"} <= set(trk["variable"])
+    assert set(trk.loc[trk["variable"].isin(["SNOW", "SNWD"]), "unit"]) == {"cm"}
 
 
-def test_asos_unexpected_reply_fails_loudly():
+def test_a_trace_is_not_zero():
+    df = A.parse({"data": [["2026-01-01", "30", "20", "T", "T", "1"]]}, "TRK").set_index("variable")["value"]
+    assert 0 < df["PRCP"] < 0.1 and 0 < df["SNOW"] < 0.1
+    assert df["SNWD"] == pytest.approx(2.54)
+
+
+@pytest.mark.parametrize("bad", [
+    {"error": "Unknown sid"},
+    {"data": [["2026-01-01", "30"]]},
+    {"data": [["2026-01-01", "30", "20", "lots", "0", "0"]]},
+])
+def test_an_unexpected_airport_reply_fails_loudly(bad):
     with pytest.raises(A.AsosShapeError):
-        A.parse("ERROR: server over capacity, please try later\n")
+        A.parse(bad, "TVL")
+
+
+def test_airports_never_store_the_day_in_progress():
+    from datetime import date
+    # ingest asks for days up to yesterday at the lake, whatever UTC says.
+    today = date(2026, 10, 3)
+    got = []
+    A.fetch, real = (lambda code, b, e: got.append((b, e)) or {"data": []}), A.fetch
+    try:
+        A.ingest(since=date(2026, 10, 1), today=today)
+    finally:
+        A.fetch = real
+    assert got and all(e == date(2026, 10, 2) for _, e in got)
