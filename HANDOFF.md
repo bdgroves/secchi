@@ -1,6 +1,7 @@
 # Handoff: picking up secchi
 
-*Rewritten 2026-10-02, at the end of a long working session. Read this first
+*Rewritten 2026-10-02, at the end of a long working session; updated the
+same evening with the Beyond TEON additions and a battery correction. Read this first
 on a new computer or in a new Claude chat. `README.md` is the public story;
 this is the working state. `CLAUDE.md` holds the coding rules and is loaded
 automatically by Claude Code.*
@@ -17,8 +18,8 @@ automatically by Claude Code.*
 6. **The rainfall transect is answered, as a range**: west/east precipitation 2.16× at the best-matched gauge, 1.20× at the other; soil wetting 2.32×.
 7. **Snowmelt is measured**: of 8 no-rain wetting events, 5 coincide with a shrinking snowpack and 3 remain unexplained.
 8. **Wildfire smoke left no detectable mark** on the lake in 2025–26, once each month's trend is removed (114 smoke days since June 2024; no lake data for summer 2024).
-9. **42 tests pass.** Run them before every commit.
-10. **Next**: wait for TEON; watch the batteries; then reliable hourly downloads, the tree sensors, or Glenbrook 2's wetness (section 7).
+9. **Beyond TEON grew** (2026-10-02): TERC's Secchi record since 1967, the UC Berkeley Snow Lab (SNOTEL 428 daily, snowfall since 1879) and NWS airport weather at South Lake Tahoe and Truckee. All context, collapsed, beneath TEON's pins on the map. `docs/beyond-teon.md`.
+10. **61 tests pass.** Run them before every commit. **Next**: wait for TEON; watch the batteries; then reliable hourly downloads, the tree sensors, or Glenbrook 2's wetness (section 7).
 
 ---
 
@@ -48,7 +49,7 @@ git clone git@github.com:bdgroves/secchi.git
 cd secchi
 pixi install
 pixi run setup-git            # once per clone: the parquet merge driver
-pixi run -e dev test          # 42 tests, all should pass
+pixi run -e dev test          # 61 tests, all should pass
 pixi run transform            # builds web/assets, which aren't committed
 pixi run status               # one screen: is anything wrong?
 pixi run serve                # http://localhost:8000
@@ -84,13 +85,17 @@ automatically. Prefer it for the next stretch.
 
 | Workflow | When | What |
 |---|---|---|
-| `fetch.yml` | hourly at :41 | ingest TEON and USGS; reset `data/processed/` to the remote's copy; transform; ingest SNOTEL and HMS smoke; prune; commit |
+| `fetch.yml` | hourly at :41 | ingest TEON and USGS; reset `data/processed/` to the remote's copy; transform; ingest SNOTEL (incl. the Snow Lab), HMS smoke, TERC Secchi (only on a new revision), the Snow Lab climatology (13 UTC) and airport weather (once a day); prune; commit |
 | `pages.yml` | hourly at :25 | ingest, transform, deploy the page; commits nothing |
 | `watch.yml` | every 6 hours | diff TEON's inventory against a baseline, scan for impossible readings, open GitHub issues |
 
-- **SNOTEL and smoke run after the reset**, because they write straight into
-  `data/processed/` with no raw buffer; before it, the reset would wipe them.
-  Each failure is non-fatal and shows as a warning on the run.
+- **SNOTEL, smoke and the Beyond-TEON steps run after the reset**, because
+  they write straight into `data/processed/` (or `data/reference/`) with no
+  raw buffer; before it, the reset would wipe them. Each failure is
+  non-fatal and shows as a warning on the run. Step "conclusions" on those
+  steps always read success (continue-on-error); the warnings are the
+  signal. One SNOTEL step failed transiently on 2026-10-03 02:22 UTC and
+  ran clean twice minutes later.
 - **GitHub runs scheduled jobs late and drops some**, even off the top of the
   hour: snapshots land every few hours. No data is lost (each run reaches back
   days), but the page can be hours behind. `status` shows the snapshot's age.
@@ -107,8 +112,10 @@ data/processed/
     assets/source=teon/...                                       camera frames
     snotel_observations/source=snotel/...                        PRCP, PREC, TAVG, WTEQ
     smoke_observations/source=hms/...                            hms_analysed, smoke_density, hms_polygons
+    asos_observations/source=asos/...                            TMAX, TMIN, PRCP, SNOW, SNWD (airports)
 data/raw/          7-day rolling buffer of raw API snapshots (committed, pruned)
-data/reference/    watershed polygons, watch_baseline.json, snotel_stations.json
+data/reference/    watershed polygons, watch_baseline.json, snotel_stations.json,
+                   terc_secchi.csv + terc_package.json, cssl_snow_climatology.csv
 web/assets/        built by `transform`, not committed
 ```
 
@@ -116,8 +123,8 @@ web/assets/        built by `transform`, not committed
   day** (`part.d01.parquet` …). Rows are written in a fixed order and unchanged
   files are never rewritten, so a quiet run commits nothing and a normal one
   adds a few hundred KB (it was ~5.5 MB). Every reader globs `part*.parquet`.
-- **Query tables**: `obs`, `usgs`, `snotel`, `smoke`, `assets`, `stations`,
-  `catchments`. `obs` columns: `uuid, source, site, sensor_type, timestamp,
+- **Query tables**: `obs`, `usgs`, `snotel`, `smoke`, `asos`, `assets`,
+  `stations`, `catchments`, plus `terc` and `cssl_climo` (reference CSVs). `obs` columns: `uuid, source, site, sensor_type, timestamp,
   lat, lng, variable, value`, plus `year` and `month`.
 - **Timestamps are naive Pacific local.** `Soil_VWC` is a fraction (0.034 = 3.4 %).
 - **Four naming conventions**: EXO `Temp`/`Do_mgL`/`Chl_a`, MiniDOT
@@ -144,6 +151,9 @@ web/assets/        built by `transform`, not committed
 | `transect` / `transect-rain` | west vs east soil; the same against SNOTEL precipitation and snowpack |
 | `snotel [--since YYYY-MM-DD]` | daily SNOTEL data; `--force` re-looks-up the stations by name |
 | `smoke [--since …]` / `smoke-lake` | NOAA HMS smoke over the lake; smoky vs clear days |
+| `terc [--force]` / `terc-discover` | TERC's Secchi record via DataONE; what the package holds |
+| `cssl` | the Snow Lab's snowfall per water year since 1879 |
+| `asos [--since …]` | daily weather at the South Lake Tahoe and Truckee airports |
 | `oxygen-check` | which atmosphere each instrument references |
 | `glenbrook` | why Glenbrook 2 is wet (unexplained) |
 | `record-shape` | field names per sensor type; run before any new backfill |
@@ -212,8 +222,16 @@ web/assets/        built by `transform`, not committed
 - **Then**, Kylie Papson (Tahoe Institute communications) and the UNR alumni
   association; then social posts (drafts in the old chat: celebrate the open
   data, don't list faults).
-- **Batteries**: no swap or repair seen yet. Glenbrook 1 ~11.36 V, Glenbrook 5
-  peaks ~12.1 V and falling. `status` will show a repair or a swap.
+- **Batteries**: no *repair* seen yet. **Correction (2026-10-02 evening):**
+  this note originally said no swap had been seen either, which was wrong.
+  **Glenbrook 5's battery was swapped on 2026-09-09** (overnight low 10.90 V,
+  next reading 12.52 V); it hasn't charged since, its daily peak sliding
+  ~0.02 V/day to ~12.07 V by 10-01, which is why `station-health` shows a
+  rising 30-day trend. `status` tests charging, not replacement, so it
+  didn't say so; a swap looks like an overnight jump of half a volt or more
+  in the daily voltages. Glenbrook 1: no swap, ~0.01 V/day down, 11.35 V on
+  10-02. Glenbrook 5's overnight lows have wandered since 09-29 (11.55 to
+  11.84 V) while its peaks keep sliding: likely the first cold nights.
 - **Stations**: Blackwood 2 quiet since 2026-09-25 on a healthy battery.
   Blackwood 3 and Meeks (hand-collected EXO) last read 2026-07-09, due a
   visit. Lakeside's HOBO silent since 2025-08-08. A boat crew serviced all six
@@ -233,7 +251,12 @@ web/assets/        built by `transform`, not committed
 5. **Smoke, as the seasons accumulate**: rerun `smoke-lake` after each summer;
    the oxygen lead needs more episodes.
 6. **Housekeeping**: `pixi lock` once locally (silences a CI warning); close
-   old watcher issues; TERC's Secchi record (EDI `edi.1340`) for clarity.
+   old watcher issues; teach `status` to report a battery swap, not just
+   "not charging" (the Glenbrook 5 swap went unnoticed for three weeks).
+7. **TERC's Secchi record is in** (Beyond TEON). Open: how TERC computes its
+   annual average (plain means differ by up to ~1.5 ft; `docs/beyond-teon.md`),
+   and setting TEON's lake sondes against it as the overlap grows (TEON's
+   lake record starts 2025).
 
 ---
 
@@ -259,8 +282,12 @@ The README's mistakes table lists 45; these rules came out of them.
 - **The page**: each section renders in its own `try`; calendar days go through
   `fmtDay`, never `new Date("YYYY-MM-DD")`; catchment shading uses one ramp
   (pale low, deep high) over the 5th–95th percentile; non-TEON data lives under
-  "Beyond TEON". Test with jsdom, the real Leaflet inlined, in
-  `TZ=America/Los_Angeles`.
+  "Beyond TEON", and its map markers go in the `context` pane (beneath
+  TEON's) and stay out of the initial `fitBounds`. Test with jsdom, the
+  real Leaflet inlined, in `TZ=America/Los_Angeles`; jsdom needs
+  `SVGSVGElement.prototype.createSVGRect` stubbed or Leaflet finds no
+  renderer for the transect line, and inline Leaflet with a *function*
+  replacement (its code contains `$` sequences).
 - **Honour TEON's visibility flag, and fail closed.**
 
 ---
@@ -274,6 +301,7 @@ The README's mistakes table lists 45; these rules came out of them.
 | `docs/station-outages.md` | outages and batteries; what backfills and what doesn't |
 | `docs/snotel.md` | SNOTEL, the rainfall transect and snowmelt |
 | `docs/smoke.md` | the HMS smoke record and the smoke-vs-lake null |
+| `docs/beyond-teon.md` | TERC Secchi, the Snow Lab, the airports: routes, what failed, caveats |
 | `docs/transect-result.md`, `transect-method.md` | the soil transect and its corrections |
 | `docs/glenbrook-result.md` | Glenbrook 2, unexplained |
 | `docs/storage.md`, `parquet-conflicts.md` | the store layout, growth fixes, merge driver |

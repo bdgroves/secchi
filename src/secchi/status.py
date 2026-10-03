@@ -262,6 +262,38 @@ def report() -> int:
         print(f"    COULD NOT CHECK ({exc})")
         unavailable.append("impossible-reading scan")
 
+    # ---- beyond TEON ------------------------------------------------------
+    # Context sources, read from the page's own data so the dates here are
+    # the dates the page shows. A daily source more than 4 days behind
+    # usually means its step is failing quietly; the Actions run says why.
+    print("\n  BEYOND TEON")
+    try:
+        snap = json.loads((WEB_DIR / "assets" / "latest.json").read_text(encoding="utf-8"))
+        today = datetime.now(timezone.utc).date()
+
+        def behind(day: str | None) -> int | None:
+            return None if not day else (today - datetime.fromisoformat(day).date()).days
+
+        rain = snap.get("rain") or {}
+        lab = (snap.get("snowlab") or {}).get("daily") or {}
+        air = snap.get("airports") or {}
+        clar = snap.get("clarity") or {}
+        climo = (snap.get("snowlab") or {}).get("climatology") or {}
+        for label, day in (("SNOTEL (shores)", rain.get("newest_day")),
+                           ("Snow Lab, SNOTEL 428", lab.get("newest_day")),
+                           ("airports", air.get("newest_day"))):
+            d = behind(day)
+            flag = "" if d is not None and d <= 4 else "   <- behind"
+            print(f"    {label:22} newest day {day or 'none'}{flag}")
+            if flag:
+                todo.append(f"{label} is behind - check the fetch run's warnings on GitHub")
+        print(f"    {'TERC Secchi':22} edi.1340 rev {clar.get('revision') or '?'}, "
+              f"newest reading {clar.get('newest_day') or 'none'} (published a few times a year)")
+        print(f"    {'Snow Lab record':22} water years {climo.get('first_year', '?')}-"
+              f"{climo.get('last_year', '?')}")
+    except Exception as exc:
+        print(f"    COULD NOT CHECK ({exc}) - run `pixi run transform`")
+
     # ---- to do ---------------------------------------------------------
     if unavailable:
         todo.insert(0, f"some checks could not run ({', '.join(unavailable)}) - "

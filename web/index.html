@@ -215,6 +215,33 @@
   .tlabel { font-size: 0.75rem; color: var(--muted); padding: 0 0.5rem;
             text-align: center; white-space: nowrap; }
 
+  /* Beyond TEON panels (clarity, Snow Lab, airports). Neutral slate so
+     they read as context and never compete with TEON's live colours. */
+  .ctx-chart { margin-top: 1.25rem; border: 1px solid var(--line); padding: 0.85rem 1rem 0.5rem; }
+  .ctx-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .ctx-chart text { fill: var(--muted); font-size: 11px; }
+  .ctx-chart .tick { stroke: var(--line); }
+  .ctx-chart .axis { stroke: var(--slate); stroke-width: 1; }
+  .ctx-chart .series { fill: none; stroke: var(--wet); stroke-width: 1.5; stroke-linejoin: round; }
+  .ctx-chart .pt { fill: var(--wet); }
+  .ctx-chart .pt.recent { fill: var(--ink); }
+  .ctx-chart .target { stroke: var(--ember); stroke-width: 1.25; stroke-dasharray: 5 4; }
+  .ctx-chart .target-label { fill: var(--ember); }
+  .ctx-chart .bar { fill: var(--slate); opacity: 0.55; }
+  .ctx-chart .bar.latest { fill: var(--wet); opacity: 1; }
+  .ctx-chart .mean { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; }
+  .ctx-chart .area { fill: var(--wet); opacity: 0.18; stroke: none; }
+  .ctx-chart figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
+  .ctx-key { font-size: 0.82rem; color: var(--slate); margin-bottom: 0.4rem; }
+  .ctx-table { margin-top: 1.25rem; overflow-x: auto; }
+  .ctx-table table { border-collapse: collapse; width: 100%; font-size: 0.85rem;
+                     font-variant-numeric: tabular-nums; }
+  .ctx-table th, .ctx-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line);
+                                 text-align: right; white-space: nowrap; }
+  .ctx-table th { font-weight: 500; color: var(--muted); font-size: 0.78rem; }
+  .ctx-table th:first-child, .ctx-table td:first-child { text-align: left; }
+  .ctx-source { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; }
+
   .placeholder-card { padding: 1.25rem; border: 1px solid var(--line);
                       color: var(--muted); font-size: 0.9rem; }
   .placeholder-card strong { color: var(--slate); font-weight: 600; }
@@ -346,6 +373,16 @@
              filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.45)); }
   .pin-tri path { fill: var(--slate); stroke: var(--paper); stroke-width: 2;
                   stroke-linejoin: round; }
+  /* Beyond TEON on the map, all in slate and drawn beneath TEON's pins.
+     A Secchi station is a Secchi disk: quarters, dark and light. An
+     airport is a small square. The Snow Lab is SNOTEL, so a triangle. */
+  .pin-secchi { display: block; overflow: visible;
+                filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.45)); }
+  .pin-secchi .q-dark { fill: var(--slate); }
+  .pin-secchi .q-light { fill: var(--paper); }
+  .pin-secchi .rim { fill: none; stroke: var(--slate); stroke-width: 1.5; }
+  .pin-airport { width: 11px; height: 11px; background: var(--slate);
+                 border: 2px solid var(--paper); box-shadow: 0 0 0 1px rgba(0,0,0,.3); }
 
   /* Watershed choropleth */
   .ws-control {
@@ -387,6 +424,10 @@
   .lg-gauge { background: var(--wet); border-radius: 1px; }
   .lg-snotel { background: var(--slate); border: 0; border-radius: 0;
                clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .lg-secchi { border: 1.5px solid var(--slate);
+               background: conic-gradient(var(--slate) 0 25%, var(--paper) 0 50%,
+                                          var(--slate) 0 75%, var(--paper) 0); }
+  .lg-airport { background: var(--slate); border-radius: 0; }
   .map-legend span[hidden] { display: none; }
   .lg-transect { width: 1.4rem; height: 0; border-top: 2px dashed var(--ember);
                  border-radius: 0; }
@@ -528,6 +569,8 @@
     <span><i class="lg-offline"></i>station offline</span>
     <span><i class="lg-gauge"></i>USGS gauge</span>
     <span><i class="lg-snotel"></i>SNOTEL gauge, outside TEON</span>
+    <span><i class="lg-secchi"></i>TERC Secchi station, outside TEON</span>
+    <span><i class="lg-airport"></i>airport weather, outside TEON</span>
     <span><i class="lg-transect"></i>transect</span>
   </div>
 
@@ -580,7 +623,26 @@
   <h2 id="beyond-teon">Beyond TEON</h2>
   <p>
     Context from outside the network, kept apart from TEON's own readings.
+    None of it feeds TEON's numbers above. On the map, these stations sit
+    beneath TEON's pins and can be switched off in the layer list.
   </p>
+  <details class="context">
+    <summary>
+      <span class="ctx-title">How clear the lake is, measured by hand</span>
+      <span class="ctx-sub" id="clarity-summary">UC Davis TERC's Secchi disk record, since 1967</span>
+    </summary>
+    <div class="ctx-body">
+    <p>
+      The measurement this site is named for. Since July 1967, UC Davis's
+      Tahoe Environmental Research Center has lowered a white disk from a
+      boat and recorded the depth at which it disappears, about every two
+      weeks at an index station off the west shore and, since 1980, at a
+      second station mid-lake. TEON's sondes measure what clouds the water;
+      this is how far you can actually see into it.
+    </p>
+      <section id="clarity" aria-label="Lake Tahoe Secchi depth record"></section>
+    </div>
+  </details>
   <details class="context">
     <summary>
       <span class="ctx-title">Where the rain fell</span>
@@ -595,6 +657,35 @@
       together, with the west shore above the line and the east below it.
     </p>
       <section id="rain" aria-label="Precipitation on the west and east shores"></section>
+    </div>
+  </details>
+  <details class="context">
+    <summary>
+      <span class="ctx-title">The Snow Lab at Donner Summit</span>
+      <span class="ctx-sub" id="snowlab-summary">UC Berkeley's snowpack record, since 1879</span>
+    </summary>
+    <div class="ctx-body">
+    <p>
+      UC Berkeley's Central Sierra Snow Laboratory sits at 2,100 m on the
+      crest about 30 km northwest of Homewood, outside the basin and on its
+      wet side. It is context for the season, not one of the transect's
+      shores: it typically gets far more snow than anywhere around the lake.
+    </p>
+      <section id="snowlab" aria-label="Central Sierra Snow Laboratory"></section>
+    </div>
+  </details>
+  <details class="context">
+    <summary>
+      <span class="ctx-title">Weather at the airports</span>
+      <span class="ctx-sub" id="airports-summary">South Lake Tahoe and Truckee, the National Weather Service's daily record</span>
+    </summary>
+    <div class="ctx-body">
+    <p>
+      The only weather records here taken at lake level. South Lake Tahoe's
+      airport is in the basin, about 5 km from the south shore; Truckee's is just
+      outside it, in Martis Valley, and also measures snowfall.
+    </p>
+      <section id="airports" aria-label="Airport weather"></section>
     </div>
   </details>
   <p class="aside" style="margin-top:1.25rem">
@@ -1103,6 +1194,281 @@
       <section class="cards" aria-label="SNOTEL stations">${cards}</section>${aside}`;
   }
 
+  // ---- Beyond TEON: clarity, the Snow Lab, airports ----------------------
+  // Each is called inside its own try in render(), like the rain panel.
+
+  /** A length in the active units, e.g. "21.1 m" or "69.2 ft". */
+  function lenPlain(v, unit, digits) {
+    if (v == null || !isFinite(v)) return "—";
+    const c = convert(v, unit);
+    const f = new Intl.NumberFormat(undefined, { maximumFractionDigits: digits ?? 1 });
+    return `${f.format(c.value)} ${c.units}`;
+  }
+  function lenText(v, unit, digits) {
+    const p = lenPlain(v, unit, digits);
+    if (p === "—") return p;
+    const i = p.lastIndexOf(" ");
+    return `${p.slice(0, i)}<span class="units">${p.slice(i + 1)}</span>`;
+  }
+  function tempText(c) {
+    if (c == null || !isFinite(c)) return "—";
+    const t = convert(c, "°C");
+    return `${fmtInt.format(Math.round(t.value))}<span class="units">${t.units}</span>`;
+  }
+  /** Round axis ticks in the active units for values 0..maxRaw of `unit`. */
+  function niceTicks(maxRaw, unit, count) {
+    const max = convert(maxRaw, unit).value;
+    const raw = max / (count || 4);
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || raw;
+    const out = [];
+    for (let v = 0; v <= max + 1e-9; v += step) out.push(v);
+    return { ticks: out, top: out[out.length - 1] < max ? out[out.length - 1] + step : out[out.length - 1] };
+  }
+
+  /** Yearly mean Secchi depth, depth increasing downward as on a profile. */
+  function clarityChart(c) {
+    const ys = (c.years || []).filter(y => y.mean_m != null);
+    if (ys.length < 2) return "";
+    const W = 720, L = 46, R = 8, T = 10, B = 24, H = 230;
+    const newest = c.newest_day || "";
+    const lastYear = +newest.slice(0, 4), lastMonth = +newest.slice(5, 7);
+    const partial = (y, i) => i === 0 || (y.year === lastYear && lastMonth < 12);
+    const y0 = ys[0].year, y1 = ys[ys.length - 1].year;
+    const maxM = Math.max(c.target_m || 0, ...ys.map(y => y.mean_m)) * 1.08;
+    const nt = niceTicks(maxM, "m", 4);
+    const top = nt.top;                                   // in display units
+    const X = (yr) => L + (yr - y0) / Math.max(1, y1 - y0) * (W - L - R);
+    const Y = (m) => T + convert(m, "m").value / top * (H - T - B);
+    let grid = "";
+    for (const v of nt.ticks) {
+      const y = T + v / top * (H - T - B);
+      grid += `<line class="tick" x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>
+               <text x="${L - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end">${fmtInt.format(v)}</text>`;
+    }
+    const units = convert(1, "m").units;
+    for (let yr = Math.ceil(y0 / 10) * 10; yr <= y1; yr += 10) {
+      grid += `<text x="${X(yr).toFixed(1)}" y="${H - 6}" text-anchor="middle">${yr}</text>`;
+    }
+    const full = ys.filter((y, i) => !partial(y, i));
+    const path = full.map((y, i) => `${i ? "L" : "M"}${X(y.year).toFixed(1)},${Y(y.mean_m).toFixed(1)}`).join("");
+    const pts = ys.map((y, i) => {
+      const p = partial(y, i);
+      const label = `${y.year}${p ? (i === 0 ? " (from July)" : " so far") : ""}: ${lenPlain(y.mean_m, "m")}, mean of ${y.n} readings`;
+      return `<circle class="pt${y.year === y1 ? " recent" : ""}" cx="${X(y.year).toFixed(1)}" cy="${Y(y.mean_m).toFixed(1)}"
+                r="${p ? 2.2 : 2.6}" ${p ? 'style="fill:var(--paper);stroke:var(--wet);stroke-width:1.2"' : ""}><title>${esc(label)}</title></circle>`;
+    }).join("");
+    let target = "";
+    if (c.target_m) {
+      const ty = Y(c.target_m).toFixed(1);
+      target = `<line class="target" x1="${L}" x2="${W - R}" y1="${ty}" y2="${ty}"/>
+        <text class="target-label" x="${W - R}" y="${(+ty - 5).toFixed(1)}" text-anchor="end">clarity target, ${esc(lenPlain(c.target_m, "m"))} (the 1967–71 average)</text>`;
+    }
+    return `
+      <figure class="ctx-chart" style="margin-left:0;margin-right:0">
+        <div class="ctx-key">Yearly mean at the index station, ${esc(units)} below the surface — deeper is clearer</div>
+        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Yearly mean Secchi depth at TERC's index station, ${y0} to ${y1}">
+          ${grid}<path class="series" d="${path}"/>${pts}${target}
+        </svg>
+        <figcaption>Hollow points are part-years. Hover a point for the year's mean and number of readings.</figcaption>
+      </figure>`;
+  }
+
+  function renderClarity(c) {
+    if (!c) {
+      return `<div class="placeholder-card">TERC's Secchi record isn't stored yet. Run
+        <code>pixi run terc</code> to fetch it.</div>`;
+    }
+    const byCode = Object.fromEntries((c.stations || []).map(s => [s.code, s]));
+    const cards = (c.stations || []).map(s => `
+      <article class="card">
+        <div class="card-head">
+          <h3 class="card-title">${esc(s.name)}</h3>
+          <span class="shore">${esc(s.code)}</span>
+        </div>
+        <p class="observed">Since ${esc(fmtDay(s.first_day))}, ${esc(lenPlain(s.water_depth_m, "m", 0))} of water.</p>
+        <div class="readings">
+          <div class="reading"><span class="reading-value">${lenText(s.last_m, "m")}</span>
+            <span class="reading-label">${esc(fmtDay(s.last_day))}</span></div>
+          <div class="reading"><span class="reading-value">${fmtInt.format(s.readings)}</span>
+            <span class="reading-label">readings</span></div>
+        </div>
+      </article>`).join("");
+
+    // How secchi's plain yearly means compare with TERC's published ones.
+    const ft = (m) => m * 3.280839895;
+    const diffs = Object.entries(c.published_ft || {}).map(([yr, pub]) => {
+      const mine = (c.years || []).find(y => String(y.year) === yr);
+      return mine ? { yr, pub, mine: ft(mine.mean_m) } : null;
+    }).filter(Boolean);
+    const worst = diffs.reduce((a, d) => Math.abs(d.mine - d.pub) > Math.abs((a && a.mine - a.pub) || 0) ? d : a, null);
+    const caveat = worst ? `
+      <p class="aside">The yearly values are a plain average of the index station's readings,
+        worked out here. TERC calculates its official annual average differently, and the two
+        differ by up to ${fmt1.format(Math.abs(worst.mine - worst.pub))} ft: for ${esc(worst.yr)},
+        TERC reports ${fmt1.format(worst.pub)} ft against ${fmt1.format(worst.mine)} ft here. Quote
+        TERC's figures for anything official.</p>` : "";
+
+    const rows = (c.recent || []).map(r => `
+      <tr><td>${esc(fmtDay(r.day))}</td><td>${esc((byCode[r.station] || {}).name || r.station)}</td>
+        <td>${lenPlain(r.m, "m")}</td><td>${r.viewing == null ? "—" : `${r.viewing} of 7`}</td></tr>`).join("");
+    const table = rows ? `
+      <h3 class="sub">Latest readings</h3>
+      <div class="ctx-table"><table>
+        <thead><tr><th>Day</th><th>Station</th><th>Secchi depth</th><th>Viewing</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : "";
+
+    return `${clarityChart(c)}${caveat}
+      <h3 class="sub">The stations</h3>
+      <section class="cards two" aria-label="TERC Secchi stations">${cards}</section>${table}
+      <p class="ctx-source">UC Davis Tahoe Environmental Research Center, published in the
+        Environmental Data Initiative repository as ${esc(c.package || "edi.1340")}${c.revision ? `
+        (revision ${esc(c.revision)})` : ""}, CC BY 4.0. Published a few times a year, so the newest
+        readings here are months behind the boat. Viewing condition is the observer's own 0–7 score.</p>`;
+  }
+
+  /** Snowfall per water year since 1879: one thin bar each, the latest highlighted. */
+  function snowChart(cl) {
+    const n = (cl && cl.years || []).length;
+    if (!n) return "";
+    const W = 720, L = 46, R = 8, T = 10, B = 24, H = 200;
+    const vals = cl.snowfall_cm;
+    const nt = niceTicks(Math.max(...vals.filter(v => v != null)), "cm", 4);
+    const top = nt.top;
+    const step = (W - L - R) / n, bw = Math.max(1, step * 0.72);
+    const Y = (cm) => H - B - convert(cm, "cm").value / top * (H - T - B);
+    let grid = "";
+    for (const v of nt.ticks) {
+      const y = H - B - v / top * (H - T - B);
+      grid += `<line class="tick" x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>
+               <text x="${L - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end">${fmtInt.format(v)}</text>`;
+    }
+    const latest = cl.latest && cl.latest.year;
+    let bars = "";
+    cl.years.forEach((yr, i) => {
+      if (yr % 20 === 0) grid += `<text x="${(L + i * step + step / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${yr}</text>`;
+      const v = vals[i];
+      if (v == null) return;                       // not measured: a gap, not a zero
+      const y = Y(v);
+      bars += `<rect class="bar${yr === latest ? " latest" : ""}" x="${(L + i * step + (step - bw) / 2).toFixed(1)}"
+        y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(H - B - y).toFixed(1)}"><title>Water year ${yr}: ${esc(lenPlain(v, "cm", 0))} of snow</title></rect>`;
+    });
+    const my = Y(cl.mean_snowfall_cm).toFixed(1);
+    const units = convert(1, "cm").units;
+    return `
+      <figure class="ctx-chart" style="margin-left:0;margin-right:0">
+        <div class="ctx-key">Snowfall each water year (October to September), ${esc(units)}; dashed line is the long-run average</div>
+        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow Lab snowfall per water year, ${cl.first_year} to ${cl.last_year}">
+          ${grid}${bars}<line class="mean" x1="${L}" x2="${W - R}" y1="${my}" y2="${my}"/>
+        </svg>
+        <figcaption>Gaps are years with no measured total. Hover a bar for its value.</figcaption>
+      </figure>`;
+  }
+
+  /** Snow water equivalent, last two water years, as a filled line. */
+  function sweChart(d) {
+    const s = d && d.swe_series;
+    if (!s || (s.mm || []).length < 30) return "";
+    const W = 720, L = 46, R = 8, T = 8, B = 22, H = 140;
+    const t = s.days.map(x => { const [y, m, dd] = x.split("-").map(Number); return Date.UTC(y, m - 1, dd); });
+    const t0 = t[0], t1 = t[t.length - 1];
+    const nt = niceTicks(Math.max(10, ...s.mm), "mm", 3);
+    const X = (v) => L + (v - t0) / Math.max(1, t1 - t0) * (W - L - R);
+    const Y = (mm) => H - B - convert(mm, "mm").value / nt.top * (H - T - B);
+    let grid = "";
+    for (const v of nt.ticks) {
+      const y = H - B - v / nt.top * (H - T - B);
+      grid += `<line class="tick" x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>
+               <text x="${L - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end">${fmtInt.format(v)}</text>`;
+    }
+    s.days.forEach((day, i) => {
+      if (day.endsWith("-10-01")) {
+        const x = X(t[i]).toFixed(1);
+        grid += `<line class="axis" x1="${x}" x2="${x}" y1="${T}" y2="${H - B}"/>
+                 <text x="${(+x + 4).toFixed(1)}" y="${H - 6}">Oct ${day.slice(0, 4)}</text>`;
+      }
+    });
+    const line = s.mm.map((v, i) => `${i ? "L" : "M"}${X(t[i]).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const area = `${line}L${X(t1).toFixed(1)},${H - B}L${X(t0).toFixed(1)},${H - B}Z`;
+    return `
+      <figure class="ctx-chart" style="margin-left:0;margin-right:0">
+        <div class="ctx-key">Water held in the snowpack, daily, ${esc(convert(1, "mm").units)}</div>
+        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Snow water equivalent at the Snow Lab, last two water years">
+          ${grid}<path class="area" d="${area}"/><path class="series" d="${line}"/>
+        </svg>
+      </figure>`;
+  }
+
+  function renderSnowlab(s) {
+    if (!s) {
+      return `<div class="placeholder-card">No Snow Lab data stored yet. Run
+        <code>pixi run snotel</code> and <code>pixi run cssl</code>.</div>`;
+    }
+    const d = s.daily, cl = s.climatology;
+    const now = d ? `
+      <article class="card">
+        <div class="card-head"><h3 class="card-title">The snowpack now</h3>
+          <span class="shore">SNOTEL 428</span></div>
+        <p class="observed">Daily, NRCS SNOTEL at the lab. Last report ${esc(fmtDay(d.newest_day))}.</p>
+        <div class="readings">
+          <div class="reading"><span class="reading-value">${lenText(d.swe_mm, "mm", 1)}</span>
+            <span class="reading-label">water in the snowpack</span></div>
+          <div class="reading"><span class="reading-value">${lenText(d.depth_cm, "cm", 0)}</span>
+            <span class="reading-label">snow depth</span></div>
+          <div class="reading"><span class="reading-value">${rainText(d.water_year_mm)}</span>
+            <span class="reading-label">precipitation since ${esc(fmtDay(d.water_year_start))}</span></div>
+          <div class="reading"><span class="reading-value">${rainText(d.peak_swe_last_wy_mm)}</span>
+            <span class="reading-label">last season's peak snowpack water</span></div>
+        </div>
+      </article>` : "";
+    const rec = cl && cl.latest ? `
+      <article class="card">
+        <div class="card-head"><h3 class="card-title">The long record</h3>
+          <span class="shore">since ${esc(cl.first_year)}</span></div>
+        <p class="observed">Snowfall measured by hand at the lab each water year.</p>
+        <div class="readings">
+          <div class="reading"><span class="reading-value">${lenText(cl.latest.snowfall_cm, "cm", 0)}</span>
+            <span class="reading-label">water year ${esc(cl.latest.year)}</span></div>
+          <div class="reading"><span class="reading-value">${lenText(cl.mean_snowfall_cm, "cm", 0)}</span>
+            <span class="reading-label">average, ${esc(cl.first_year)}–${esc(cl.last_year)}</span></div>
+          <div class="reading"><span class="reading-value">${fmtInt.format(cl.latest.rank)}</span>
+            <span class="reading-label">${esc(cl.latest.year)}'s rank, most snow first, of ${fmtInt.format(cl.latest.of)} years</span></div>
+        </div>
+      </article>` : "";
+    return `${snowChart(cl)}${sweChart(d)}
+      <section class="cards two" aria-label="Snow Lab now and on record">${now}${rec}</section>
+      <p class="ctx-source">UC Berkeley Central Sierra Snow Laboratory (snowfall record, as served
+        on its data page) and NRCS SNOTEL site 428 at the lab (daily values).</p>`;
+  }
+
+  function renderAirports(a) {
+    if (!a) {
+      return `<div class="placeholder-card">No airport weather stored yet. Run
+        <code>pixi run asos</code>; the hourly update also fetches it once a day.</div>`;
+    }
+    const cards = (a.stations || []).map(s => `
+      <article class="card">
+        <div class="card-head"><h3 class="card-title">${esc(s.name)}</h3>
+          <span class="shore">${s.in_basin ? "in the basin" : "outside the basin"}</span></div>
+        <p class="observed">${esc(lenPlain(s.elevation_m, "m", 0))}. ${esc(fmtDay(s.last_day))}:
+          high ${tempText(s.tmax_c)}, low ${tempText(s.tmin_c)}.</p>
+        <div class="readings">
+          <div class="reading"><span class="reading-value">${rainText(s.last7_mm)}</span>
+            <span class="reading-label">last 7 days</span></div>
+          <div class="reading"><span class="reading-value">${rainText(s.water_year_mm)}</span>
+            <span class="reading-label">since ${esc(fmtDay(a.water_year_start))}</span></div>
+          <div class="reading"><span class="reading-value">${rainText(s.last_water_year_mm)}</span>
+            <span class="reading-label">${esc(a.last_water_year || "last")} water year</span></div>
+          ${s.last_water_year_snow_cm != null ? `
+          <div class="reading"><span class="reading-value">${lenText(s.last_water_year_snow_cm, "cm", 0)}</span>
+            <span class="reading-label">of snow, ${esc(a.last_water_year || "last")} water year</span></div>` : ""}
+        </div>
+      </article>`).join("");
+    return `<section class="cards two" aria-label="Airport weather">${cards}</section>
+      <p class="ctx-source">National Weather Service daily climate record, from NOAA's Applied
+        Climate Information System. Precipitation includes melted snow.</p>`;
+  }
+
   function renderManualCards(cards) {
     const names = Object.keys(cards || {});
     if (!names.length) {
@@ -1609,6 +1975,13 @@
       marker.addTo(groupFor(p));
       bounds.push([p.lat, p.lng]);
     }
+    // Everything that isn't TEON goes in its own pane, under the marker
+    // pane TEON's pins use (600), so it is always drawn beneath them. A
+    // zIndexOffset only reorders markers within one pane, by screen
+    // position, so it couldn't promise that for pins far apart.
+    map.createPane("context");
+    map.getPane("context").style.zIndex = 590;
+
     // SNOTEL stations, from the rain section.
     const snotelGroup = L.layerGroup();
     for (const st of ((snap.rain && snap.rain.stations) || [])) {
@@ -1617,7 +1990,7 @@
       L.marker([st.lat, st.lng], {
         title: st.name,
         // Beneath TEON's own pins: this is context, not the network.
-        zIndexOffset: -500,
+        pane: "context",
         icon: L.divIcon({ className: "", iconSize: [18, 16], iconAnchor: [9, 10],
           html: `<svg class="pin-tri" width="18" height="16" viewBox="0 0 18 16" aria-hidden="true">
                    <path d="M9 1.5 L16.5 14.5 L1.5 14.5 Z"/></svg>` }),
@@ -1631,7 +2004,60 @@
       ).addTo(snotelGroup);
       bounds.push([st.lat, st.lng]);
     }
+    // Beyond TEON. All drawn beneath TEON's pins, and none added to
+    // `bounds`: the map opens framed on TEON, and the Snow Lab and Truckee
+    // (outside the basin) are a pan away rather than shrinking the lake.
+    const under = { pane: "context" };
+    const lab = snap.snowlab;
+    if (lab && lab.lat != null) {
+      const d = lab.daily;
+      L.marker([lab.lat, lab.lng], { ...under, title: lab.name,
+        icon: L.divIcon({ className: "", iconSize: [18, 16], iconAnchor: [9, 10],
+          html: `<svg class="pin-tri" width="18" height="16" viewBox="0 0 18 16" aria-hidden="true">
+                   <path d="M9 1.5 L16.5 14.5 L1.5 14.5 Z"/></svg>` }),
+      }).bindPopup(
+        `<div class="pop-title">${esc(lab.name)}</div>
+         <div class="pop-meta">UC Berkeley, Donner Summit, ${esc(lenPlain(lab.elevation_ft, "ft", 0))};
+           outside the basin. SNOTEL 428.</div>
+         <div class="pop-types">${d ? `Snow depth ${esc(lenPlain(d.depth_cm, "cm", 0))},
+           ${esc(fmtDay(d.newest_day))}.` : ""} See “The Snow Lab at Donner Summit” below.</div>`,
+        { maxWidth: 280 }).addTo(snotelGroup);
+    }
     if (snotelGroup.getLayers().length) groups["SNOTEL gauges (outside TEON)"] = snotelGroup;
+
+    const secchiGroup = L.layerGroup();
+    for (const s of ((snap.clarity && snap.clarity.stations) || [])) {
+      L.marker([s.lat, s.lng], { ...under, title: s.name,
+        icon: L.divIcon({ className: "", iconSize: [16, 16], iconAnchor: [8, 8],
+          html: `<svg class="pin-secchi" width="16" height="16" viewBox="-8 -8 16 16" aria-hidden="true">
+                   <path class="q-dark" d="M0 0 L0 -6.5 A6.5 6.5 0 0 1 6.5 0 Z"/>
+                   <path class="q-light" d="M0 0 L6.5 0 A6.5 6.5 0 0 1 0 6.5 Z"/>
+                   <path class="q-dark" d="M0 0 L0 6.5 A6.5 6.5 0 0 1 -6.5 0 Z"/>
+                   <path class="q-light" d="M0 0 L-6.5 0 A6.5 6.5 0 0 1 0 -6.5 Z"/>
+                   <circle class="rim" r="6.5"/></svg>` }),
+      }).bindPopup(
+        `<div class="pop-title">${esc(s.name)}</div>
+         <div class="pop-meta">UC Davis TERC Secchi station (${esc(s.code)}), since
+           ${esc(fmtDay(s.first_day))}; ${esc(lenPlain(s.water_depth_m, "m", 0))} of water.</div>
+         <div class="pop-types">Latest published reading ${esc(lenPlain(s.last_m, "m"))},
+           ${esc(fmtDay(s.last_day))}.</div>`, { maxWidth: 280 }).addTo(secchiGroup);
+    }
+    if (secchiGroup.getLayers().length) groups["TERC Secchi stations (outside TEON)"] = secchiGroup;
+
+    const airportGroup = L.layerGroup();
+    for (const s of ((snap.airports && snap.airports.stations) || [])) {
+      L.marker([s.lat, s.lng], { ...under, title: s.name,
+        icon: L.divIcon({ className: "", iconSize: [15, 15], iconAnchor: [7.5, 7.5],
+          html: `<div class="pin-airport"></div>` }),
+      }).bindPopup(
+        `<div class="pop-title">${esc(s.name)}</div>
+         <div class="pop-meta">National Weather Service, ${esc(lenPlain(s.elevation_m, "m", 0))};
+           ${s.in_basin ? "in the basin" : "outside the basin"}.</div>
+         <div class="pop-types">${esc(fmtDay(s.last_day))}: last 7 days ${rainPlain(s.last7_mm)}.</div>`,
+        { maxWidth: 280 }).addTo(airportGroup);
+    }
+    if (airportGroup.getLayers().length) groups["Airports (outside TEON)"] = airportGroup;
+
     Object.values(groups).forEach(g => g.addTo(map));
 
     // The legend lists only what this map actually shows. Ten entries, most
@@ -1640,6 +2066,8 @@
     const shown = new Set(pts.filter(p => p.lat != null && p.lng != null)
                              .map(p => pinClass(p).replace(/^pin-/, "")));
     if (snotelGroup.getLayers().length) shown.add("snotel");
+    if (secchiGroup.getLayers().length) shown.add("secchi");
+    if (airportGroup.getLayers().length) shown.add("airport");
     if (snap.transect_line) shown.add("transect");
     document.querySelectorAll("#map-legend span").forEach(span => {
       const i = span.querySelector("i");
@@ -1748,6 +2176,50 @@
       } catch (err) {
         console.error("rain panel:", err);
         $("rain").innerHTML = `<div class="placeholder-card">The rain panel couldn't
+          be drawn from this snapshot.</div>`;
+      }
+
+      // Beyond TEON: the clarity record, the Snow Lab, the airports. Each in
+      // its own try, so one bad payload can't blank anything else.
+      try {
+        $("clarity").innerHTML = renderClarity(snap.clarity);
+        const c = snap.clarity;
+        const idx = c && (c.stations || []).find(s => s.code === "LTP");
+        if (idx) {
+          $("clarity-summary").textContent =
+            `Latest reading ${lenPlain(idx.last_m, "m")} at the index station, ${fmtDay(idx.last_day)}; ` +
+            `the 1967–71 average was ${lenPlain(c.target_m, "m")}.`;
+        }
+      } catch (err) {
+        console.error("clarity panel:", err);
+        $("clarity").innerHTML = `<div class="placeholder-card">The clarity record couldn't
+          be drawn from this snapshot.</div>`;
+      }
+      try {
+        $("snowlab").innerHTML = renderSnowlab(snap.snowlab);
+        const cl = snap.snowlab && snap.snowlab.climatology;
+        if (cl && cl.latest) {
+          $("snowlab-summary").textContent =
+            `Water year ${cl.latest.year} brought ${lenPlain(cl.latest.snowfall_cm, "cm", 0)} of snow, ` +
+            `against a ${cl.first_year}–${cl.last_year} average of ${lenPlain(cl.mean_snowfall_cm, "cm", 0)}.`;
+        }
+      } catch (err) {
+        console.error("snow lab panel:", err);
+        $("snowlab").innerHTML = `<div class="placeholder-card">The Snow Lab panel couldn't
+          be drawn from this snapshot.</div>`;
+      }
+      try {
+        $("airports").innerHTML = renderAirports(snap.airports);
+        const tv = snap.airports && (snap.airports.stations || []).find(s => s.code === "TVL");
+        if (tv) {
+          $("airports-summary").textContent =
+            `South Lake Tahoe had ${rainPlain(tv.last_water_year_mm)} of precipitation in water year ` +
+            `${snap.airports.last_water_year}, and ${rainPlain(tv.water_year_mm)} since ` +
+            `${fmtDay(snap.airports.water_year_start)}.`;
+        }
+      } catch (err) {
+        console.error("airports panel:", err);
+        $("airports").innerHTML = `<div class="placeholder-card">The airport panel couldn't
           be drawn from this snapshot.</div>`;
       }
 

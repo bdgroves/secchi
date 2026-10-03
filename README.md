@@ -87,6 +87,14 @@ On the dashboard this sits under **Beyond TEON**, collapsed by default, since SN
 
 **Wildfire smoke.** NOAA's satellite smoke analysis put smoke over the lake on 114 days since June 2024, mostly light. In 2025 and 2026, about 65 of those days with sonde data, it left no mark that can be told from chance, in the lake's chlorophyll, blue-green algae, turbidity, oxygen or temperature, or in the forest's daytime highs (`pixi run smoke-lake`, `docs/smoke.md`). With each month's trend left in, Glenbrook's algae looked clearly higher after smoke; the trend explained all of it.
 
+**More context, still kept apart (2026-10-02).** Three more panels under Beyond TEON, each collapsed, each on the map in slate beneath TEON's pins:
+
+- **How clear the lake is, measured by hand.** UC Davis TERC's Secchi disk record, every reading since July 1967 at the index station and since 1980 mid-lake, with the 1967–71 average that is the restoration target (`pixi run terc`). The yearly means on the page are a plain average worked out here; TERC computes its official annual figure differently and the two differ by up to about a foot and a half, so the page says to quote TERC's.
+- **The Snow Lab at Donner Summit.** UC Berkeley's Central Sierra Snow Laboratory: today's snowpack from the NRCS SNOTEL station at the lab, and snowfall for every water year since 1879 (`pixi run cssl`). It sits outside the basin on the wet side of the crest, so it's season context, never a transect shore.
+- **Weather at the airports.** The National Weather Service's daily record at South Lake Tahoe (in the basin) and Truckee (just outside, and the one that measures snowfall), the only weather here taken at lake level (`pixi run asos`).
+
+None of these feeds any TEON number. How each was reached, and what didn't work, is in `docs/beyond-teon.md`.
+
 Two things the rain revealed. **Eight of the 18 shared wetting events had no precipitation at either gauge** — all between October and April, almost certainly snowmelt, warming both shores at once. And in the **10 real storms, the shore that got more rain also wetted more in 7.** Of the storms the soil didn't register, most fell as snow, which wets soil only later, as it melts.
 
 ---
@@ -339,6 +347,7 @@ Picking this up on a new machine, or in a new Claude session? Start with **[`HAN
 | `transect-rain` | the transect against SNOTEL precipitation and snowpack on both shores |
 | `snotel` / `smoke` | daily SNOTEL data; NOAA's satellite smoke over the lake |
 | `smoke-lake` | smoky days against clear days, for the lake sondes and forest air temperature |
+| `terc` / `cssl` / `asos` | TERC's Secchi record; the Snow Lab's snowfall since 1879; airport weather |
 | `oxygen-check` | which atmosphere each instrument family references |
 | `record-shape` | field names per sensor type — **run before any new backfill** |
 | `status` | **one screen: stations, batteries, lake, data waiting, impossible readings, what to do** |
@@ -357,7 +366,7 @@ Needs a free [USGS API key](https://api.waterdata.usgs.gov/signup/) in `USGS_API
 - **Why Glenbrook 2 is wet.** Needs rasters sampled at each station point.
 - **Three wettings with neither rain nor melt.** SNOTEL's gauges sit above the soil stations, so snow can melt at the soil while the gauges' snowpack holds; a snow sensor at the soil stations would settle it.
 - **Smoke in the smokiest summer.** The lake sondes weren't running in summer 2024, which had 43 of the 114 smoke days. More smoke seasons are what the oxygen lead needs.
-- **Ground truth for a clarity model.** TERC's Secchi record is in the [EDI repository](https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340), versioned and DOI-bearing, back to 1968. Their 2025 report shows why any model must be **seasonal**: winter clarity is stable, summer is degrading, and 2025's summer average of 53.4 ft was the fifth poorest on record.
+- **Ground truth for a clarity model.** TERC's Secchi record, from the [EDI repository](https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340), versioned and DOI-bearing, back to July 1967, is now in this repo and on the page. What's missing is overlap: TEON's lake sondes start in 2025, so there are only a season or two of Secchi readings to set against them so far. Their 2025 report shows why any model must be **seasonal**: winter clarity is stable, summer is degrading, and 2025's summer average of 53.4 ft was the fifth poorest on record.
 
 TERC — which *is* UC Davis, not a separate organisation — also began in 2025 assembling decades of clarity-driver data alongside Secchi depth. That's the same analysis this project's nowcast idea sketches, by the people with the instruments, the fifty-eight-year record and the funding.
 
@@ -373,7 +382,7 @@ All data is **provisional**, as TEON's own disclaimer says: raw or lightly proce
 
 `secchi` honours TEON's `/site-visibility/disabled` flags in both display and ingest.
 
-Clarity context from UC Davis TERC and the Lake Tahoe TMDL. If you use anything derived from this repo, cite the upstream sources, not this one.
+Clarity context from UC Davis TERC and the Lake Tahoe TMDL. Beyond TEON: TERC's Secchi depth record (EDI package edi.1340, CC BY 4.0); the UC Berkeley Central Sierra Snow Laboratory's snowfall record; NRCS SNOTEL; the National Weather Service's daily climate record via NOAA's Applied Climate Information System; and NOAA's Hazard Mapping System smoke analysis. If you use anything derived from this repo, cite the upstream sources, not this one.
 
 ---
 

@@ -1,6 +1,6 @@
 """Daily weather at the two airports nearest the lake (NWS, via NOAA's ACIS).
 
-    TVL  South Lake Tahoe airport   1,907 m, in the basin, 3 km from the south shore
+    TVL  South Lake Tahoe airport   1,907 m, in the basin, about 5 km from the south shore
     TRK  Truckee-Tahoe airport      1,798 m, Martis Valley, just outside the basin
 
 Why: every other weather record here is up on a ridge (SNOTEL) or in a

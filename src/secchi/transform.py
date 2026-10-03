@@ -1845,8 +1845,10 @@ def build_snowlab() -> dict | None:
 
         prcp = snow[snow["variable"] == "PRCP"]
         swe = snow[snow["variable"] == "WTEQ"].sort_values("day")
-        # Daily SWE across the last two water years, for a small season chart.
-        swe2 = swe[swe["day"] >= wy_start - pd.DateOffset(years=1)]
+        # Daily SWE over the last two complete water years plus the current
+        # one so far, for a small season chart. (Two years back, not one: in
+        # October the current year is days old and would leave one season.)
+        swe2 = swe[swe["day"] >= wy_start - pd.DateOffset(years=2)]
         out["daily"] = {
             "newest_day": newest.date().isoformat(),
             "water_year_start": wy_start.date().isoformat(),
@@ -1910,6 +1912,14 @@ def build_airports() -> dict | None:
             "last_water_year_mm": round(float(p[(p["day"] >= wy_start - pd.DateOffset(years=1))
                                                 & (p["day"] < wy_start)]["value"].sum()), 1),
         })
+        # Snowfall, where the station measures it (Truckee does; South Lake
+        # Tahoe reports none, which is absent rather than zero).
+        snow = sub[sub["variable"] == "SNOW"]
+        if len(snow) > 30:
+            stations[-1]["last_water_year_snow_cm"] = round(float(
+                snow[(snow["day"] >= wy_start - pd.DateOffset(years=1))
+                     & (snow["day"] < wy_start)]["value"].sum()), 1)
+            stations[-1]["water_year_snow_cm"] = round(float(snow[snow["day"] >= wy_start]["value"].sum()), 1)
     if not stations:
         return None
     return {"stations": stations, "newest_day": newest.date().isoformat(),
