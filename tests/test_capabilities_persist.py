@@ -79,6 +79,9 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.sources.watch", "diff_state"),
     ("secchi.analysis.station_health", "battery_events"),
     ("secchi.analysis.trees", "analyse"),
+    ("secchi.whats_new", "build"),
+    ("secchi.sources.watch", "append_news"),
+    ("secchi.sources.watch", "news_from_snapshots"),
     ("secchi.analysis.trees", "channel_qc"),
     ("secchi.sources.terc", "ingest"),
     ("secchi.sources.terc", "parse_csv"),
@@ -107,6 +110,7 @@ REQUIRED_TRANSFORM_FUNCTIONS = {
     "build_snowlab",
     "build_airports",
     "build_trees",
+    "build_whats_new",
 }
 
 

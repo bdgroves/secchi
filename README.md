@@ -196,7 +196,7 @@ They get coverage cards rather than live cards — period of record held, what's
 
 The watcher now scans the whole lake record every six hours for readings no lake can produce — oxygen above 20 mg/L, saturation outside 50–150 %, water temperature outside −2 to 35 °C, pH outside 0–14 — and opens an issue for each new episode, once.
 
-**4H Camp's turbidity reads −2.4 NTU** normally, a second sonde with a negative zero offset after Sunnyside's −2.1.
+**4H Camp's turbidity has a zero offset that changes at service visits**, a second sonde reading below zero after Sunnyside's −2.1. Near 0 through October 2025, about −2.9 from December to April, back near 0 in May 2026, and about −5.6 since the July 16 visit. (Earlier versions of this page, and the note sent to TEON, said −2.4; corrected 2026-10-03.) A new zero at each visit points to a calibration step, not a failing sensor.
 
 Cataloguing these *is* the work, and it's much easier from outside than operating the network. Reported, or in the next note to TEON.
 

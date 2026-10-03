@@ -522,6 +522,14 @@ def ingest(force: bool = False) -> int:
                  "readings": {s["code"]: int((df["station"] == s["code"]).sum())
                               for s in TERC_SECCHI_STATIONS.values()},
                  "newest_reading": df["date_time_local"].max().strftime("%Y-%m-%d")}
+    # When new readings first arrived here, for the page's "What's new".
+    # Kept from the previous state unless the newest reading moved, so a
+    # refetch of the same data isn't news. (No date before 2026-10-03.)
+    if state.get("newest_reading") and state.get("newest_reading") != new_state["newest_reading"]:
+        from datetime import datetime, timezone
+        new_state["fetched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    elif state.get("fetched_at"):
+        new_state["fetched_at"] = state["fetched_at"]
     if new_state != state:
         PACKAGE_STATE.write_text(json.dumps(new_state, indent=2) + "\n", encoding="utf-8")
 

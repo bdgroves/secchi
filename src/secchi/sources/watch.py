@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -53,14 +54,19 @@ DORMANT_AFTER_DAYS = 30
 DORMANT_UPLOAD_THRESHOLD = 50
 
 
-def _snapshot_state(teon_inventory: dict, disabled: set[str]) -> dict:
+def _snapshot_state(teon_inventory: dict, disabled: set[str],
+                    now: datetime | None = None) -> dict:
     """Reduce the inventory to the facts worth watching.
 
     Deliberately narrow. Record counts change every hour, so including
     them would make every run look like a change; what matters is whether
     a sensor exists, whether it is reporting, and whether it is hidden.
+
+    ``now`` is the moment the inventory describes. It defaults to the
+    present; replaying stored snapshots (``news_from_snapshots``) passes
+    each snapshot's own capture time.
     """
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     live_cutoff = now - timedelta(hours=LIVE_WINDOW_HOURS)
     dormant_cutoff = now - timedelta(days=DORMANT_AFTER_DAYS)
 
@@ -214,6 +220,90 @@ def save_baseline(state: dict, out_dir: Path = REFERENCE_DIR) -> Path:
     path = out_dir / BASELINE_FILE
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return path
+
+
+# ---------------------------------------------------------------------------
+# The news log: what the page's "What's new" box reads
+# ---------------------------------------------------------------------------
+# The watcher opens a GitHub issue for each change, which reaches Brooks's
+# inbox but leaves nothing for the page. So CI also appends each change to
+# a small committed log. Added 2026-10-03.
+
+NEWS_LOG = REFERENCE_DIR / "news_log.json"
+NEWS_KEEP_DAYS = 120
+# Kinds worth keeping. "state change" (quiet <-> dormant) is bookkeeping,
+# and impossible-reading episodes stay in the issues, not on the page.
+NEWS_KINDS = {"new sensor type", "sensor type gone", "new category",
+              "site hidden by TEON", "site un-hidden by TEON", "new sensor",
+              "sensor removed", "dormant sensor received an upload",
+              "sensor resumed", "sensor went quiet"}
+
+
+def news_events(changes: list[dict], new_state: dict) -> list[dict]:
+    """Changes from ``diff_state`` as log entries: when, what, where."""
+    out = []
+    for c in changes:
+        if c.get("kind") not in NEWS_KINDS:
+            continue
+        e = {"at": new_state["captured_at"], "kind": c["kind"], "detail": c["detail"]}
+        parts = str(c["detail"]).split("/")
+        if len(parts) == 3:
+            e["category"], e["sensor_type"], e["site"] = parts
+            s = new_state["sensors"].get(c["detail"], {})
+            e["last_update"] = s.get("last_update")
+        elif c["kind"].startswith("site "):
+            e["site"] = c["detail"]
+        note = c.get("note") or ""
+        m = re.search(r"\(\+([\d,]+)\)", note)
+        if m:
+            e["added"] = int(m.group(1).replace(",", ""))
+        out.append(e)
+    return out
+
+
+def append_news(events: list[dict], path: Path = NEWS_LOG,
+                now: datetime | None = None) -> int:
+    """Add events to the log, drop ones older than NEWS_KEEP_DAYS, write atomically.
+
+    Idempotent: an event already logged (same time, kind and detail) is
+    not added twice, so replaying snapshots that overlap the log is safe.
+    """
+    now = now or datetime.now(timezone.utc)
+    old = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    seen = {(e["at"], e["kind"], e["detail"]) for e in old}
+    fresh = [e for e in events if (e["at"], e["kind"], e["detail"]) not in seen]
+    cutoff = now - timedelta(days=NEWS_KEEP_DAYS)
+    keep = [e for e in old + fresh
+            if datetime.fromisoformat(e["at"].replace("Z", "+00:00")) >= cutoff]
+    keep.sort(key=lambda e: (e["at"], e["kind"], e["detail"]))
+    text = json.dumps(keep, indent=1, ensure_ascii=False) + "\n"
+    if not path.exists() or path.read_text(encoding="utf-8") != text:
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(path)
+    return len(fresh)
+
+
+def news_from_snapshots(raw_dir: Path) -> list[dict]:
+    """Replay the stored inventory snapshots (the 7-day raw buffer) as events.
+
+    Each snapshot is reduced at its own capture time and diffed against
+    the one before, exactly as the watcher would have. Used once to seed
+    the log; harmless to rerun.
+    """
+    inv_root, vis_root = raw_dir / "inventory", raw_dir / "visibility"
+    events, prev = [], None
+    for f in sorted(inv_root.rglob("*.json")):
+        inv = json.loads(f.read_text(encoding="utf-8"))
+        at = datetime.fromisoformat(str(inv.get("fetched_at")).replace("Z", "+00:00"))
+        vf = vis_root / f.relative_to(inv_root)
+        disabled = set(json.loads(vf.read_text(encoding="utf-8")).get("disabled", [])) \
+            if vf.exists() else set()
+        state = _snapshot_state(inv, disabled, now=at)
+        if prev is not None:
+            events += news_events(diff_state(prev, state), state)
+        prev = state
+    return events
 
 
 def diff_state(old: dict, new: dict) -> list[dict]:

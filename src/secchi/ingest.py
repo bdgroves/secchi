@@ -402,8 +402,8 @@ def run_watch(write_baseline: bool = False) -> int:
       2  changes found — the report is on stdout
       1  the check itself failed
     """
-    from secchi.sources.watch import (_snapshot_state, diff_state,
-                                      format_report, load_baseline,
+    from secchi.sources.watch import (_snapshot_state, append_news, diff_state,
+                                      format_report, load_baseline, news_events,
                                       save_baseline, scan_readings)
 
     with TeonClient() as client:
@@ -442,6 +442,11 @@ def run_watch(write_baseline: bool = False) -> int:
 
     if write_baseline:
         save_baseline(state)
+        # The page's "What's new" box reads this log. Written only with the
+        # baseline, for the same reason: a local run must not consume news.
+        added = append_news(news_events(changes, state))
+        if added:
+            log.info("news log: %d event(s) added", added)
     elif changes:
         print("  (baseline not advanced — this was a read-only check. "
               "CI updates it.)\n")

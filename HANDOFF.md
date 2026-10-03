@@ -87,7 +87,7 @@ automatically. Prefer it for the next stretch.
 |---|---|---|
 | `fetch.yml` | hourly at :41 | ingest TEON and USGS; reset `data/processed/` to the remote's copy; transform; ingest SNOTEL (incl. the Snow Lab), HMS smoke, TERC Secchi (only on a new revision), the Snow Lab climatology (13 UTC) and airport weather (once a day); prune; commit |
 | `pages.yml` | hourly at :25 | ingest, transform, deploy the page; commits nothing |
-| `watch.yml` | every 6 hours | diff TEON's inventory against a baseline, scan for impossible readings, open GitHub issues |
+| `watch.yml` | every 6 hours | diff TEON's inventory against a baseline, scan for impossible readings, open GitHub issues, and log each change to `data/reference/news_log.json` for the page's "What's new" box |
 
 - **SNOTEL, smoke and the Beyond-TEON steps run after the reset**, because
   they write straight into `data/processed/` (or `data/reference/`) with no
@@ -259,6 +259,21 @@ web/assets/        built by `transform`, not committed
   Glenbrook turbidity -0.46 is marginal; temperature -0.40 is the season).
   Different water, too little overlap. Not on the page.
 - **Hourly trigger written, not switched on**: `ops/hourly-trigger/`.
+
+**Added 2026-10-03**
+
+- **"What's new" box** at the top of the page (`secchi/whats_new.py`, built by
+  `transform.build_whats_new`): the last 14 days of hand-collected uploads,
+  stations back or quiet, new sensors, sites hidden by TEON, battery swaps,
+  the season's first freeze (TEON), and, tagged Beyond TEON, new TERC Secchi
+  releases and the first snow at the Snow Lab. One boat trip is one line; a
+  hide-and-show within a day is skipped; snow needs a cold day plus
+  precipitation or SWE (the depth sensor read 2.5 cm on a 15 °C dry day).
+  "NEW" marks items since this browser's last visit. It reads the watcher's
+  log, seeded from the 7-day raw buffer; only CI writes the log, with the
+  baseline.
+- **Correction for the TEON follow-up**: 4H Camp's turbidity offset is ~−5.6
+  since the 2026-07-16 visit, not −2.4 (README, note addendum).
 
 **Next, roughly in order**
 

@@ -249,6 +249,31 @@
   .ctx-chart .lbl-e { fill: var(--dry); font-weight: 600; }
   .ctx-table td.w { color: var(--wet); } .ctx-table td.e { color: var(--dry); }
 
+  /* What's new: the short list under the status line. Quiet slate frame,
+     a dated line per event; "new" marks what arrived since this browser's
+     last visit. Beyond TEON items carry a small tag so TEON's news leads. */
+  .whats-new { border: 1px solid var(--line); border-left: 3px solid var(--slate);
+               padding: 0.85rem 1.1rem 0.6rem; margin: 1rem 0 0.25rem; }
+  .whats-new .wn-title { font-size: 0.95rem; font-weight: 600; margin: 0 0 0.45rem;
+                         padding: 0; border: 0; }
+  .wn-window { font-weight: 400; color: var(--muted); font-size: 0.8rem; margin-left: 0.35rem; }
+  .wn-list { list-style: none; margin: 0; padding: 0; }
+  .wn-list li { display: grid; grid-template-columns: 6.2rem 1fr; gap: 0.75rem;
+                padding: 0.4rem 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
+  .wn-list li:first-child { border-top: 0; }
+  .wn-day { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.82rem;
+            white-space: nowrap; padding-top: 0.08rem; }
+  .wn-text a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); }
+  .wn-text a:hover, .wn-text a:focus-visible { color: var(--ember); border-bottom-color: var(--ember); }
+  .wn-detail { display: block; color: var(--muted); font-size: 0.82rem; margin-top: 0.1rem; }
+  .wn-tag { display: inline-block; font-size: 0.68rem; letter-spacing: 0.03em; color: var(--muted);
+            border: 1px solid var(--line); padding: 0 0.35rem; margin-left: 0.35rem; vertical-align: 1px; }
+  .wn-new { display: inline-block; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em;
+            color: var(--ember); margin-right: 0.35rem; }
+  .wn-more summary { cursor: pointer; color: var(--muted); font-size: 0.82rem; padding: 0.35rem 0; }
+  .wn-empty { color: var(--muted); font-size: 0.88rem; padding: 0.2rem 0 0.35rem; }
+  @media (max-width: 520px) { .wn-list li { grid-template-columns: 1fr; gap: 0.1rem; } }
+
   .placeholder-card { padding: 1.25rem; border: 1px solid var(--line);
                       color: var(--muted); font-size: 0.9rem; }
   .placeholder-card strong { color: var(--slate); font-weight: 600; }
@@ -487,6 +512,12 @@
       <button type="button" data-system="metric" aria-pressed="false">°C / m</button>
     </span>
   </div>
+
+  <section class="whats-new" id="whats-new" aria-labelledby="whats-new-title" hidden>
+    <h2 class="wn-title" id="whats-new-title">What’s new <span class="wn-window" id="wn-window"></span></h2>
+    <ul class="wn-list" id="wn-list"></ul>
+    <details class="wn-more" id="wn-more" hidden><summary></summary><ul class="wn-list"></ul></details>
+  </section>
 
   <nav class="jump" aria-label="On this page">
     <a href="#the-lake">The lake</a>
@@ -1622,6 +1653,59 @@
         doesn't publish. <code>pixi run trees</code> prints these numbers.</p>`;
   }
 
+  // ---- What's new ---------------------------------------------------------
+  // Items arrive with placeholders so dates and units follow the page:
+  // {day:YYYY-MM-DD} (fmtDay, never new Date), {temp:-1.9} (°C), {cm:12}.
+  const SEEN_KEY = "secchi.wn_seen";
+  // Read once per page load: a unit switch re-renders, and must not clear
+  // the "new" marks by reading back the value this visit just wrote.
+  let WN_SEEN;
+  function wnFill(text) {
+    return esc(text)
+      .replace(/\{day:(\d{4}-\d{2}-\d{2})\}/g, (_, d) => esc(fmtDay(d)))
+      .replace(/\{temp:(-?[\d.]+)\}/g, (_, c) => {
+        const t = convert(+c, "°C");
+        return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(t.value)} ${t.units}`;
+      })
+      .replace(/\{cm:(-?[\d.]+)\}/g, (_, v) => esc(lenPlain(+v, "cm", 0)));
+  }
+  function renderWhatsNew(w) {
+    const box = document.getElementById("whats-new");
+    if (!box) return;
+    if (!w) { box.hidden = true; return; }
+    if (WN_SEEN === undefined) {
+      WN_SEEN = null;
+      try { WN_SEEN = localStorage.getItem(SEEN_KEY); } catch (_) {}
+    }
+    const seen = WN_SEEN;
+    const items = w.items || [];
+    const li = (it) => {
+      const isNew = seen && it.at > seen;
+      const text = wnFill(it.text);
+      const body = it.link ? `<a href="${esc(it.link)}">${text}</a>` : text;
+      return `<li><span class="wn-day">${esc(fmtDay(it.day))}</span>
+        <span class="wn-text">${isNew ? `<span class="wn-new">NEW</span>` : ""}${body}${
+          it.source && it.source !== "TEON" ? `<span class="wn-tag">${esc(it.source)}</span>` : ""}${
+          it.detail ? `<span class="wn-detail">${wnFill(it.detail)}</span>` : ""}</span></li>`;
+    };
+    const SHOWN = 4;
+    document.getElementById("wn-window").textContent = `last ${w.window_days} days`;
+    document.getElementById("wn-list").innerHTML = items.length
+      ? items.slice(0, SHOWN).map(li).join("")
+      : `<li class="wn-empty" style="display:block">Nothing new in the last ${esc(w.window_days)} days: the lake and the woods have been quiet.</li>`;
+    const more = document.getElementById("wn-more");
+    const rest = items.slice(SHOWN);
+    more.hidden = !rest.length;
+    if (rest.length) {
+      more.querySelector("summary").textContent = `${rest.length} more`;
+      more.querySelector("ul").innerHTML = rest.map(li).join("");
+    }
+    box.hidden = false;
+    // Remember the newest item this browser has now seen. The first visit
+    // marks nothing as new: everything is new to a first-time visitor.
+    try { if (items.length) localStorage.setItem(SEEN_KEY, items[0].at); } catch (_) {}
+  }
+
   function renderManualCards(cards) {
     const names = Object.keys(cards || {});
     if (!names.length) {
@@ -2391,6 +2475,16 @@
           }).join("")
         : `<div class="placeholder-card">No station data ingested yet. Run an
            <code>all-live</code> ingest to populate this section.</div>`;
+
+      // What's new. Own try; the first section on the page, so it never
+      // takes anything else down with it.
+      try {
+        renderWhatsNew(snap.whats_new);
+      } catch (err) {
+        console.error("what's new:", err);
+        const box = $("whats-new");
+        if (box) box.hidden = true;
+      }
 
       // The trees. Own try, like every section added since.
       try {

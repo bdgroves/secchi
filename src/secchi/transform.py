@@ -1925,6 +1925,16 @@ def build_airports() -> dict | None:
             "last_water_year": f"{wy_start.year - 1}-{wy_start.year}"}
 
 
+def build_whats_new(df_long: pd.DataFrame, inventory: list[dict] | None) -> dict | None:
+    """The "What's new" list at the top of the page (secchi.whats_new)."""
+    try:
+        from secchi.whats_new import build
+        return build(df_long, inventory or [])
+    except Exception as exc:                 # noqa: BLE001 - the page must still build
+        log.warning("what's new unavailable: %s", exc)
+        return None
+
+
 def build_trees(df_long: pd.DataFrame) -> dict | None:
     """The dendrometers' daily stem shrinkage, for the forest section (TEON).
 
@@ -1985,6 +1995,7 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "manual_cards": manual_cards,
         "upload_alert": build_upload_alert(manual_cards, inv, df_long,
                                            sorted(disabled)),
+        "whats_new": build_whats_new(df_long, inv),
         "rain": build_rain(df_long),
         "trees": build_trees(df_long),
         # Beyond TEON, added 2026-10-02. Each isolated: see _beyond.
