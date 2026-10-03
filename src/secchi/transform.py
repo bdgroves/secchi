@@ -1927,6 +1927,21 @@ def build_airports() -> dict | None:
             "last_water_year": f"{wy_start.year - 1}-{wy_start.year}"}
 
 
+def build_trees(df_long: pd.DataFrame) -> dict | None:
+    """The dendrometers' daily stem shrinkage, for the forest section (TEON).
+
+    The numbers come from ``analysis.trees.summary``, the same code
+    ``pixi run trees`` prints, so the page and the terminal agree.
+    """
+    from secchi.analysis.trees import analyse, summary
+    try:
+        r = analyse(df_long)
+        return summary(r) if r else None
+    except Exception as exc:                 # noqa: BLE001 - the page must still build
+        log.warning("tree panel unavailable: %s", exc)
+        return None
+
+
 def _beyond(builder) -> dict | None:
     """Run one Beyond-TEON builder; a failure there must never cost the TEON page."""
     try:
@@ -1973,6 +1988,7 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "upload_alert": build_upload_alert(manual_cards, inv, df_long,
                                            sorted(disabled)),
         "rain": build_rain(df_long),
+        "trees": build_trees(df_long),
         # Beyond TEON, added 2026-10-02. Each isolated: see _beyond.
         "clarity": _beyond(build_clarity),
         "snowlab": _beyond(build_snowlab),

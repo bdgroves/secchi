@@ -46,7 +46,7 @@ REQUIRED_MODES = {
     # Monitoring
     "watch",
     # Beyond TEON (added 2026-10-02)
-    "snotel", "smoke", "smoke-lake", "transect-rain", "terc", "cssl", "asos",
+    "snotel", "smoke", "smoke-lake", "transect-rain", "terc", "cssl", "asos", "trees",
 }
 
 # Modules that must remain importable, with a callable each. Catches a
@@ -78,6 +78,8 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.sources.simplify", "simplify_collection"),
     ("secchi.sources.watch", "diff_state"),
     ("secchi.analysis.station_health", "battery_events"),
+    ("secchi.analysis.trees", "analyse"),
+    ("secchi.analysis.trees", "channel_qc"),
     ("secchi.sources.terc", "ingest"),
     ("secchi.sources.terc", "parse_csv"),
     ("secchi.sources.terc", "candidate_pids"),
@@ -104,6 +106,7 @@ REQUIRED_TRANSFORM_FUNCTIONS = {
     "build_clarity",
     "build_snowlab",
     "build_airports",
+    "build_trees",
 }
 
 

@@ -698,6 +698,10 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
     if mode == "smoke-lake":
         from secchi.analysis.smoke_lake import report as smoke_report
         return smoke_report()
+    if mode == "trees":
+        # The dendrometers: daily stem shrinkage per station, channel checks.
+        from secchi.analysis.trees import report as trees_report
+        return trees_report()
     if mode == "transect-rain":
         from secchi.analysis.transect_rain import report as rain_report
         return rain_report()
@@ -914,7 +918,7 @@ def main(argv: list[str] | None = None) -> int:
                  "repair-sensor-types", "oxygen-check", "transect", "glenbrook",
                  "station-health",
                  "terc-discover", "prune", "snotel", "transect-rain", "smoke", "smoke-lake",
-                 "terc", "cssl", "asos"),
+                 "terc", "cssl", "asos", "trees"),
         default="live-exo",
         help=(
             "live-exo: only the curated EXO sites. "
@@ -961,6 +965,7 @@ def main(argv: list[str] | None = None) -> int:
             "when a new revision is published. "
             "cssl: refresh the Snow Lab's snowfall climatology since 1879. "
             "asos: daily weather at the South Lake Tahoe and Truckee airports. "
+            "trees: the dendrometers' daily stem shrinkage, per station. "
             "prune: delete raw snapshots past the retention window."
         ),
     )

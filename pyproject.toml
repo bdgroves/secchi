@@ -203,6 +203,8 @@ terc-discover = "python -m secchi.ingest --mode terc-discover"
 terc = "python -m secchi.ingest --mode terc"
 cssl = "python -m secchi.ingest --mode cssl"
 asos = "python -m secchi.ingest --mode asos"
+# The trees: daily stem shrinkage from the dendrometers (TEON).
+trees = "python -m secchi.ingest --mode trees"
 transform  = "python -m secchi.transform"
 # Delete raw snapshots past RAW_RETENTION_DAYS. Safe only because
 # transform accumulates into data/processed/*.parquet, which is the
