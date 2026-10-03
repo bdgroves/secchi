@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: mkdir -p probe_out && (python3 probe_extras.py > probe_out/_log.txt 2>&1 || true)
+      - run: mkdir -p probe_out && (timeout 900 python3 probe_extras.py > probe_out/_log.txt 2>&1 || true)
+        timeout-minutes: 20
       - run: |
           git config user.name "secchi-bot"; git config user.email "secchi-bot@users.noreply.github.com"
           git add -f probe_out && git commit -m "probe: output" && git push origin HEAD:probe/extras
