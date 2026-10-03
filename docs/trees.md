@@ -31,10 +31,10 @@ worked for water that day.
 
 | Station | Jul-Aug | Dec-Feb |
 |---|---|---|
-| Blackwood 2 | 35 | 10 |
+| Blackwood 2 | 32 | 10 |
 | Glenbrook 2 | 37 | 10 |
-| Glenbrook 4 | 27 | 11 |
-| Glenbrook 5 | 27 | 5 |
+| Glenbrook 4 | 28 | 11 |
+| Glenbrook 5 | 26 | 5 |
 | Homewood | 9 (Aug 2026 only) | — |
 
 June-September, MDS correlates with the day's high air temperature at
@@ -52,8 +52,14 @@ it has more than 20 jumps of 50+ between readings (resets or glitches), or
 its cycle is out of step (largest outside 03-10 h or smallest outside
 11-19 h). On 2026-10-02 that left out Blackwood 2 tree 2 (range 2),
 Glenbrook 2 tree 3 (118 jumps) and tree 7 (27 jumps): 33 of 36 used.
-Tree-days with no change at all are dropped (a disengaged sensor, not a
-still tree).
+Tree-days are dropped when the channel isn't engaged (daily median under
+1: Glenbrook 4's bands read fractions of a unit around zero for May-July
+2025) or didn't change at all. A station-day needs at least half its
+usable trees and at least three (or all it has): one March 2026 week at
+Blackwood 2 was two channels, one reading 204-264 µm on near-freezing
+days, and drew a 109 µm spike on the first version of the chart. So each
+station's series starts when enough bands were engaged: Blackwood 2
+August 2025, Glenbrook 4 and 5 July 2025.
 
 ## Not done: growth
 

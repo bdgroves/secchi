@@ -59,6 +59,7 @@ STILL_RANGE = 3.0           # median daily range below this: not responding
 RESET_STEP = 50.0           # a step this big between readings is a reset/glitch
 NOISY_RESETS = 20           # more than this many in QC_DAYS: too noisy to use
 PROFILE_DAYS = 14
+MIN_TREES = 3               # a station-day needs this many trees (or all it has)
 
 
 def tree_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -106,12 +107,14 @@ def daily_shrinkage(t: pd.DataFrame) -> pd.DataFrame:
     am = t[t["hour"].between(*AM_HOURS)].groupby(["site", "tree", "day"])["value"].max()
     pm = t[t["hour"].between(*PM_HOURS)].groupby(["site", "tree", "day"])["value"].min()
     grp = t.groupby(["site", "tree", "day"])["value"]
-    n, rng = grp.count(), grp.max() - grp.min()
-    d = pd.DataFrame({"mds": am - pm, "n": n, "range": rng}).dropna().reset_index()
-    # A channel that didn't change at all that day wasn't engaged (Glenbrook
-    # 4 read flat for its first two months, May-July 2025). A frozen winter
-    # stem still moves a little; exactly flat is the sensor, not the tree.
-    d = d[(d["n"] >= MIN_READINGS) & (d["range"] > 0) & d["mds"].between(*MDS_RANGE)]
+    n, rng, med = grp.count(), grp.max() - grp.min(), grp.median()
+    d = pd.DataFrame({"mds": am - pm, "n": n, "range": rng, "med": med}).dropna().reset_index()
+    # A channel that isn't engaged reads fractions of a unit around zero:
+    # Glenbrook 4's bands did for their first two months (May-July 2025,
+    # values like -0.01), where engaged readings are whole numbers in the
+    # thousands. And one that didn't change at all that day isn't a tree.
+    d = d[(d["n"] >= MIN_READINGS) & (d["med"].abs() >= 1) & (d["range"] > 0)
+          & d["mds"].between(*MDS_RANGE)]
     return d[["site", "tree", "day", "mds"]]
 
 
@@ -125,7 +128,14 @@ def station_daily(mds: pd.DataFrame, qc: pd.DataFrame) -> pd.DataFrame:
     good = qc[qc["ok"]][["site", "tree"]]
     m = mds.merge(good, on=["site", "tree"])
     g = m.groupby(["site", "day"])
-    return pd.DataFrame({"mds": g["mds"].median(), "trees": g["tree"].nunique()}).reset_index()
+    out = pd.DataFrame({"mds": g["mds"].median(), "trees": g["tree"].nunique()}).reset_index()
+    # A station-day needs at least half its usable trees, and at least
+    # MIN_TREES of them (fewer if the station has fewer). Without this,
+    # one week in March 2026 at Blackwood 2 was two channels, one of them
+    # reading 204-264 um on near-freezing days, and drew a 109 um spike.
+    usable = good.groupby("site")["tree"].nunique()
+    need = usable.map(lambda k: max(min(MIN_TREES, k), (k + 1) // 2))
+    return out[out["trees"] >= out["site"].map(need)].reset_index(drop=True)
 
 
 def hourly_profile(t: pd.DataFrame, qc: pd.DataFrame, days: int = PROFILE_DAYS) -> dict[str, list[float]]:

@@ -50,3 +50,18 @@ def test_summary_uses_only_good_trees():
     assert st["trees_ok"] == 1 and st["trees"] == 2
     assert st["last7_um"] == pytest.approx(10, abs=3)
     assert "Homewood" in s["profile"]
+
+
+def test_a_station_day_needs_enough_trees():
+    # Four good trees, but on one day only one reports: that day is dropped.
+    frames = [_stem("X", k, days=10) for k in range(1, 5)]
+    df = pd.concat(frames)
+    gap = (df["variable"] != "Tree_1_diameter_change") & (df["timestamp"].dt.day == 5)
+    r = analyse(df[~gap])
+    assert pd.Timestamp("2026-07-05") not in set(r["station"]["day"])
+    assert pd.Timestamp("2026-07-06") in set(r["station"]["day"])
+
+
+def test_an_unengaged_channel_reading_near_zero_is_dropped():
+    s = _stem("X", 1, base=0.0, amp=0.04)          # -0.02..0.02: not engaged
+    assert daily_shrinkage(tree_rows(s)).empty
