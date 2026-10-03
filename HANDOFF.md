@@ -19,7 +19,7 @@ automatically by Claude Code.*
 7. **Snowmelt is measured**: of 8 no-rain wetting events, 5 coincide with a shrinking snowpack and 3 remain unexplained.
 8. **Wildfire smoke left no detectable mark** on the lake in 2025–26, once each month's trend is removed (114 smoke days since June 2024; no lake data for summer 2024).
 9. **Beyond TEON grew** (2026-10-02): TERC's Secchi record since 1967, the UC Berkeley Snow Lab (SNOTEL 428 daily, snowfall since 1879) and NWS airport weather at South Lake Tahoe and Truckee. All context, collapsed, beneath TEON's pins on the map. `docs/beyond-teon.md`.
-10. **61 tests pass.** Run them before every commit. **Next**: wait for TEON; watch the batteries; then reliable hourly downloads, the tree sensors, or Glenbrook 2's wetness (section 7).
+10. **69 tests pass.** Run them before every commit. **Next**: wait for TEON; watch the batteries; then reliable hourly downloads, the tree sensors, or Glenbrook 2's wetness (section 7).
 
 ---
 
@@ -49,7 +49,7 @@ git clone git@github.com:bdgroves/secchi.git
 cd secchi
 pixi install
 pixi run setup-git            # once per clone: the parquet merge driver
-pixi run -e dev test          # 61 tests, all should pass
+pixi run -e dev test          # 69 tests, all should pass
 pixi run transform            # builds web/assets, which aren't committed
 pixi run status               # one screen: is anything wrong?
 pixi run serve                # http://localhost:8000
@@ -147,15 +147,16 @@ web/assets/        built by `transform`, not committed
 | `pipeline` / `transform` | ingest and rebuild / rebuild only |
 | `query` | DuckDB SQL over everything; `.examples`, `.save file.csv` |
 | `backfill --stage manual\|nearshore\|live\|blackwood [--site "Name"]` | full history; skips complete sensors |
-| `station-health` | logger batteries: charging, not charging, power failure |
+| `station-health` | logger batteries: charging, not charging, power failure, swaps |
 | `transect` / `transect-rain` | west vs east soil; the same against SNOTEL precipitation and snowpack |
 | `snotel [--since YYYY-MM-DD]` | daily SNOTEL data; `--force` re-looks-up the stations by name |
 | `smoke [--since …]` / `smoke-lake` | NOAA HMS smoke over the lake; smoky vs clear days |
 | `terc [--force]` / `terc-discover` | TERC's Secchi record via DataONE; what the package holds |
 | `cssl` | the Snow Lab's snowfall per water year since 1879 |
 | `asos [--since …]` | daily weather at the South Lake Tahoe and Truckee airports |
+| `trees` | the dendrometers: daily stem shrinkage per station, channel checks |
 | `oxygen-check` | which atmosphere each instrument references |
-| `glenbrook` | why Glenbrook 2 is wet (unexplained) |
+| `glenbrook` | why Glenbrook 2 is wet (probably a saturated canyon floor) |
 | `record-shape` | field names per sensor type; run before any new backfill |
 | `drop-undated` | remove undated rows; refuses if any has no dated copy |
 | `store-status`, `watch`, `setup-git` | store sizes; upstream changes (read-only); merge driver |
@@ -205,8 +206,9 @@ web/assets/        built by `transform`, not committed
 
 **Open**
 
-- **Glenbrook 2 is wet** (46 % vs 11–16 % nearby). Needs rasters sampled at
-  each station point.
+- **Glenbrook 2 is wet** (46 % vs 11–16 % nearby): probably a saturated
+  riparian site at the floor of the Glenbrook Creek canyon (section 7);
+  needs a site photo or TEON's notes to close.
 
 ---
 
@@ -232,31 +234,49 @@ web/assets/        built by `transform`, not committed
   in the daily voltages. Glenbrook 1: no swap, ~0.01 V/day down, 11.35 V on
   10-02. Glenbrook 5's overnight lows have wandered since 09-29 (11.55 to
   11.84 V) while its peaks keep sliding: likely the first cold nights.
+  **`status` and `station-health` now report swaps** ("replaced") and
+  power restorations; a swap at any station shows for 14 days. Glenbrook 5
+  has lived on swaps: nine restorations since December 2024.
 - **Stations**: Blackwood 2 quiet since 2026-09-25 on a healthy battery.
   Blackwood 3 and Meeks (hand-collected EXO) last read 2026-07-09, due a
   visit. Lakeside's HOBO silent since 2025-08-08. A boat crew serviced all six
   nearshore sites on 2026-09-28.
 
+**Done the evening of 2026-10-02**
+
+- **Battery swaps reported** (above).
+- **The trees** (`pixi run trees`, `docs/trees.md`, page section "The trees,
+  working for water"): stems peak ~7 am and bottom out mid-afternoon at
+  every station; daily shrinkage ~0 in winter, 30-40 µm in July-August,
+  more on hot days and (Blackwood 2) dry-soil days. 33 of 36 channels pass
+  the checks. Growth deliberately not shown.
+- **Glenbrook 2: probably a saturated canyon floor** (`docs/glenbrook-result.md`,
+  `data/reference/station_ground.json`).
+- **TERC's annual average**: mean of monthly means at the index station
+  reproduces 2022 and 2024; the page uses it.
+- **TEON vs Secchi**: 28 same-day pairs, Mar 2025-Jun 2026. Nearshore
+  turbidity and chlorophyll don't track offshore clarity (|r| mostly <0.3;
+  Glenbrook turbidity -0.46 is marginal; temperature -0.40 is the season).
+  Different water, too little overlap. Not on the page.
+- **Hourly trigger written, not switched on**: `ops/hourly-trigger/`.
+
 **Next, roughly in order**
 
 1. **Answer TEON** when they reply; adjust anything they ask about the page.
-2. **Reliable hourly downloads.** The store fix made them affordable; GitHub's
-   scheduler is the obstacle. An external trigger (a workflow_dispatch call
-   from a cron service, with a narrowly scoped token) is the usual fix.
-3. **The tree sensors** at Blackwood 2 and Homewood, new since 2026-09-30, plus
-   the older dendrometer history nobody has looked at. Stems swell and shrink
-   daily with water.
-4. **Glenbrook 2's wetness**: sample soil depth, texture and aspect rasters at
-   each station.
-5. **Smoke, as the seasons accumulate**: rerun `smoke-lake` after each summer;
+   Follow up ~2026-10-09 if not.
+2. **Switch on the hourly trigger** (Brooks: a fine-grained token, then three
+   commands in `ops/hourly-trigger/README.md`). `status` shows snapshots per
+   24 h; GitHub alone gives ~4.
+3. **Confirm Glenbrook 2** with a site photo or TEON's site notes (worth
+   asking in the TEON thread), and ask what species and trunk size each
+   dendrometer band is on: that's what the east/west tree comparison needs.
+4. **Smoke, as the seasons accumulate**: rerun `smoke-lake` after each summer;
    the oxygen lead needs more episodes.
-6. **Housekeeping**: `pixi lock` once locally (silences a CI warning); close
-   old watcher issues; teach `status` to report a battery swap, not just
-   "not charging" (the Glenbrook 5 swap went unnoticed for three weeks).
-7. **TERC's Secchi record is in** (Beyond TEON). Open: how TERC computes its
-   annual average (plain means differ by up to ~1.5 ft; `docs/beyond-teon.md`),
-   and setting TEON's lake sondes against it as the overlap grows (TEON's
-   lake record starts 2025).
+5. **Housekeeping**: `pixi lock` once locally (silences a CI warning); close
+   old watcher issues; delete the `probe/extras` branch on GitHub (this
+   workspace can't); PurpleAir needs an API key if wanted.
+6. **TEON vs Secchi** again after summer 2027, when the overlap has two
+   summers.
 
 ---
 
@@ -302,8 +322,10 @@ The README's mistakes table lists 45; these rules came out of them.
 | `docs/snotel.md` | SNOTEL, the rainfall transect and snowmelt |
 | `docs/smoke.md` | the HMS smoke record and the smoke-vs-lake null |
 | `docs/beyond-teon.md` | TERC Secchi, the Snow Lab, the airports: routes, what failed, caveats |
+| `docs/trees.md` | the dendrometers: the daily cycle, shrinkage, why growth isn't shown |
+| `ops/hourly-trigger/README.md` | switching on the Cloudflare cron that runs fetch and pages on time |
 | `docs/transect-result.md`, `transect-method.md` | the soil transect and its corrections |
-| `docs/glenbrook-result.md` | Glenbrook 2, unexplained |
+| `docs/glenbrook-result.md` | Glenbrook 2: three failed methods, then the ground (probably explained) |
 | `docs/storage.md`, `parquet-conflicts.md` | the store layout, growth fixes, merge driver |
 | `docs/querying.md` | the DuckDB shell and its pitfalls |
 | `docs/silent-failures.md` | the general pattern behind most bugs |

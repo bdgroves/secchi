@@ -84,10 +84,54 @@ Weak evidence **against** a stream connection, not for one.
 
 ## Verdict
 
-Unexplained. Sampling the source rasters at each station point — soil
-depth, texture, aspect, distance to the channel — is the honest next
-step, and it's real GIS work rather than another query over data we
-already hold.
+*(Originally:)* Unexplained. Sampling the source rasters at each station
+point — soil depth, texture, aspect, distance to the channel — is the
+honest next step.
+
+## Update, 2026-10-02: probably explained — a saturated canyon floor
+
+The ground at each station, from the national soil survey (NRCS SSURGO via
+Soil Data Access), USGS 3DEP elevation and USGS NHD streams, sampled on a
+GitHub runner. Saved in `data/reference/station_ground.json`.
+
+| Station | Soil moisture, Aug 2025-Aug 2026 (10th-90th pct) | Mapped soil, drainage | Water table (min) | Nearest stream | Height above ground 300 m around |
+|---|---|---|---|---|---|
+| **Glenbrook 2** | **46.6 % (42-49)** | Cryorthents-Xerorthents-Tahoe complex, **poorly drained**, frequently flooded | **15 cm** | **11 m, Glenbrook Creek (perennial)** | **-77 m** |
+| Glenbrook 1 | 31.9 % (12-42) | same map unit, poorly drained | 15 cm | 17 m, Glenbrook Creek | -8 m |
+| Glenbrook 4 | 18.3 % (7-27) | Caverock sandy loam, somewhat excessively drained, bedrock 67 cm | — | 152 m (intermittent) | +20 m |
+| UNR Tahoe Campus | 15.1 % (6-26) | Inville gravelly coarse sandy loam, well drained | — | 25 m (intermittent) | -4 m |
+| Homewood | 14.5 % (4-21) | Watsonlake gravelly sandy loam, well drained | — | 170 m (intermittent) | +52 m |
+| Blackwood 2 | 14.4 % (4-21) | Tahoe complex, gravelly, poorly drained | 10 cm | 18 m, Blackwood Creek (perennial) | -12 m |
+| Glenbrook 5 | 12.0 % (4-18) | Shakespeare silt loam, well drained | 122 cm | 4 m (intermittent) | -6 m |
+
+What it says:
+
+- **Glenbrook 2 is saturated, all year.** Its moisture spans 42-49 % from
+  the 10th to the 90th percentile, where every other station swings by
+  15-30 points. A soil at capacity can't respond to rain. That also
+  re-reads the one result above that held up: Glenbrook 2 tracking the
+  creek *least* day to day (0.107) was called "weak evidence against a
+  stream connection". **That reading was wrong.** A saturated soil
+  can't follow anything; the low correlation fits saturation, whatever
+  supplies the water.
+- **Its position is unlike any other station's**: 11 m from a perennial
+  creek at the floor of the Glenbrook Creek canyon, 77 m below the ground
+  300 m around it (the next lowest is Blackwood 2 at -12 m), on a mapped
+  poorly drained, frequently flooded soil with the water table as shallow
+  as 15 cm. Water from the slopes converges there.
+- **Glenbrook 1, on the same map unit beside the same creek, is the
+  second-wettest station** (31.9 %), which fits.
+- **Blackwood 2 doesn't fit the soil map**: mapped poorly drained, 18 m
+  from Blackwood Creek, but reads dry (14.4 %). Its map unit is the
+  gravelly variant, and it sits only slightly below its surroundings. So
+  the soil map alone doesn't decide; the canyon-floor position is what
+  sets Glenbrook 2 apart. (Soil survey map units are drawn at about
+  1:24,000; a station can sit on a different patch than its polygon
+  says.)
+
+**Verdict: probably explained** — a riparian site on a canyon floor,
+saturated year-round. Consistent across five independent facts; not
+proven. A site photo or TEON's site description would settle it.
 
 ## The general lesson
 

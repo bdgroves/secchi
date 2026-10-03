@@ -99,7 +99,7 @@ Two things the rain revealed. **Eight of the 18 shared wetting events had no pre
 
 ---
 
-## Glenbrook 2: still unexplained
+## Glenbrook 2: probably a saturated canyon floor
 
 One station reads far wetter than its neighbours on the same hillslope, in the same catchment, a few hundred metres away.
 
@@ -127,7 +127,9 @@ The third failed in an instructive way. It returned 2.9, 3.2, 3.1 and 2.9 days f
 
 What the record *does* support is weak evidence **against** a stream connection: day-to-day, Glenbrook 2 tracks the creek (r = 0.107) *less* closely than the controls do (0.259, 0.256).
 
-So: unexplained. Sampling the source rasters at each station point — soil depth, texture, aspect — is the honest next step, and it's real GIS work rather than another query.
+**Then the ground itself (2026-10-02).** Sampling the national soil survey, USGS elevation and USGS stream lines at every station (`data/reference/station_ground.json`): Glenbrook 2 sits **11 m from Glenbrook Creek at the floor of its canyon, 77 m below the ground 300 m around it** — no other station is more than 12 m below its surroundings — on a mapped poorly drained, frequently flooded soil with the water table as shallow as 15 cm. Its moisture barely moves all year (42-49 %), which is what a saturated soil does. Glenbrook 1, on the same soil beside the same creek, is the second-wettest station. Blackwood 2 doesn't fit the soil map (mapped poorly drained, reads dry), so the canyon floor, not the map unit, is what sets Glenbrook 2 apart.
+
+And a correction: the low day-to-day correlation with the creek, read above as evidence against a stream connection, is just what a saturated soil shows. It can't follow anything. **Probably explained, not proven**: a site photo or TEON's site notes would settle it (`docs/glenbrook-result.md`).
 
 ---
 
@@ -348,6 +350,7 @@ Picking this up on a new machine, or in a new Claude session? Start with **[`HAN
 | `snotel` / `smoke` | daily SNOTEL data; NOAA's satellite smoke over the lake |
 | `smoke-lake` | smoky days against clear days, for the lake sondes and forest air temperature |
 | `terc` / `cssl` / `asos` | TERC's Secchi record; the Snow Lab's snowfall since 1879; airport weather |
+| `trees` | the dendrometers: how hard the trees worked for water each day |
 | `oxygen-check` | which atmosphere each instrument family references |
 | `record-shape` | field names per sensor type — **run before any new backfill** |
 | `status` | **one screen: stations, batteries, lake, data waiting, impossible readings, what to do** |
@@ -363,7 +366,7 @@ Needs a free [USGS API key](https://api.waterdata.usgs.gov/signup/) in `USGS_API
 ## What the disk can't see yet
 
 - **3,468 camera frames** in a bucket named *Snow photos*, back to November 2025. The bucket refuses anonymous reads. A winter of snowpack from five angles, one email away.
-- **Why Glenbrook 2 is wet.** Needs rasters sampled at each station point.
+- **Proof that Glenbrook 2 is a saturated canyon floor.** Everything sampled points that way; a site photo or TEON's site notes would close it.
 - **Three wettings with neither rain nor melt.** SNOTEL's gauges sit above the soil stations, so snow can melt at the soil while the gauges' snowpack holds; a snow sensor at the soil stations would settle it.
 - **Smoke in the smokiest summer.** The lake sondes weren't running in summer 2024, which had 43 of the 114 smoke days. More smoke seasons are what the oxygen lead needs.
 - **Ground truth for a clarity model.** TERC's Secchi record, from the [EDI repository](https://portal.edirepository.org/nis/mapbrowse?scope=edi&identifier=1340), versioned and DOI-bearing, back to July 1967, is now in this repo and on the page. What's missing is overlap: TEON's lake sondes start in 2025, so there are only a season or two of Secchi readings to set against them so far. Their 2025 report shows why any model must be **seasonal**: winter clarity is stable, summer is degrading, and 2025's summer average of 53.4 ft was the fifth poorest on record.

@@ -383,13 +383,15 @@ def report() -> int:
             print()
             if rd < min(ctl_rd.values()):
                 print("      Glenbrook 2 tracks the creek LESS closely than the")
-                print("      hillslope controls do. Weak evidence against a")
-                print("      stream connection, not for one.\n")
-        print("    VERDICT: unexplained. The cheap test doesn't work on this")
-        print("    record, and what signal there is points away from a stream")
-        print("    connection. Sampling the source rasters at each station")
-        print("    point — soil depth, texture, aspect — is the honest next")
-        print("    step, and it is real GIS work rather than another query.\n")
+                print("      hillslope controls do. (First read as evidence against a")
+                print("      stream connection; it is what a SATURATED soil shows,")
+                print("      since a soil at capacity can't follow anything.)\n")
+        print("    VERDICT: the time series can't settle it. The ground can:")
+        print("    Glenbrook 2 is 11 m from Glenbrook Creek at the floor of its")
+        print("    canyon (77 m below the ground 300 m around), on a mapped poorly")
+        print("    drained soil with the water table as shallow as 15 cm, and its")
+        print("    moisture sits at 42-49 % all year. Probably a saturated riparian")
+        print("    site. data/reference/station_ground.json, docs/glenbrook-result.md\n")
     elif tau_soil is not None and tau_stream is not None and tau_ctl:
         # A connected soil drains at roughly the stream's rate; a
         # hillslope soil drains faster. Compare how close each is.

@@ -1,0 +1,157 @@
+{
+ "_about": "Ground at each TEON forest station, sampled 2026-10-02 on a GitHub runner. Soil: NRCS Soil Data Access (SSURGO map unit at the point, muaggatt). Terrain: USGS 3DEP via the Elevation Point Query Service; slope/aspect from points 30 m N/S/E/W; tpi_Nm = elevation minus the mean of 8 points N m away (negative = a hollow). nearest_stream_m: USGS NHD flowlines (fcode 46006 perennial, 46007 intermittent). See docs/glenbrook-result.md.",
+ "Glenbrook 1": {
+  "lat": 39.0881,
+  "lng": -119.9391,
+  "elev_m": 1902.0,
+  "slope_deg": 1.8,
+  "aspect_deg": 279,
+  "tpi_150m": -3.2,
+  "tpi_300m": -7.7,
+  "nearest_stream_m": 17,
+  "nearest_stream": {
+   "name": "Glenbrook Creek",
+   "fcode": 46006
+  },
+  "soil_map_unit": "Oxyaquic Cryorthents-Aquic Xerorthents-Tahoe complex, 0 to 15 percent slopes",
+  "drainage": "Poorly drained",
+  "hydrologic_group": "A",
+  "water_table_min_cm": "15",
+  "bedrock_min_cm": null,
+  "water_storage_0_150cm": "13.5",
+  "flooding": "Frequent",
+  "mukey": "1652129"
+ },
+ "Glenbrook 2": {
+  "lat": 39.08588889,
+  "lng": -119.9220278,
+  "elev_m": 1977.0,
+  "slope_deg": 7.2,
+  "aspect_deg": 337,
+  "tpi_150m": -33.7,
+  "tpi_300m": -77.2,
+  "nearest_stream_m": 11,
+  "nearest_stream": {
+   "name": "Glenbrook Creek",
+   "fcode": 46006
+  },
+  "soil_map_unit": "Oxyaquic Cryorthents-Aquic Xerorthents-Tahoe complex, 0 to 15 percent slopes",
+  "drainage": "Poorly drained",
+  "hydrologic_group": "A",
+  "water_table_min_cm": "15",
+  "bedrock_min_cm": null,
+  "water_storage_0_150cm": "13.5",
+  "flooding": "Frequent",
+  "mukey": "1652129"
+ },
+ "Glenbrook 4": {
+  "lat": 39.09344,
+  "lng": -119.9015,
+  "elev_m": 2304.7,
+  "slope_deg": 9.7,
+  "aspect_deg": 228,
+  "tpi_150m": 1.6,
+  "tpi_300m": 20.2,
+  "nearest_stream_m": 152,
+  "nearest_stream": {
+   "name": null,
+   "fcode": 46007
+  },
+  "soil_map_unit": "Caverock sandy loam, 9 to 50 percent slopes",
+  "drainage": "Somewhat excessively drained",
+  "hydrologic_group": "C",
+  "water_table_min_cm": null,
+  "bedrock_min_cm": "67",
+  "water_storage_0_150cm": "10.47",
+  "flooding": "None",
+  "mukey": "1652054"
+ },
+ "Glenbrook 5": {
+  "lat": 39.07463889,
+  "lng": -119.89125,
+  "elev_m": 2416.9,
+  "slope_deg": 14.6,
+  "aspect_deg": 327,
+  "tpi_150m": -11.1,
+  "tpi_300m": -5.7,
+  "nearest_stream_m": 4,
+  "nearest_stream": {
+   "name": null,
+   "fcode": 46007
+  },
+  "soil_map_unit": "Shakespeare silt loam, 9 to 30 percent slopes",
+  "drainage": "Well drained",
+  "hydrologic_group": "C",
+  "water_table_min_cm": "122",
+  "bedrock_min_cm": null,
+  "water_storage_0_150cm": "17.04",
+  "flooding": "None",
+  "mukey": "1652137"
+ },
+ "Homewood": {
+  "lat": 39.0752101,
+  "lng": -120.1842931,
+  "elev_m": 2406.5,
+  "slope_deg": 3.5,
+  "aspect_deg": 287,
+  "tpi_150m": 26.8,
+  "tpi_300m": 51.8,
+  "nearest_stream_m": 170,
+  "nearest_stream": {
+   "name": null,
+   "fcode": 46007
+  },
+  "soil_map_unit": "Watsonlake gravelly sandy loam, 15 to 30 percent slopes, rubbly",
+  "drainage": "Well drained",
+  "hydrologic_group": "B",
+  "water_table_min_cm": null,
+  "bedrock_min_cm": "170",
+  "water_storage_0_150cm": "16.66",
+  "flooding": "None",
+  "mukey": "1652209"
+ },
+ "Blackwood 2": {
+  "lat": 39.111167,
+  "lng": -120.186889,
+  "elev_m": 1934.5,
+  "slope_deg": 6.2,
+  "aspect_deg": 195,
+  "tpi_150m": -3.6,
+  "tpi_300m": -11.9,
+  "nearest_stream_m": 18,
+  "nearest_stream": {
+   "name": "Blackwood Creek",
+   "fcode": 46006
+  },
+  "soil_map_unit": "Tahoe complex, 0 to 5 percent slopes, gravelly",
+  "drainage": "Poorly drained",
+  "hydrologic_group": "A/D",
+  "water_table_min_cm": "10",
+  "bedrock_min_cm": null,
+  "water_storage_0_150cm": "14.62",
+  "flooding": "Occasional",
+  "mukey": "1652070"
+ },
+ "UNR Tahoe Campus": {
+  "lat": 39.243064,
+  "lng": -119.940336,
+  "elev_m": 1920.9,
+  "slope_deg": 1.4,
+  "aspect_deg": 215,
+  "tpi_150m": -0.1,
+  "tpi_300m": -4.2,
+  "nearest_stream_m": 25,
+  "nearest_stream": {
+   "name": null,
+   "fcode": 46007
+  },
+  "soil_map_unit": "Inville gravelly coarse sandy loam, 2 to 9 percent slopes, stony",
+  "drainage": "Well drained",
+  "hydrologic_group": "A",
+  "water_table_min_cm": null,
+  "bedrock_min_cm": null,
+  "water_storage_0_150cm": "10.59",
+  "flooding": "None",
+  "mukey": "1652076"
+ }
+}

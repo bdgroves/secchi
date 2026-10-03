@@ -58,9 +58,28 @@ averages (config `TERC_ANNUAL_MEANS_FT`):
 | 2025 | 69.2 ft | 68.1 | 71.3 | 70.2 |
 
 (revision 15 of the data). No obvious method matches all three within a
-foot. So the page shows the plain mean, labelled as worked out here, and
-says to quote TERC's figures for anything official. Working out TERC's
-method (their annual reports describe it) is an open item.
+foot.
+
+**Update, later the same evening.** Two more anchors from TERC's own
+reports: 2022 is 71.7 ft (21.9 m; State of the Lake 2023, clarity chapter)
+and 2024 is 19.0 m from **27** accepted readings (2024 Clarity Report). The
+reports don't state the formula. Against revision 17, the **mean of
+monthly means at the index station** gives 2022 21.90 m (exact) and 2024
+18.94 m (-0.06 m); a plain mean misses every year by 0.1-0.4 m, and
+filtering on viewing condition doesn't help. The two years it misses line
+up with gaps in the published record: it has 25 readings for 2024 where
+TERC counted 27, and none for May 2025. So the page now averages months
+first (`sources.terc.yearly_means_m`), says so, and still says to quote
+TERC's figures.
+
+**TEON against Secchi.** 28 days with an index-station reading and a TEON
+nearshore sonde reading, March 2025 to June 2026. Correlations of Secchi
+depth with same-day turbidity and chlorophyll are mostly within ±0.3, at a
+sample size where ±0.4 is the bar for anything; Glenbrook's turbidity
+(-0.46, n = 25) has the expected sign but only just clears it, and
+temperature (-0.40) is the season. Nearshore sondes and the deep-water
+Secchi stations see different water. Worth repeating with two summers of
+overlap.
 
 ## The Central Sierra Snow Laboratory
 
