@@ -684,6 +684,12 @@ def run(mode: str = "live-exo", codes: list[str] | None = None,
             asos_ingest(since=_date.fromisoformat(since) if since else None)
         except AsosBusyError as exc:
             log.warning("ASOS: IEM busy, will retry next run (%s)", exc)
+            # Exit 0 so the run isn't marked failed for a busy server, but
+            # say so on the Actions page: a soft failure must not be silent.
+            import os
+            if os.environ.get("GITHUB_ACTIONS"):
+                print(f"::warning title=Airport weather skipped::IEM busy ({exc}); "
+                      f"next run will catch up.")
             return 0
         except AsosShapeError as exc:
             log.error("ASOS reply not as expected: %s", exc)
