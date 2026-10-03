@@ -1653,6 +1653,12 @@
         doesn't publish. <code>pixi run trees</code> prints these numbers.</p>`;
   }
 
+  // ---- Site names for people -----------------------------------------------
+  // TEON names three nearshore sites with slugs (tallac_lake). The slug stays
+  // the key for every lookup; siteName() is only for what a reader sees.
+  let SITE_LABELS = {};
+  const siteName = (s) => SITE_LABELS[s] || s;
+
   // ---- What's new ---------------------------------------------------------
   // Items arrive with placeholders so dates and units follow the page:
   // {day:YYYY-MM-DD} (fmtDay, never new Date), {temp:-1.9} (°C), {cm:12}.
@@ -1760,7 +1766,7 @@
 
       return `
         <article class="card card-manual">
-          <h3>${esc(name)}</h3>
+          <h3>${esc(siteName(name))}</h3>
           <p class="observed">${esc(c.shore || "")}${c.shore ? " shore · " : ""}
             collected by hand</p>
           ${coverage}
@@ -1864,7 +1870,7 @@
       return `
       <tr>
         <td style="width:1rem"><span class="inv-dot" data-state="${ageState(c.latest_at)}"></span></td>
-        <td class="inv-site">${esc(c.site)}</td>
+        <td class="inv-site">${esc(siteName(c.site))}</td>
         <td class="inv-meta" style="text-align:right; white-space:nowrap">${timeAgo(c.latest_at)}</td>
         <td class="inv-meta" style="text-align:right; white-space:nowrap">${label}</td>
       </tr>`;
@@ -1905,7 +1911,7 @@
           parts.push(`
             <tr>
               <td style="width:1rem"><span class="inv-dot" data-state="${isDisabled ? "dead" : ageState(r.last_update)}"></span></td>
-              <td class="inv-site">${esc(r.site)}${flags.join("")}</td>
+              <td class="inv-site">${esc(siteName(r.site))}${flags.join("")}</td>
               <td class="inv-meta" style="text-align:right; white-space:nowrap">${isDisabled ? "hidden" : (r.last_update ? timeAgo(r.last_update) : "no data")}</td>
               <td class="inv-meta" style="text-align:right; white-space:nowrap">${r.data_count ? fmtInt.format(r.data_count) + " obs" : ""}</td>
             </tr>`);
@@ -1995,7 +2001,7 @@
     const flagHtml = flags.map(f => `<span class="pop-flag">${esc(f)}</span>`).join(" ");
 
     return `
-      <div class="pop-title">${esc(p.site)}</div>
+      <div class="pop-title">${esc(siteName(p.site))}</div>
       <div class="pop-meta">${esc(meta)} · ${esc(when)}</div>
       <div class="pop-types">${(p.sensor_types || []).map(esc).join(" · ")}</div>
       ${dl}${flagHtml}`;
@@ -2201,7 +2207,7 @@
       if (p.lat == null || p.lng == null) continue;
       const size = pinSize(p.records);
       const marker = L.marker([p.lat, p.lng], {
-        title: p.site,
+        title: siteName(p.site),
         icon: L.divIcon({
           className: "",
           html: `<div class="pin ${pinClass(p)}" style="width:${size}px;height:${size}px"></div>`,
@@ -2527,7 +2533,7 @@
                 + `update reaches</span>`;
           }
           const cmd = (s.commands || []).map(c => `<code>${esc(c)}</code>`).join(" then ");
-          return `<li><strong>${esc(s.site)}</strong>`
+          return `<li><strong>${esc(siteName(s.site))}</strong>`
                + `${kit ? ` (${esc(kit)})` : ""}: `
                + `${fmtInt.format(s.records)} records${note}`
                + `${cmd ? `<br>${cmd}` : ""}</li>`;
@@ -2610,7 +2616,7 @@
           const tail = gap > 0
             ? ` — <strong>${fmtInt.format(gap)} records published that we haven't pulled yet</strong>`
             : ` — newest record ${esc(when)}`;
-          return `<em>${esc(m.site)}</em>${m.shore ? ` (${esc(m.shore)} shore)` : ""}${tail}`;
+          return `<em>${esc(siteName(m.site))}</em>${m.shore ? ` (${esc(m.shore)} shore)` : ""}${tail}`;
         });
         const anyPending = manual.some(m => gapFor(m.site) > 0);
         $("offline").innerHTML =
@@ -2642,6 +2648,7 @@
         syncUnitToggle();
       }
       SNAPSHOT = snap;
+      SITE_LABELS = snap.site_labels || {};
       render(snap);
     } catch (err) {
       const dot = $("status-dot"), text = $("status-text");

@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from secchi.config import PROCESSED_DIR, REFERENCE_DIR
+from secchi.config import PROCESSED_DIR, REFERENCE_DIR, SITE_LABELS
 
 log = logging.getLogger("secchi.whats_new")
 
@@ -37,9 +37,6 @@ BLIP_HOURS = 24
 FREEZE_C = 0.0
 FIRST_SNOW_CM = 2.5
 
-# TEON's slugs for three nearshore sites, as people would say them.
-SITE_LABELS = {"incline_lake": "Incline", "tahoe_keys_lake": "Tahoe Keys",
-               "tallac_lake": "Tallac"}
 SENSOR_WORDS = {
     "Tree stress and growth": ("tree sensor", "tree sensors"),
     "Minidot": ("oxygen logger", "oxygen loggers"),

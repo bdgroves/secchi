@@ -828,6 +828,16 @@ EDI_SECCHI_IDENTIFIER = 1340
 # included); DataONE's search index and resolver don't. See sources/terc.py.
 DATAONE_CN = "https://cn.dataone.org/cn/v2"
 
+# Display names for TEON site slugs that aren't written for people. The
+# slug stays the key everywhere (matching, slugify, the store); only what a
+# reader sees changes. Used by the page (snapshot "site_labels") and by
+# secchi.whats_new.
+SITE_LABELS: dict[str, str] = {
+    "incline_lake": "Incline",
+    "tahoe_keys_lake": "Tahoe Keys",
+    "tallac_lake": "Tallac",
+}
+
 # The two Secchi stations, keyed by the file each lives in. Coordinates are
 # from the package's own metadata (edi.1340.17, boundingCoordinates). The
 # metadata describes both as "Index station (LTP)" — a copy-paste slip in

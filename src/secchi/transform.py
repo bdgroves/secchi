@@ -43,6 +43,7 @@ from secchi.config import (
     RECORD_META_FIELDS,
     SENSOR_VARIABLES,
     SITE_METADATA,
+    SITE_LABELS,
     USGS_GAUGES,
     DEFAULT_UNIT_SYSTEM,
     SPARKLINE_MIN_POINTS,
@@ -1996,6 +1997,8 @@ def build_dashboard_snapshot(df_wide: pd.DataFrame,
         "upload_alert": build_upload_alert(manual_cards, inv, df_long,
                                            sorted(disabled)),
         "whats_new": build_whats_new(df_long, inv),
+        # Display names for slugs; the page shows these, keys stay raw.
+        "site_labels": dict(SITE_LABELS),
         "rain": build_rain(df_long),
         "trees": build_trees(df_long),
         # Beyond TEON, added 2026-10-02. Each isolated: see _beyond.
