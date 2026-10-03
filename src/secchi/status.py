@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from secchi.config import PROCESSED_DIR, RAW_DIR, REFERENCE_DIR, WEB_DIR
 
@@ -61,6 +61,27 @@ def _snapshot_time(raw_dir) -> datetime | None:
                     int(hms[4:]), tzinfo=timezone.utc)
 
 
+def _snapshots_in_last_day(raw_dir, ref: datetime) -> int:
+    """Inventory snapshots captured in the 24 h before ``ref`` (one per CI fetch).
+
+    Hourly means 24. GitHub's scheduler gave about 4 a day in late
+    September 2026, which is what ops/hourly-trigger exists to fix; this
+    number is how to tell whether it is working.
+    """
+    root = raw_dir / "inventory"
+    n = 0
+    for f in (root.rglob("*.json") if root.exists() else []):
+        m = re.search(r"(\d{4})[\\/](\d{2})[\\/](\d{2})[\\/](\d{6})\.json$", str(f))
+        if not m:
+            continue
+        y, mo, d, hms = m.groups()
+        t = datetime(int(y), int(mo), int(d), int(hms[:2]), int(hms[2:4]), int(hms[4:]),
+                     tzinfo=timezone.utc)
+        if ref - timedelta(hours=24) < t <= ref:
+            n += 1
+    return n
+
+
 def report() -> int:
     from secchi.transform import (_parse_iso, build_inventory_summary,
                                   load_latest_json)
@@ -84,6 +105,9 @@ def report() -> int:
         todo.append("git pull (no inventory snapshot found)")
     else:
         print(f"    latest hourly snapshot     {_age(snap_age)} old")
+        per_day = _snapshots_in_last_day(RAW_DIR, snap)
+        print(f"    snapshots in the 24 h      {per_day} (hourly would be 24"
+              f"{'; GitHub is running the schedule late - see ops/hourly-trigger' if per_day < 12 else ''})")
         if snap_age is not None and snap_age > STALE_COPY_HOURS:
             todo.append(f"git pull - the latest snapshot is {_age(snap_age)} old "
                         f"(if it still is after pulling, CI is running late)")
