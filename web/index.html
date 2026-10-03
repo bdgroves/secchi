@@ -1238,7 +1238,7 @@
     const partial = (y, i) => i === 0 || (y.year === lastYear && lastMonth < 12);
     const y0 = ys[0].year, y1 = ys[ys.length - 1].year;
     const maxM = Math.max(c.target_m || 0, ...ys.map(y => y.mean_m)) * 1.08;
-    const nt = niceTicks(maxM, "m", 4);
+    const nt = niceTicks(maxM, "m", 5);
     const top = nt.top;                                   // in display units
     const X = (yr) => L + (yr - y0) / Math.max(1, y1 - y0) * (W - L - R);
     const Y = (m) => T + convert(m, "m").value / top * (H - T - B);
