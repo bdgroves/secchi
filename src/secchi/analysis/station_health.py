@@ -104,6 +104,29 @@ TREND_DAYS = 30
 # A station this stale is treated as down rather than declining.
 DARK_AFTER_HOURS = 36
 
+# ---- Battery events: a swap, or power restored --------------------------
+# Added 2026-10-02 after Glenbrook 5's battery was swapped on 09-09 and
+# nothing here said so for three weeks: the checks above test whether a
+# battery is CHARGING, not whether it was REPLACED.
+#
+# The signal is the overnight floor (the daily minimum) jumping, not a
+# single big step: a charging station steps up 0.5-0.8 V at sunrise every
+# sunny day. Scanning 20 months of all seven stations found three kinds of
+# floor jump of 0.5 V or more:
+#
+#   replaced   the station wasn't charging (no daily peak above
+#              CHARGE_PEAK_V in the two weeks before), so a higher floor
+#              can only be a new battery. Glenbrook 5, 2026-09-09.
+#   restored   the floor before was below DEAD_FLOOR_V: the logger had
+#              lost power, and came back. A new battery, or a recharge
+#              once the panel saw sun; from outside these look the same.
+#              Glenbrook 5 has nine since December 2024.
+#   recovered  a charging station climbing back after stormy days. Not a
+#              swap; not reported.
+FLOOR_JUMP_V = 0.5
+DEAD_FLOOR_V = 10.5
+EVENT_LOOKBACK_DAYS = 120
+
 
 def _now_like(index: pd.DatetimeIndex) -> pd.Timestamp:
     """Current time, matched to whether ``index`` carries a timezone.
@@ -141,6 +164,55 @@ def _battery(df: pd.DataFrame, site: str) -> pd.DataFrame:
     last_week = raw.loc[raw.index >= raw.index.max() - pd.Timedelta(days=7)]
     out.attrs["distinct_7d"] = int(last_week.round(4).nunique())
     return out
+
+
+def battery_events(df: pd.DataFrame, site: str,
+                   since: pd.Timestamp | None = None) -> list[dict]:
+    """Battery replacements and power restorations at one station.
+
+    One event per jump in the overnight floor of FLOOR_JUMP_V or more
+    (floor of the two days before against the two days after), dated to
+    the largest single rise between readings around it, which is when
+    the battery went in. See the constants above for the kinds.
+    """
+    sub = df[(df["site"] == site) & (df["variable"] == BATTERY_VARIABLE)
+             & df["timestamp"].notna() & df["value"].notna()]
+    if sub.empty:
+        return []
+    raw = sub.set_index("timestamp")["value"].sort_index()
+    raw = raw[~raw.index.duplicated(keep="last")]
+    day = raw.resample("1D").agg(["min", "max", "count"])
+    day = day[day["count"] > 0]
+    mins, maxs = day["min"], day["max"]
+    events, last_at = [], None
+    for i in range(1, len(mins)):
+        d = mins.index[i]
+        if since is not None and d < since:
+            continue
+        before = float(mins.iloc[max(0, i - 2):i].min())
+        after = float(mins.iloc[i:i + 2].min())
+        if after - before < FLOOR_JUMP_V:
+            continue
+        if last_at is not None and (d - last_at).days <= 3:
+            continue                                   # one event, not three days of it
+        prior_peak = float(maxs.iloc[max(0, i - CHARGE_PEAK_DAYS):i].max())
+        if before < DEAD_FLOOR_V:
+            kind = "restored"
+        elif prior_peak < CHARGE_PEAK_V:
+            kind = "replaced"
+        else:
+            continue                                   # "recovered": a charging station's own recharge
+        # When: the biggest rise between consecutive readings from the day
+        # before the floor jumped to the end of that day.
+        win = raw.loc[mins.index[i - 1]: d + pd.Timedelta(days=1)]
+        steps = win.diff()
+        at = steps.idxmax() if steps.notna().any() else d
+        events.append({"site": site, "kind": kind, "at": pd.Timestamp(at).isoformat(),
+                       "day": pd.Timestamp(at).date().isoformat(),
+                       "floor_before": round(before, 2), "floor_after": round(after, 2),
+                       "charging_before": prior_peak >= CHARGE_PEAK_V})
+        last_at = d
+    return events
 
 
 def _slope_per_week(series: pd.Series) -> float | None:
@@ -249,6 +321,17 @@ def analyse(df: pd.DataFrame | None = None) -> dict | None:
             if slope < -0.001:
                 headroom = entry["current_floor"] - LOW_VOLTAGE
                 entry["weeks_to_floor"] = round(headroom / abs(slope), 1)
+        # Swaps and restorations. A swap makes the 30-day trend rise even
+        # on a battery that isn't charging (Glenbrook 5 read +0.185 V/wk),
+        # so measure the slope since the most recent event as well.
+        entry["events"] = battery_events(
+            df, site, since=last_day - pd.Timedelta(days=EVENT_LOOKBACK_DAYS))
+        if entry["events"]:
+            latest = entry["events"][-1]
+            entry["last_event"] = latest
+            after = batt.loc[batt.index > pd.Timestamp(latest["day"])]
+            s2 = _slope_per_week(after["mean"])
+            entry["trend_since_event_v_per_week"] = None if s2 is None else round(s2, 3)
         out["stations"][site] = entry
 
     return out
@@ -398,6 +481,27 @@ def report() -> int:
             print("    No station is showing a declining supply or a low\n"
                   "    overnight floor. Nothing here predicts another\n"
                   "    outage.\n")
+
+    events = sorted((e for v in stations.values() for e in v.get("events", [])),
+                    key=lambda e: e["at"])
+    print(f"  BATTERY EVENTS, last {EVENT_LOOKBACK_DAYS} days:\n")
+    if events:
+        for e in events:
+            what = ("battery REPLACED (it wasn't charging, so only a new battery"
+                    " raises the floor)" if e["kind"] == "replaced"
+                    else "power RESTORED after a failure (new battery or recharge)")
+            print(f"    {e['day']}  {e['site']:18} {what}")
+            print(f"                {'':18} overnight floor {e['floor_before']:.2f} -> "
+                  f"{e['floor_after']:.2f} V")
+        print()
+        for site, v in sorted(stations.items()):
+            le, t2 = v.get("last_event"), v.get("trend_since_event_v_per_week")
+            if le and v.get("not_charging") and t2 is not None:
+                print(f"    {site}: since the {le['day']} event the battery has gone "
+                      f"{t2:+.3f} V/week and still isn't charging:")
+                print("    a new battery buys weeks, not a fix.\n")
+    else:
+        print("    none\n")
 
     print("  Thresholds are advisory. A 12 V sealed lead-acid logger supply")
     print(f"  is comfortable above {WATCH_VOLTAGE} V and at risk below "

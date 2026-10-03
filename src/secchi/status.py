@@ -181,10 +181,16 @@ def report() -> int:
     for site, h in sorted(health.items()):
         if site in dark:
             continue
+        le = h.get("last_event")
         if h.get("not_charging"):
             warn.append(f"{site:16} NOT CHARGING - peak {h.get('peak_14d'):.2f} V in 14 days, "
                         f"overnight low {h.get('current_floor'):.2f} V"
                         + (f", falling {h['weeks_falling']} weeks" if h.get('weeks_falling', 0) >= 3 else ""))
+            if le:
+                verb = "replaced" if le["kind"] == "replaced" else "power restored"
+                warn.append(f"{'':16} battery {verb} {le['day']} "
+                            f"({le['floor_before']:.2f} -> {le['floor_after']:.2f} V), "
+                            f"still not charging")
             todo.append(f"{site}: battery not being charged - needs a site visit (tell TEON)")
         elif h.get("flatlined"):
             warn.append(f"{site:16} battery channel stuck on one value")
@@ -193,6 +199,15 @@ def report() -> int:
             todo.append(f"{site}: battery below 11.5 V")
         elif h.get("weeks_to_floor") is not None and h["weeks_to_floor"] < 12:
             warn.append(f"{site:16} {h['weeks_to_floor']:.0f} weeks to the 11.5 V floor at this rate")
+        # Separately from the chain above (an `if` inside it splits the
+        # elif sequence): any swap or restoration in the last two weeks,
+        # at a station that is charging, is news. It's how a site visit
+        # shows up in the data. Not-charging stations say it on their line.
+        if le and not h.get("not_charging") and \
+                (datetime.now().date() - datetime.fromisoformat(le["day"]).date()).days <= 14:
+            verb = "replaced" if le["kind"] == "replaced" else "power restored"
+            warn.append(f"{site:16} battery {verb} {le['day']} "
+                        f"({le['floor_before']:.2f} -> {le['floor_after']:.2f} V)")
     print("\n  BATTERIES")
     if "battery check" in unavailable:
         print("    COULD NOT CHECK - see above")

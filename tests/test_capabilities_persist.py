@@ -77,6 +77,7 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.sources.reference", "reproject_geojson"),
     ("secchi.sources.simplify", "simplify_collection"),
     ("secchi.sources.watch", "diff_state"),
+    ("secchi.analysis.station_health", "battery_events"),
     ("secchi.sources.terc", "ingest"),
     ("secchi.sources.terc", "parse_csv"),
     ("secchi.sources.terc", "candidate_pids"),
