@@ -1,0 +1,4 @@
+2026-10-03 02:28:38,010 INFO httpx :: HTTP Request: GET https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?stationTriplets=848%3ACA%3ASNTL%2C724%3ACA%3ASNTL%2C615%3ANV%3ASNTL%2C428%3ACA%3ASNTL&elements=PRCP%2CPREC%2CTAVG%2CWTEQ%2CSNWD&duration=DAILY&beginDate=2026-09-03&endDate=2026-10-03&periodRef=END "HTTP/1.1 200 OK"
+2026-10-03 02:28:38,071 INFO secchi.store :: snotel_observations: 0 file(s) rewritten, 2 unchanged, 618 rows stored (+0 new)
+2026-10-03 02:28:38,071 INFO secchi.sources.snotel :: SNOTEL: 578 value(s) for 2026-09-03 to 2026-10-03 across 4 station(s); +0 new
+exit 0
