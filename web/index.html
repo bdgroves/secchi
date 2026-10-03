@@ -427,7 +427,7 @@
   .lg-secchi { border: 1.5px solid var(--slate);
                background: conic-gradient(var(--slate) 0 25%, var(--paper) 0 50%,
                                           var(--slate) 0 75%, var(--paper) 0); }
-  .lg-airport { background: var(--slate); border-radius: 0; }
+  .map-legend .lg-airport { background: var(--slate); border-radius: 0; }
   .map-legend span[hidden] { display: none; }
   .lg-transect { width: 1.4rem; height: 0; border-top: 2px dashed var(--ember);
                  border-radius: 0; }
@@ -1218,12 +1218,14 @@
   /** Round axis ticks in the active units for values 0..maxRaw of `unit`. */
   function niceTicks(maxRaw, unit, count) {
     const max = convert(maxRaw, unit).value;
-    const raw = max / (count || 4);
+    const raw = max / (count || 5);
     const mag = Math.pow(10, Math.floor(Math.log10(raw)));
     const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || raw;
-    const out = [];
-    for (let v = 0; v <= max + 1e-9; v += step) out.push(v);
-    return { ticks: out, top: out[out.length - 1] < max ? out[out.length - 1] + step : out[out.length - 1] };
+    // End on the first tick at or past the data, and label it: the axis
+    // never runs on past its last label.
+    const out = [0];
+    while (out[out.length - 1] < max - 1e-9) out.push(out[out.length - 1] + step);
+    return { ticks: out, top: out[out.length - 1] };
   }
 
   /** Yearly mean Secchi depth, depth increasing downward as on a profile. */
