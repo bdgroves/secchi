@@ -258,7 +258,8 @@ web/assets/        built by `transform`, not committed
   turbidity and chlorophyll don't track offshore clarity (|r| mostly <0.3;
   Glenbrook turbidity -0.46 is marginal; temperature -0.40 is the season).
   Different water, too little overlap. Not on the page.
-- **Hourly trigger written, not switched on**: `ops/hourly-trigger/`.
+- **Hourly trigger**: a Cloudflare cron was written, then dropped on 2026-10-05
+  (stations upload twice a day; see below).
 
 **Added 2026-10-03**
 
@@ -282,17 +283,16 @@ web/assets/        built by `transform`, not committed
   reading, each on its own clock, back to at least 2026-09-18
   (`docs/upload-cadence.md`). The page now says so (lede, lake intro, a
   tooltip on the status line). It also means the hourly trigger only trims
-  a few hours of lag; it was oversold as "close to live".
+  a few hours of lag; it was oversold as "close to live", and was
+  dropped the same day.
 
 **Next, roughly in order**
 
 1. **Answer TEON** when they reply; adjust anything they ask about the page.
    Follow up ~2026-10-09 if not.
-2. **Hourly trigger: optional, parked.** Stations upload twice a day, so it
-   would trim a few hours of lag, not make the page live
-   (`docs/upload-cadence.md`). If wanted: a fine-grained token, then three
-   commands in `ops/hourly-trigger/README.md`. `status` shows snapshots per
-   24 h; GitHub alone gives ~4-6.
+2. **No external trigger.** GitHub's schedule (~4-6 fetches a day) is
+   enough for twice-daily uploads (`docs/upload-cadence.md`). The Cloudflare
+   Worker was dropped on 2026-10-05; it's in git history if ever wanted.
 3. **Confirm Glenbrook 2** with a site photo or TEON's site notes (worth
    asking in the TEON thread), and ask what species and trunk size each
    dendrometer band is on: that's what the east/west tree comparison needs.
@@ -349,8 +349,7 @@ The README's mistakes table lists 45; these rules came out of them.
 | `docs/smoke.md` | the HMS smoke record and the smoke-vs-lake null |
 | `docs/beyond-teon.md` | TERC Secchi, the Snow Lab, the airports: routes, what failed, caveats |
 | `docs/trees.md` | the dendrometers: the daily cycle, shrinkage, why growth isn't shown |
-| `docs/upload-cadence.md` | stations upload in 12-hour batches; what that means for freshness and the trigger |
-| `ops/hourly-trigger/README.md` | switching on the Cloudflare cron that runs fetch and pages on time |
+| `docs/upload-cadence.md` | stations upload in 12-hour batches; what that means for freshness and the schedule |
 | `docs/transect-result.md`, `transect-method.md` | the soil transect and its corrections |
 | `docs/glenbrook-result.md` | Glenbrook 2: three failed methods, then the ground (probably explained) |
 | `docs/storage.md`, `parquet-conflicts.md` | the store layout, growth fixes, merge driver |

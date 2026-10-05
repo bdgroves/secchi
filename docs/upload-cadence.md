@@ -31,11 +31,12 @@ a recent change.
 - **Hourly fetches are about right.** With eight staggered batches a day,
   fetching hourly picks each one up within an hour. Fetching more often gains
   nothing.
-- **The hourly trigger (`ops/hourly-trigger/`) is optional.** GitHub's
-  scheduler alone gives about 4–6 snapshots a day, which adds a few hours of
-  lag on top of the batching. The trigger would cut that to under an hour,
-  but it can't make data arrive faster than the stations send it. It was
-  first pitched as keeping the page close to live; that overstated it.
+- **No external trigger.** GitHub's scheduler alone gives about 4–6
+  snapshots a day, which adds a few hours of lag on top of the batching. A
+  Cloudflare cron to fire the workflows on time was written, then dropped
+  (2026-10-05): it could trim that lag but can't make data arrive faster than
+  the stations send it. It was first pitched as keeping the page close to
+  live, which overstated it. It's in git history (`ops/hourly-trigger/`).
 - Blackwood 2's whole 99-day outage arriving at once (see the README) is the
   same mechanism at a larger scale: the logger kept recording and sent it all
   when the link came back.

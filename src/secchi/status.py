@@ -64,9 +64,9 @@ def _snapshot_time(raw_dir) -> datetime | None:
 def _snapshots_in_last_day(raw_dir, ref: datetime) -> int:
     """Inventory snapshots captured in the 24 h before ``ref`` (one per CI fetch).
 
-    Hourly means 24. GitHub's scheduler gave about 4 a day in late
-    September 2026, which is what ops/hourly-trigger exists to fix; this
-    number is how to tell whether it is working.
+    Hourly means 24; GitHub's scheduler gives about 4-6 a day. That's
+    acceptable because stations upload in 12-hour batches anyway
+    (docs/upload-cadence.md).
     """
     root = raw_dir / "inventory"
     n = 0
@@ -106,8 +106,8 @@ def report() -> int:
     else:
         print(f"    latest hourly snapshot     {_age(snap_age)} old")
         per_day = _snapshots_in_last_day(RAW_DIR, snap)
-        print(f"    snapshots in the 24 h      {per_day} (hourly would be 24"
-              f"{'; GitHub is running the schedule late - see ops/hourly-trigger' if per_day < 12 else ''})")
+        print(f"    snapshots in the 24 h      {per_day} (hourly would be 24;"
+              f" GitHub usually gives 4-6, fine for twice-daily uploads)")
         if snap_age is not None and snap_age > STALE_COPY_HOURS:
             todo.append(f"git pull - the latest snapshot is {_age(snap_age)} old "
                         f"(if it still is after pulling, CI is running late)")
