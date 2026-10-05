@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>secchi — a modern Secchi disk for Lake Tahoe</title>
-<meta name="description" content="Real-time clarity, watershed, and wildfire-coupling analytics on TEON data.">
+<meta name="description" content="Lake Tahoe clarity, watershed, and wildfire-coupling analytics on TEON data, updated through the day.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -496,9 +496,9 @@
     </a>
   </header>
 
-  <h1>Watching clarity emerge from its drivers, in real time.</h1>
+  <h1>Watching clarity emerge from its drivers, as the readings come in.</h1>
   <p class="lede">
-    Live readings from the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a> —
+    The latest readings from the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a> —
     lake sondes sampling water quality every fifteen minutes, and forest
     stations tracking the soil, air and trees of the watersheds that feed
     the lake. Each station saves up its readings and sends them in twice a
@@ -2594,14 +2594,14 @@
         const bits = [`${liveCount} station${liveCount === 1 ? "" : "s"}`];
         if (gaugeCount) bits.push(`${gaugeCount} gauge${gaugeCount === 1 ? "" : "s"}`);
         text.textContent =
-          `Live from ${srcs} — ${bits.join(" and ")} reporting. `
-          + `Freshest reading ${timeAgo(newest)}.`;
+          `From ${srcs}: ${bits.join(" and ")} reporting. `
+          + `Freshest reading ${timeAgo(newest)}; stations send their readings in twice a day.`;
         text.title = "Stations measure every 15 minutes and upload in batches "
           + "twice a day, each on its own clock, so a station's latest "
           + "reading can be up to about 14 hours old and still be on time.";
       } else {
         dot.dataset.state = "stale";
-        text.textContent = "No live observations available.";
+        text.textContent = "No recent observations available.";
       }
 
       // Built from the inventory rather than hardcoded. The previous
