@@ -176,6 +176,10 @@ query = "python -m secchi.query"
 # One screen: stations, batteries, lake, data waiting, impossible readings,
 # and what (if anything) needs doing. Reads only what's on disk.
 status = "python -m secchi.status"
+# The morning report: what changed in the last 24 h, then the numbers
+# (lake, forest, lake level, Beyond TEON). Run `transform` first.
+# `pixi run daily --out report.md` also writes it to a file.
+daily = "python -m secchi.daily"
 # Daily precipitation and air temperature from SNOTEL (Ward Creek #3,
 # Rubicon #2, Marlette Lake). First run: pixi run snotel --since 2024-06-01
 snotel = "python -m secchi.ingest --mode snotel"

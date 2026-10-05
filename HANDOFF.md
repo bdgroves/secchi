@@ -286,6 +286,10 @@ web/assets/        built by `transform`, not committed
   a few hours of lag; it was oversold as "close to live", and was
   dropped the same day.
 
+- **Daily report** (`pixi run daily`, `docs/daily-report.md`): what changed in
+  24 h, what's still open, then the numbers. A Claude scheduled task runs it
+  each morning and sends it to Brooks.
+
 **Next, roughly in order**
 
 1. **Answer TEON** when they reply; adjust anything they ask about the page.
@@ -349,6 +353,7 @@ The README's mistakes table lists 45; these rules came out of them.
 | `docs/smoke.md` | the HMS smoke record and the smoke-vs-lake null |
 | `docs/beyond-teon.md` | TERC Secchi, the Snow Lab, the airports: routes, what failed, caveats |
 | `docs/trees.md` | the dendrometers: the daily cycle, shrinkage, why growth isn't shown |
+| `docs/daily-report.md` | `pixi run daily`: the morning report, what counts as a change, the scheduled run |
 | `docs/upload-cadence.md` | stations upload in 12-hour batches; what that means for freshness and the schedule |
 | `docs/transect-result.md`, `transect-method.md` | the soil transect and its corrections |
 | `docs/glenbrook-result.md` | Glenbrook 2: three failed methods, then the ground (probably explained) |
