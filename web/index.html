@@ -501,7 +501,8 @@
     Live readings from the <a href="https://tahoeenvironmentalobservatorynetwork.org/">Tahoe Environmental Observatory Network</a> —
     lake sondes sampling water quality every fifteen minutes, and forest
     stations tracking the soil, air and trees of the watersheds that feed
-    the lake.
+    the lake. Each station saves up its readings and sends them in twice a
+    day, so the newest numbers here are usually a few hours old.
   </p>
 
   <div class="status" role="status" aria-live="polite">
@@ -533,8 +534,9 @@
 
   <h2 id="the-lake">Three anchors on the lake</h2>
   <p>
-    The three telemetered sondes, reporting from the lake itself every
-    fifteen minutes. Each card shows the latest reading and its last two days.
+    The three telemetered sondes, measuring the lake itself every fifteen
+    minutes and sending those readings in twice a day. Each card shows the
+    latest reading and its last two days.
   </p>
   <details class="explainer">
     <summary>Why oxygen appears three ways</summary>
@@ -2594,6 +2596,9 @@
         text.textContent =
           `Live from ${srcs} — ${bits.join(" and ")} reporting. `
           + `Freshest reading ${timeAgo(newest)}.`;
+        text.title = "Stations measure every 15 minutes and upload in batches "
+          + "twice a day, each on its own clock, so a station's latest "
+          + "reading can be up to about 14 hours old and still be on time.";
       } else {
         dot.dataset.state = "stale";
         text.textContent = "No live observations available.";

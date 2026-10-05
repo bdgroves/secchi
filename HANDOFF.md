@@ -275,13 +275,24 @@ web/assets/        built by `transform`, not committed
 - **Correction for the TEON follow-up**: 4H Camp's turbidity offset is ~−5.6
   since the 2026-07-16 visit, not −2.4 (README, note addendum).
 
+**Added 2026-10-05**
+
+- **Stations upload twice a day.** Every telemetered station measures every
+  15 minutes but sends a 12-hour batch about two hours after its last
+  reading, each on its own clock, back to at least 2026-09-18
+  (`docs/upload-cadence.md`). The page now says so (lede, lake intro, a
+  tooltip on the status line). It also means the hourly trigger only trims
+  a few hours of lag; it was oversold as "close to live".
+
 **Next, roughly in order**
 
 1. **Answer TEON** when they reply; adjust anything they ask about the page.
    Follow up ~2026-10-09 if not.
-2. **Switch on the hourly trigger** (Brooks: a fine-grained token, then three
-   commands in `ops/hourly-trigger/README.md`). `status` shows snapshots per
-   24 h; GitHub alone gives ~4.
+2. **Hourly trigger: optional, parked.** Stations upload twice a day, so it
+   would trim a few hours of lag, not make the page live
+   (`docs/upload-cadence.md`). If wanted: a fine-grained token, then three
+   commands in `ops/hourly-trigger/README.md`. `status` shows snapshots per
+   24 h; GitHub alone gives ~4-6.
 3. **Confirm Glenbrook 2** with a site photo or TEON's site notes (worth
    asking in the TEON thread), and ask what species and trunk size each
    dendrometer band is on: that's what the east/west tree comparison needs.
@@ -338,6 +349,7 @@ The README's mistakes table lists 45; these rules came out of them.
 | `docs/smoke.md` | the HMS smoke record and the smoke-vs-lake null |
 | `docs/beyond-teon.md` | TERC Secchi, the Snow Lab, the airports: routes, what failed, caveats |
 | `docs/trees.md` | the dendrometers: the daily cycle, shrinkage, why growth isn't shown |
+| `docs/upload-cadence.md` | stations upload in 12-hour batches; what that means for freshness and the trigger |
 | `ops/hourly-trigger/README.md` | switching on the Cloudflare cron that runs fetch and pages on time |
 | `docs/transect-result.md`, `transect-method.md` | the soil transect and its corrections |
 | `docs/glenbrook-result.md` | Glenbrook 2: three failed methods, then the ground (probably explained) |

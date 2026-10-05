@@ -82,6 +82,8 @@ Evidence, since this is inferred rather than documented:
 
 Every record carries `uuid`, `site`, `latitude`, `longitude`, `TIMESTAMP`. Fields below are the measurements.
 
+Readings are taken every 15 minutes but arrive in 12-hour batches, twice a day per station, each on its own clock; see `upload-cadence.md`.
+
 ### EXO sonde (lake) — 15-minute cadence
 
 | Field | Units | Notes |
