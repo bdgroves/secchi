@@ -34,6 +34,13 @@ WINDOW_DAYS = 14
 MAX_ITEMS = 8
 # A site TEON hides and shows again within this long is a blip, not news.
 BLIP_HOURS = 24
+# A telemetered sensor that sent nothing for less than this (from its last
+# reading to the upload that caught it up), then came back with the gap
+# filled, had a late upload, not an outage. Stations send 12-hour batches
+# (docs/upload-cadence.md), so this is up to about three missed batches.
+# Five stations did it on 2026-10-05/06 (silences of 27-41 h), Glenbrook 5
+# on 2026-09-27/28 (38 h).
+QUIET_BLIP_HOURS = 48
 FREEZE_C = 0.0
 FIRST_SNOW_CM = 2.5
 
@@ -84,23 +91,66 @@ def _item(at, kind, text, source="TEON", link=None, **extra) -> dict:
 # From the watcher's log
 # ---------------------------------------------------------------------------
 
-def from_log(events: list[dict], live_sites: set[str], since: datetime) -> list[dict]:
-    ev = [e for e in events
-          if datetime.fromisoformat(e["at"].replace("Z", "+00:00")) >= since]
+def _at(e: dict) -> datetime:
+    return datetime.fromisoformat(e["at"].replace("Z", "+00:00"))
+
+
+def _late_upload_blips(events: list[dict]) -> set[int]:
+    """ids of quiet/resumed/upload events that were one late upload.
+
+    Paired over the whole log, not just the window, so a resume whose
+    "went quiet" fell just before the window is still recognised.
+    """
+    blips: set[int] = set()
+    for r in events:
+        if r["kind"] != "sensor resumed":
+            continue
+        quiets = [q for q in events if q["kind"] == "sensor went quiet"
+                  and q["detail"] == r["detail"] and _at(q) <= _at(r)]
+        if not quiets:
+            continue
+        q = max(quiets, key=_at)
+        # Measure the silence from the last reading, not from when the
+        # watcher noticed it (which lags by the live window and CI's gaps).
+        start = _at(q)
+        if q.get("last_update"):
+            lu = datetime.fromisoformat(str(q["last_update"]))
+            start = lu if lu.tzinfo else lu.replace(tzinfo=PACIFIC)
+        if _at(r) - start <= timedelta(hours=QUIET_BLIP_HOURS):
+            blips |= {id(q), id(r)}
+            blips |= {id(u) for u in events
+                      if u["kind"] == "dormant sensor received an upload"
+                      and u["detail"] == r["detail"] and u["at"] == r["at"]}
+    return blips
+
+
+def from_log(events: list[dict], live_sites: set[str], since: datetime,
+             manual: set[tuple[str, str]] | None = None) -> list[dict]:
+    """``manual``: (site, sensor_type) pairs collected by hand. When given,
+    only those count as hand-collected uploads; a telemetered sonde catching
+    up (Sunnyside, 2026-10-06) is treated like a station. When None, every
+    lake upload is taken as hand-collected (the old behaviour)."""
+    blips = _late_upload_blips(events)
+    ev = [e for e in events if _at(e) >= since and id(e) not in blips]
     items: list[dict] = []
+
+    def hand_collected(e: dict) -> bool:
+        if e.get("category") != "lake":
+            return False
+        return manual is None or (e.get("site"), e.get("sensor_type")) in manual
 
     # Hidden and shown again within BLIP_HOURS: drop both.
     hid = [e for e in ev if e["kind"] == "site hidden by TEON"]
     shown = [e for e in ev if e["kind"] == "site un-hidden by TEON"]
-    blips = set()
+    hide_blips = set()
     for h in hid:
         th = datetime.fromisoformat(h["at"])
         for s in shown:
             ts = datetime.fromisoformat(s["at"])
             if s["detail"] == h["detail"] and timedelta(0) <= ts - th <= timedelta(hours=BLIP_HOURS):
-                blips |= {id(h), id(s)}
+                hide_blips |= {id(h), id(s)}
     for e in hid + shown:
-        if id(e) in blips:
+        if id(e) in hide_blips:
             continue
         name = label(e["detail"])
         if e["kind"] == "site hidden by TEON":
@@ -126,7 +176,7 @@ def from_log(events: list[dict], live_sites: set[str], since: datetime) -> list[
     # Lake loggers read by hand: one boat trip is one line.
     lake_up = defaultdict(list)
     for e in ev:
-        if e["kind"] == "dormant sensor received an upload" and e.get("category") == "lake":
+        if e["kind"] == "dormant sensor received an upload" and hand_collected(e):
             lake_up[_local_day(e["at"])].append(e)
     for day, es in lake_up.items():
         sites = sorted({label(e["site"]) for e in es})
@@ -145,7 +195,8 @@ def from_log(events: list[dict], live_sites: set[str], since: datetime) -> list[
     # Forest and stream stations: back, quiet, or a backlog arriving.
     by_site_day = defaultdict(list)
     for e in ev:
-        if e.get("category") in ("terrestrial", "stream") and e.get("site"):
+        telemetered_lake = e.get("category") == "lake" and not hand_collected(e)
+        if (e.get("category") in ("terrestrial", "stream") or telemetered_lake) and e.get("site"):
             by_site_day[(e["site"], _local_day(e["at"]))].append(e)
     for (site, _), es in by_site_day.items():
         kinds = {e["kind"] for e in es}
@@ -265,11 +316,13 @@ def build(df_long: pd.DataFrame, inventory_rows: list[dict],
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=WINDOW_DAYS)
     live_sites = {r.get("site") for r in inventory_rows or [] if r.get("is_live")}
+    manual = {(r.get("site"), r.get("sensor_type")) for r in inventory_rows or []
+              if r.get("is_manual")} or None
     log_path = REFERENCE_DIR / "news_log.json"
     events = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
 
     items: list[dict] = []
-    for name, fn in (("log", lambda: from_log(events, live_sites, since)),
+    for name, fn in (("log", lambda: from_log(events, live_sites, since, manual)),
                      ("batteries", lambda: from_batteries(df_long, since)),
                      ("freeze", lambda: from_first_freeze(df_long, since)),
                      ("terc", lambda: from_terc(since)),

@@ -119,3 +119,59 @@ def test_snow_sensor_noise_on_a_warm_dry_day_is_not_first_snow(monkeypatch, tmp_
     monkeypatch.setattr("secchi.store.read_partitions", lambda *a, **k: cold)
     items = N.from_first_snow(SINCE)
     assert len(items) == 1 and items[0]["source"] == "Beyond TEON"
+
+
+# ---- 2026-10-05/06: one late upload, reported as five stations "back" ----
+
+LATE = [
+    ev("2026-10-06T06:17:33+00:00", "sensor went quiet",
+       "terrestrial/Air Temperature & Relative Humidity/Glenbrook 2", last_update="2026-10-05T03:45:00"),
+    ev("2026-10-06T13:19:27+00:00", "sensor went quiet", "lake/EXO/Sunnyside",
+       last_update="2026-10-05T13:00:00"),
+    ev("2026-10-06T22:38:16+00:00", "dormant sensor received an upload", "lake/EXO/Sunnyside",
+       last_update="2026-10-06T13:00:00", added=96),
+    ev("2026-10-06T22:38:16+00:00", "sensor resumed", "lake/EXO/Sunnyside",
+       last_update="2026-10-06T13:00:00"),
+    ev("2026-10-06T22:38:16+00:00", "dormant sensor received an upload",
+       "terrestrial/Air Temperature & Relative Humidity/Glenbrook 2", last_update="2026-10-06T00:15:00", added=82),
+    ev("2026-10-06T22:38:16+00:00", "sensor resumed",
+       "terrestrial/Air Temperature & Relative Humidity/Glenbrook 2", last_update="2026-10-06T00:15:00"),
+]
+MANUAL = {("Camp Richardson", "Minidot"), ("tallac_lake", "Hobo"), ("Blackwood 3", "EXO")}
+LATER = datetime(2026, 10, 7, 14, 0, tzinfo=timezone.utc)
+
+
+def test_one_late_upload_is_not_news():
+    assert N.from_log(LATE, {"Glenbrook 2", "Sunnyside"}, LATER - timedelta(days=14), MANUAL) == []
+
+
+def test_a_late_upload_is_skipped_even_if_quiet_fell_before_the_window():
+    since = datetime(2026, 10, 6, 20, 0, tzinfo=timezone.utc)   # after both "went quiet"
+    assert N.from_log(LATE, {"Glenbrook 2", "Sunnyside"}, since, MANUAL) == []
+
+
+def test_a_real_outage_still_shows_its_return():
+    events = [dict(e) for e in LATE]
+    events[0].update(at="2026-10-03T06:00:00+00:00",               # silent three days
+                     last_update="2026-10-02T13:45:00")
+    texts = [i["text"] for i in N.from_log(events, {"Glenbrook 2"}, LATER - timedelta(days=14), MANUAL)]
+    assert "Glenbrook 2 is reporting again." in texts
+
+
+def test_a_telemetered_sonde_is_never_hand_collected():
+    events = [dict(e) for e in LATE if "Sunnyside" in e["detail"]]
+    events[0].update(at="2026-10-03T06:00:00+00:00", last_update="2026-10-02T13:00:00")
+    texts = [i["text"] for i in N.from_log(events, {"Sunnyside"}, LATER - timedelta(days=14), MANUAL)]
+    assert not any("Hand-collected" in t for t in texts)
+    assert "Sunnyside is reporting again." in texts
+
+
+def test_watcher_reads_teon_times_as_pacific():
+    # 03:45 Pacific is 10:45 UTC; 20 h later it is still live. Read as UTC
+    # (the old bug) it was 27 h old and "quiet".
+    inv = {"locations": {"terrestrial": {"Air Temperature & Relative Humidity": [
+        {"site": "Glenbrook 2", "last_update": "2026-10-05T03:45:00", "data_count": 1}]}}}
+    now = datetime(2026, 10, 6, 6, 45, tzinfo=timezone.utc)
+    st = W._snapshot_state(inv, set(), now=now)
+    (s,) = st["sensors"].values()
+    assert s["state"] == "live"

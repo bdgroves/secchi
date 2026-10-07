@@ -290,6 +290,18 @@ web/assets/        built by `transform`, not committed
   24 h, what's still open, then the numbers. A Claude scheduled task runs it
   each morning and sends it to Brooks.
 
+**Added 2026-10-07**
+
+- **Late uploads aren't news.** On 2026-10-05/06 every station's upload ran a
+  batch or two late, then caught up with nothing lost. The daily report called
+  it five stations "reporting again" and Sunnyside "hand-collected data". Two
+  bugs: the watcher read TEON's naive Pacific `last_update` as UTC (7-8 h too
+  old, so "quiet" at ~17 h); and What's new took any lake upload as a boat
+  trip. Fixed: the watcher reads Pacific; a quiet-then-back with under 48 h
+  of silence (last reading to catch-up) is skipped (`QUIET_BLIP_HOURS`); only
+  inventory `is_manual` sensors count as hand-collected. Glenbrook 5's
+  2026-09-28 "reporting again" (38 h) drops out by the same rule.
+
 **Next, roughly in order**
 
 1. **Answer TEON** when they reply; adjust anything they ask about the page.
