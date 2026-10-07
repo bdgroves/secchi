@@ -1,5 +1,9 @@
 # ⚪⚫ secchi
 
+<p align="center">
+  <img src="docs/img/secchi-banner.jpg" alt="secchi: a modern Secchi disk for Lake Tahoe" width="100%"/>
+</p>
+
 ### A modern Secchi disk for Lake Tahoe
 
 **[→ Live dashboard](https://brooksgroves.com/secchi/)** · two agencies, 12.0 million observations, twenty-seven months, updating hourly and watching itself
