@@ -1,0 +1,52 @@
+name: test
+
+# Runs the test suite (`pixi run -e dev test`) on a Linux runner.
+#
+# Why this exists: on Brooks's Windows laptop, Smart App Control blocks the
+# unsigned numpy DLLs that conda-forge ships, so pytest can't even import
+# pandas there. This gives every code change a real, pixi-managed test run
+# without touching Windows security settings. Run it by hand from the
+# Actions tab ("test" → Run workflow) any time.
+#
+# The hourly data commits from the fetch bots don't touch these paths, so
+# they don't trigger a run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "web/**"
+      - "pyproject.toml"
+      - "pixi.lock"
+      - ".github/workflows/test.yml"
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          manifest-path: pyproject.toml
+          environments: dev
+          cache: true
+
+      - name: Run the tests
+        run: pixi run -e dev test
+        env:
+          TZ: America/Los_Angeles
