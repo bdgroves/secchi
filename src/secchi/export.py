@@ -35,7 +35,7 @@ no hidden site anywhere in the output.
 Why the duplicate flags exist
 -----------------------------
 Until 2026-10-07 the store deduplicated on record ids only, and the
-September 2026 backfills stored 289,825 readings twice under *different*
+September 2026 backfills stored 289,804 readings twice under *different*
 ids (mostly forest stations, November 2025 to February 2026). They were
 removed from the store that day and the store now drops identical repeat
 readings itself (``store.READING_KEY``). The flags stay as a check: an

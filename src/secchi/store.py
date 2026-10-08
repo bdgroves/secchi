@@ -110,6 +110,20 @@ def _canonical(df: pd.DataFrame, dedupe_on: list[str]) -> pd.DataFrame:
 # provably the same reading) and the export flags them.
 READING_KEY = ["site", "sensor_type", "variable", "timestamp"]
 
+# Sensor types whose clocks follow daylight saving. Their 01:00-01:59 on
+# the first Sunday of November happens twice, so two real readings can
+# share a timestamp and a value; they must never be merged. Every other
+# TEON clock stays on standard time all year (docs/data-dictionary.md).
+DST_CLOCK_SENSORS = frozenset({"MiniDotSensor"})
+
+
+def _fall_back_hour(ts: pd.Series) -> pd.Series:
+    """True for timestamps in the repeated hour: 01:xx on the first Sunday
+    of November (US rule since 2007)."""
+    t = pd.to_datetime(ts, errors="coerce")
+    return ((t.dt.month == 11) & (t.dt.dayofweek == 6) & (t.dt.day <= 7)
+            & (t.dt.hour == 1)).fillna(False)
+
 
 def drop_repeat_readings(df: pd.DataFrame, reading_key: list[str] | None,
                          id_col: str = "uuid") -> pd.DataFrame:
@@ -121,9 +135,13 @@ def drop_repeat_readings(df: pd.DataFrame, reading_key: list[str] | None,
     if len(key) != len(reading_key) or "value" not in df.columns:
         return df
     order = [*key, "value"] + ([id_col] if id_col in df.columns else [])
-    out = (df.sort_values(order, kind="mergesort", na_position="first")
-             .drop_duplicates(subset=[*key, "value"], keep="first"))
-    return out if len(out) < len(df) else df
+    protected = df["sensor_type"].isin(DST_CLOCK_SENSORS) & _fall_back_hour(df["timestamp"]) \
+        if "sensor_type" in df.columns else pd.Series(False, index=df.index)
+    rest = (df[~protected].sort_values(order, kind="mergesort", na_position="first")
+              .drop_duplicates(subset=[*key, "value"], keep="first"))
+    if len(rest) == int((~protected).sum()):
+        return df
+    return pd.concat([rest, df[protected]]) if protected.any() else rest
 
 
 def _signatures(df: pd.DataFrame, dedupe_on: list[str], cols: list[str]) -> pd.Series:

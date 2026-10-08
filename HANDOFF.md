@@ -311,7 +311,7 @@ web/assets/        built by `transform`, not committed
   with the project being shared; Brooks recorded 2026-10-07 that TEON has
   given permission to share the data with provisional-data language.
   Release assets can't be read by page scripts (no CORS), hence web/data.
-  The export found 289,825 readings stored twice (our Sept 22-23 backfills
+  The export found 289,804 readings stored twice (our Sept 22-23 backfills
   re-fetched them under other record ids); removed 2026-10-07, and the
   store now drops identical repeats itself (docs/export.md).
 

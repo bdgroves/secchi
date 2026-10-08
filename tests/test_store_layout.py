@@ -218,3 +218,18 @@ def test_cleaning_the_store_rewrites_only_files_with_repeats(root):
     assert sorted(read_partitions(root).uuid) == ["r0", "x0"]
     assert dec.read_bytes() == dec_bytes
     assert drop_repeats_in_store(root, KEY)["rows_removed"] == 0
+
+
+def test_the_repeated_fall_back_hour_on_a_dst_clock_is_not_a_repeat(root):
+    # MiniDOT clocks follow daylight saving: 01:03 on 2025-11-02 happens
+    # twice, and two real readings can share a value.
+    first = rows(["2025-11-02 01:03"], value=14.0, prefix="a").assign(sensor_type="MiniDotSensor")
+    second = rows(["2025-11-02 01:03"], value=14.0, prefix="b").assign(sensor_type="MiniDotSensor")
+    write_partitions(pd.concat([first, second]), root, "teon", KEY, READING_KEY)
+    assert len(read_partitions(root)) == 2
+    # The same hour on a standard-time clock, or another day, is still a repeat.
+    exo = pd.concat([rows(["2025-11-02 01:03"], prefix="c"), rows(["2025-11-02 01:03"], prefix="d")])
+    other = pd.concat([rows(["2025-11-09 01:03"], prefix="e").assign(sensor_type="MiniDotSensor"),
+                       rows(["2025-11-09 01:03"], prefix="f").assign(sensor_type="MiniDotSensor")])
+    write_partitions(pd.concat([exo, other]), root, "teon", KEY, READING_KEY)
+    assert len(read_partitions(root)) == 4

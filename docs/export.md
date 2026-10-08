@@ -104,9 +104,15 @@ before.
    repeats arriving with two of our backfills (2026-09-22 "backfill
    telemetered sensor history" and 2026-09-23 "recover lost forest and EXO
    rows"), which fetched readings TEON had already given us under other
-   record ids. 289,825 identical repeats (store-wide, including 79 lake
-   rows) were removed, keeping the lowest id; 8 month files rewritten,
-   nothing unique lost (distinct readings = new total, 11,804,468). The
+   record ids. 289,804 identical repeats (store-wide, including 58 EXO rows
+   from three doubled sonde records) were removed, keeping the lowest id.
+
+   **Correction, same day:** the first pass removed 289,825, including 21
+   real MiniDOT readings from 01:00-01:59 on 2025-11-02. MiniDOT clocks
+   follow daylight saving, so that hour happened twice and the second
+   pass's readings (mostly battery voltage) matched the first's. They
+   were restored, and the repeat rule now never merges that hour for
+   clocks that follow daylight saving (`store.DST_CLOCK_SENSORS`). The
    store now drops identical repeats on every write (`store.READING_KEY`).
    The 149 moments where two copies disagree are kept and flagged
    `conflicting_duplicate`.
