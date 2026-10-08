@@ -319,6 +319,11 @@ web/assets/        built by `transform`, not committed
 
 1. **TEON replied (2026-10-06)**: batteries to be replaced before winter;
    sharing is fine. Watch for the battery swaps in the daily report.
+   Next time you write: ask them to confirm the loggers keep PST all year
+   (and MiniDOT local time); secchi inferred it from the data on 2026-10-07.
+   **Re-publish the data release**: `data-2026-10-07` was built before the
+   repeat cleanup and the clock fix (the workflow won't overwrite a tag;
+   tomorrow's data gives a new one).
 2. **No external trigger.** GitHub's schedule (~4-6 fetches a day) is
    enough for twice-daily uploads (`docs/upload-cadence.md`). The Cloudflare
    Worker was dropped on 2026-10-05; it's in git history if ever wanted.
