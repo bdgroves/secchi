@@ -117,9 +117,19 @@ before.
 
 ## What this does not do yet
 
-- **No download panel on the page.** The next step is per-site, per-year
-  CSV slices linked from the page; later, DuckDB-WASM over the hosted
-  Parquet for any site and date range.
+- **The download panel is on a branch, not the page.** `downloads-panel`
+  (2026-10-07) lists the newest `data-*` release's whole-dataset files.
+  It goes live once a release can be published.
+- **No custom downloads yet** (one site, one date range), which is what
+  most people want. Next step: per-site, per-year CSV slices as release
+  assets, linked from the panel. Plain links work from any page.
+- **DuckDB-WASM can't read GitHub release assets from the page.** Checked
+  2026-10-07: neither github.com's 302 nor release-assets.githubusercontent.com
+  sends `Access-Control-Allow-Origin`, so a browser on brooksgroves.com is
+  refused (range requests themselves work). An in-browser picker needs the
+  Parquet somewhere that sends CORS: split into small files on the site
+  itself (same origin; GitHub Pages limits files to 100 MB and sites to
+  1 GB), or a bucket with CORS set (e.g. Cloudflare R2).
 - **No Zenodo deposit**, so no DOI. Worth doing once the first release is
   real, so people can cite a fixed version.
 - **No corrected oxygen column.** `exo_sat_sea_level` marks the problem; a
