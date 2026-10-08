@@ -55,8 +55,10 @@ def _store(tmp_path) -> pathlib.Path:
     rows += _exo("Blackwood 3", "2026-04-30 15:30", "b1", Temp=12.0, Do_mgL=7.0,
                  Do_percent=45.0)
     # Turbidity below zero, a dead pH channel, a healthy pH.
-    rows += _exo("Glenbrook", "2026-06-01 12:00", "g1", Turbidity=-2.0, pH=0.0)
-    rows += _exo("Glenbrook", "2026-06-01 12:15", "g2", Turbidity=0.4, pH=7.9)
+    rows += _exo("Glenbrook", "2026-06-01 12:00", "g1", Turbidity=-2.0, pH=0.0,
+                 Chl_a=-0.12, phycocyanin=-0.30)
+    rows += _exo("Glenbrook", "2026-06-01 12:15", "g2", Turbidity=0.4, pH=7.9,
+                 Chl_a=0.0, phycocyanin=0.05)
     # A nearshore logger reading 50 C.
     rows.append(_row("m1", "Lakeside", "MiniDotSensor", "Temperature", "2026-06-01 12:00", 50.0))
     rows.append(_row("m2", "Lakeside", "MiniDotSensor", "Temperature", "2026-06-01 12:10", 14.0))
@@ -280,6 +282,11 @@ def test_other_flags(bundle):
     df = _all_teon(bundle[0])
     assert "negative_turbidity" in _flagset(df, "Glenbrook", "Turbidity", "2026-06-01 12:00")
     assert "negative_turbidity" not in _flagset(df, "Glenbrook", "Turbidity", "2026-06-01 12:15")
+    assert "negative_chlorophyll" in _flagset(df, "Glenbrook", "Chl_a", "2026-06-01 12:00")
+    assert "negative_phycocyanin" in _flagset(df, "Glenbrook", "phycocyanin", "2026-06-01 12:00")
+    # Exactly zero is not below zero.
+    assert _flagset(df, "Glenbrook", "Chl_a", "2026-06-01 12:15") == set()
+    assert _flagset(df, "Glenbrook", "phycocyanin", "2026-06-01 12:15") == set()
     assert "ph_zero" in _flagset(df, "Glenbrook", "pH", "2026-06-01 12:00")
     assert _flagset(df, "Glenbrook", "pH", "2026-06-01 12:15") == set()
     assert "impossible_range" in _flagset(df, "Lakeside", "Temperature", "2026-06-01 12:00")
@@ -302,11 +309,11 @@ def test_duplicates_are_flagged_not_removed(bundle):
 
 def test_every_flag_the_sql_can_write_is_defined():
     """The README is built from QUALITY_FLAGS; an undefined flag would ship unexplained."""
+    import re
     src = pathlib.Path(export.__file__).read_text()
-    used = {f for f in ("impossible_range", "channel_scramble", "exo_sat_sea_level",
-                        "negative_turbidity", "ph_zero", "duplicate_reading",
-                        "conflicting_duplicate") if f"'{f}'" in src}
-    assert used == set(export.QUALITY_FLAGS)
+    # Every literal the SQL can emit: THEN 'flag' and ELSE 'flag'.
+    used = set(re.findall(r"(?:THEN|ELSE)\s+'(\w+)'", src))
+    assert used and used == set(export.QUALITY_FLAGS)
 
 
 # ---------------------------------------------------------------------------

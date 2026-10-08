@@ -63,7 +63,7 @@ from secchi.sources.watch import BASELINE_FILE, IMPOSSIBLE
 log = logging.getLogger(__name__)
 
 EXPORT_DIR = REPO_ROOT / "exports"
-FLAGS_VERSION = 1
+FLAGS_VERSION = 2   # 2: negative_chlorophyll, negative_phycocyanin (2026-10-07)
 BASELINE_MAX_AGE_HOURS = 48
 
 LAKE_SENSORS = ("ExoSensor", "MiniDotSensor", "HoboSensor")
@@ -102,6 +102,15 @@ QUALITY_FLAGS = {
         "below zero for much of its record, and at Sunnyside and 4H Camp "
         "the offset changes at service visits. Treat turbidity as relative "
         "until the zero point is understood."),
+    "negative_chlorophyll": (
+        "EXO chlorophyll (Chl_a) below zero: a zero-point offset, not a real "
+        "concentration. Every EXO sonde does it, Sunnyside most (83 % of its "
+        "record). Readings near zero mean very little chlorophyll, but the "
+        "exact level isn't known; treat it as relative."),
+    "negative_phycocyanin": (
+        "EXO phycocyanin (blue-green algae pigment) below zero: a zero-point "
+        "offset, as for chlorophyll and turbidity. Every EXO sonde does it "
+        "some of the time (12-36 % of readings)."),
     "ph_zero": (
         "EXO pH exactly 0: a dead channel. pH works only on the "
         "hand-collected sondes."),
@@ -308,6 +317,12 @@ def _prepare_observations(con, glob: str, disabled: set[str]) -> None:
                  CASE WHEN o.sensor_type = 'ExoSensor'
                        AND o.variable = 'Turbidity' AND o.value < 0
                       THEN 'negative_turbidity' END,
+                 CASE WHEN o.sensor_type = 'ExoSensor'
+                       AND o.variable = 'Chl_a' AND o.value < 0
+                      THEN 'negative_chlorophyll' END,
+                 CASE WHEN o.sensor_type = 'ExoSensor'
+                       AND o.variable = 'phycocyanin' AND o.value < 0
+                      THEN 'negative_phycocyanin' END,
                  CASE WHEN o.sensor_type = 'ExoSensor'
                        AND o.variable = 'pH' AND o.value = 0
                       THEN 'ph_zero' END,

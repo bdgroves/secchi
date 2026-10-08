@@ -66,10 +66,12 @@ isn't defined.
 |---|---:|
 | `exo_sat_sea_level` | 170,694 |
 | `negative_turbidity` | 122,377 |
+| `negative_chlorophyll` | 82,520 (added 2026-10-07) |
+| `negative_phycocyanin` | 32,597 (added 2026-10-07) |
 | `channel_scramble` | 54,150 |
 | `ph_zero` | 46,698 |
 | `impossible_range` | 11,481 |
-| `duplicate_reading` | 579,460 |
+| `duplicate_reading` | 579,460 (0 since the 2026-10-07 store cleanup) |
 | `conflicting_duplicate` | 380 |
 
 `channel_scramble` is per reading, and its trigger is the signature of the
