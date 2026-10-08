@@ -89,6 +89,22 @@ jobs:
       - name: Build latest.json and the map layer
         run: pixi run transform
 
+      # The custom download's files (web/data/). Fails closed on TEON's
+      # hidden-site list by leaving TEON out of the catalog, never by
+      # serving it unfiltered; a failure here must not stop the page.
+      - name: Build the custom-download files
+        id: webdata
+        continue-on-error: true
+        run: pixi run webdata
+
+      - name: Note a custom-download failure
+        if: always()
+        run: |
+          if [ "${{ steps.webdata.outcome }}" = "failure" ]; then
+            rm -rf web/data
+            echo "::warning title=Custom download not built::web/data was not built; the page shows the download as unavailable."
+          fi
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

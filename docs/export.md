@@ -117,19 +117,13 @@ before.
 
 ## What this does not do yet
 
-- **The download panel is on a branch, not the page.** `downloads-panel`
-  (2026-10-07) lists the newest `data-*` release's whole-dataset files.
-  It goes live once a release can be published.
-- **No custom downloads yet** (one site, one date range), which is what
-  most people want. Next step: per-site, per-year CSV slices as release
-  assets, linked from the panel. Plain links work from any page.
-- **DuckDB-WASM can't read GitHub release assets from the page.** Checked
+- **The panel and the custom download are on the `downloads-panel`
+  branch** until merged. See "The custom download" below.
+- **GitHub release assets can't be read by the page's own code.** Checked
   2026-10-07: neither github.com's 302 nor release-assets.githubusercontent.com
-  sends `Access-Control-Allow-Origin`, so a browser on brooksgroves.com is
-  refused (range requests themselves work). An in-browser picker needs the
-  Parquet somewhere that sends CORS: split into small files on the site
-  itself (same origin; GitHub Pages limits files to 100 MB and sites to
-  1 GB), or a bucket with CORS set (e.g. Cloudflare R2).
+  sends `Access-Control-Allow-Origin`. Plain links to them work; a script
+  on brooksgroves.com fetching them is refused. That is why the custom
+  download's files live on the site.
 - **No Zenodo deposit**, so no DOI. Worth doing once the first release is
   real, so people can cite a fixed version.
 - **No corrected oxygen column.** `exo_sat_sea_level` marks the problem; a
@@ -137,6 +131,43 @@ before.
   numbers to defend, and is left out until TEON has responded.
 - **No schedule.** `.github/workflows/export.yml` is manual only. Add a
   `schedule:` after the permission is recorded.
+
+## The custom download
+
+What most people want: one dataset, some stations, some variables, a
+period (last 7 days, 30 days, 3 or 12 months, everything, or custom dates),
+as a CSV. The page's "Custom download" form does it in the browser, with no
+server.
+
+- **`pixi run webdata`** (`src/secchi/webdata.py`) writes `web/data/`
+  (gitignored): one gzipped CSV per dataset, site and month, the export's
+  rows and columns including `quality_flag`, plus `catalog.json` (every
+  file's path, rows and size; every site's variables with labels and
+  stored units). The pages deploy runs it after `transform`. 2026-10-07:
+  577 files, 340 MB, about 90 s. GitHub Pages allows 1 GB per site and
+  100 MB per file; the largest file is 12 MB.
+- **It reuses the export's code**: datasets, quality flags, disclaimer and
+  the hidden-site rule. If TEON's hidden-site list can't be read, the TEON
+  datasets are left out of the catalog, not served unfiltered. Every file
+  is read back: rows per file must match, and no hidden site may appear.
+- **The page** fetches only the months the period touches, keeps the
+  matching lines exactly as written, and hands over a .zip: the CSV plus
+  README.txt with the disclaimer, what was selected, the variables and
+  units, the flag definitions and the source to cite. The download button
+  stays disabled until the visitor ticks "I understand these are
+  provisional data...". "Last" periods count back from the newest reading,
+  not from now. Over 150 MB to fetch, it points to the whole-dataset files.
+- **Tests**: `tests/test_custom_download.py` builds the files from the
+  export tests' store, runs the page's own JavaScript in Node against
+  them, opens its zip and compares the rows with the store. Checked by
+  breaking the date filter and the hidden-site filter and watching tests
+  fail. Also driven by hand in Chromium against the real 2026-10-07 data:
+  Sunnyside and Glenbrook chlorophyll, last 7 days, 1,337 rows, equal to a
+  query on the store; USGS lake level, Oct 1-3, 66 rows, equal.
+- **Permission**: Brooks recorded on 2026-10-07 that TEON has given
+  permission to work with and share its data with provisional-data
+  language (`webdata.REDISTRIBUTION`). The name and date of the TEON
+  contact belong there and in the export's `--teon-permission`.
 
 ## Testing
 

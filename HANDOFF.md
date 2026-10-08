@@ -13,7 +13,7 @@ automatically by Claude Code.*
 1. **It runs itself.** Hourly CI fetches TEON, USGS, SNOTEL and NOAA smoke data, rebuilds the store and commits; the page redeploys hourly; a watcher opens GitHub issues on anything notable.
 2. **The data is complete and verified**: about 12.0 million TEON observations, June 2024 to now, plus USGS gauges, SNOTEL precipitation and snowpack, and a daily smoke record.
 3. **`pixi run status`** is the one screen to check. Today its to-do list is two items, both TEON's: Glenbrook 1 and Glenbrook 5 aren't charging.
-4. **TEON has been told.** An email went on 2026-10-02 to Carina Seitz and Sudeep Chandra, with the full note linked. No reply yet; follow up around 2026-10-09.
+4. **TEON has been told.** An email went on 2026-10-02 to Carina Seitz and Sudeep Chandra, with the full note linked. TEON replied on 2026-10-06 (comfortable with the project being shared); permission to share the data with provisional-data language recorded 2026-10-07.
 5. **Social posts are drafted and held** until TEON replies.
 6. **The rainfall transect is answered, as a range**: west/east precipitation 2.16× at the best-matched gauge, 1.20× at the other; soil wetting 2.32×.
 7. **Snowmelt is measured**: of 8 no-rain wetting events, 5 coincide with a shrinking snowpack and 3 remain unexplained.
@@ -301,6 +301,18 @@ web/assets/        built by `transform`, not committed
   of silence (last reading to catch-up) is skipped (`QUIET_BLIP_HOURS`); only
   inventory `is_manual` sensors count as hand-collected. Glenbrook 5's
   2026-09-28 "reporting again" (38 h) drops out by the same rule.
+
+- **Downloads** (`docs/export.md`). `pixi run export` (whole-dataset
+  bundles for GitHub Releases, from the other machine) and, on the
+  `downloads-panel` branch, the page's "Download the data" section: a
+  custom download (dataset, stations, variables, period -> zipped CSV with
+  a README carrying the disclaimer) built from `pixi run webdata`, plus the
+  list of release files. **TEON replied 2026-10-06** that it's comfortable
+  with the project being shared; Brooks recorded 2026-10-07 that TEON has
+  given permission to share the data with provisional-data language.
+  Release assets can't be read by page scripts (no CORS), hence web/data.
+  The export also found ~290,000 duplicated forest readings in the store
+  (Nov 2025-Feb 2026, mostly Glenbrook 4); flagged, not yet explained.
 
 **Next, roughly in order**
 
