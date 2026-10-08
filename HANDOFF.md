@@ -126,7 +126,7 @@ web/assets/        built by `transform`, not committed
 - **Query tables**: `obs`, `usgs`, `snotel`, `smoke`, `asos`, `assets`,
   `stations`, `catchments`, plus `terc` and `cssl_climo` (reference CSVs). `obs` columns: `uuid, source, site, sensor_type, timestamp,
   lat, lng, variable, value`, plus `year` and `month`.
-- **Timestamps are naive Pacific local.** `Soil_VWC` is a fraction (0.034 = 3.4 %).
+- **Timestamps are naive logger time: PST (UTC−8) all year**, except MiniDOT (Pacific local); `config.teon_zone()`. Corrected 2026-10-07 (docs/data-dictionary.md). `Soil_VWC` is a fraction (0.034 = 3.4 %).
 - **Four naming conventions**: EXO `Temp`/`Do_mgL`/`Chl_a`, MiniDOT
   `Temperature`/`Dissolved Oxygen`, HOBO `temperature`, Campbell loggers
   `Air_Temp`/`Soil_VWC`/`BattV_Avg`.

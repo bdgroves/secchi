@@ -65,9 +65,17 @@ Identical record uuid, identical diagnostics, identical row count. Consequences:
 
 ## Timestamps
 
-TEON returns naive ISO 8601 with no offset (`"2026-09-17T08:15:00"`). These are **Pacific local** (the loggers' wall clock), set via `TEON_TIMEZONE` in config.
+TEON returns naive ISO 8601 with no offset (`"2026-09-17T08:15:00"`). These are the loggers' clocks, and **the loggers keep Pacific Standard Time (UTC−8) all year**, with no daylight saving: a summer reading stamped 14:00 was taken at 15:00 on a Pacific clock. Set via `TEON_TIMEZONE` (`Etc/GMT+8`) in config.
 
-Evidence, since this is inferred rather than documented:
+**MiniDOT is the exception**: its stored times follow Pacific daylight time (`TEON_TIMEZONE_BY_SENSOR`).
+
+Corrected 2026-10-07; until then these were read as Pacific local time, which put every reading from March to November an hour out in anything converted to UTC. The evidence:
+
+- On 2026-03-08 the forest loggers, EXO sondes and HOBOs logged readings stamped 02:00–02:59, an hour that doesn't exist on a Pacific clock that day; and 2025-11-02 has no doubled 01:xx hour. MiniDOT skips 02:xx on 2026-03-08 and doubles 01:xx on 2025-11-02: it follows daylight saving.
+- The daily air-temperature minimum (just after sunrise) has a median of about 05:15 in June and 07:35 in December in these timestamps; sunrise is 04:31 and 07:14 PST. On a PDT clock all year, December's minimum would come 40 minutes before sunrise.
+- Not yet confirmed by TEON (loggers on standard time all year is common practice).
+
+The original evidence, which rules out UTC but can't tell PST from PDT:
 
 - UNR Tahoe Campus reported `last_update` of `08:15` while observed freshness at ~16:15 PDT was 8 hours. That works only if `08:15` is local; as UTC it would read 15 hours.
 - Diurnal shape agrees. Logger panel temperature bottoms out around 05:00–06:00 in these timestamps (pre-dawn local, sunrise ~06:45 mid-September), and air temperature climbs through 08:00–14:00 with falling RH.
@@ -286,7 +294,7 @@ Only meteorology and soil state are compared (`Air_Temp`, `RH`, `Soil_VWC`, `Soi
 5. **Dendrometer units.** µm is inferred from magnitude alone.
 6. **Stream level datum.** "Uncalibrated" in the field name; is a correction published anywhere?
 7. **Dormant sensor slugs.** Minidot, HOBO, Stream Chemistry, Precipitation Gauge are unconfirmed — no live sensors to probe against. Re-run `--mode probe` when they return.
-8. **Mixed timestamp conventions.** Loggers appear to be on Pacific wall-clock; a Glenbrook 4 camera frame is timestamped six hours *after* the snapshot containing it, which only resolves if cameras are on UTC. Separate devices with independently configured clocks would explain it. `TEON_TIMEZONE` currently applies one zone to everything, so camera freshness may be off by the offset.
+8. **Mixed timestamp conventions.** Loggers are on Pacific Standard Time all year (MiniDOT on Pacific local time; see Timestamps); a Glenbrook 4 camera frame is timestamped six hours *after* the snapshot containing it, which only resolves if cameras are on UTC. Separate devices with independently configured clocks would explain it. `TEON_TIMEZONE` currently applies one zone to everything, so camera freshness may be off by the offset.
 
 ---
 

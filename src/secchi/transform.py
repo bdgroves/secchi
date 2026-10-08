@@ -61,6 +61,7 @@ from secchi.config import (
     USGS_STATISTIC_INSTANTANEOUS,
     USGS_STATISTICS,
     TEON_TIMEZONE,
+    teon_zone,
     TERRESTRIAL_STATIONS,
     TRANSECT_ALIGN_TOLERANCE_MINUTES,
     TRANSECT_PAIR,
@@ -527,7 +528,7 @@ def to_latest_wide(df_long: pd.DataFrame) -> pd.DataFrame:
 # Dashboard snapshot
 # ---------------------------------------------------------------------------
 
-def _iso_local(ts) -> str | None:
+def _iso_local(ts, sensor_type: str | None = None) -> str | None:
     """Render a TEON timestamp with an explicit UTC offset.
 
     TEON's own strings are naive wall-clock; emitting them unchanged makes
@@ -540,7 +541,10 @@ def _iso_local(ts) -> str | None:
     t = pd.Timestamp(ts)
     if t.tz is None:
         try:
-            t = t.tz_localize(TEON_TIMEZONE)
+            # ambiguous/nonexistent only arise for clocks that follow
+            # daylight saving (MiniDOT); a fixed-offset zone has neither.
+            t = t.tz_localize(teon_zone(sensor_type), ambiguous=False,
+                              nonexistent="shift_forward")
         except Exception:
             t = t.tz_localize("UTC")
     return t.isoformat()
@@ -1041,7 +1045,7 @@ def build_inventory_summary(inventory: dict | None) -> list[dict]:
         for sensor_type, sensors in (sensor_types or {}).items():
             for s in sensors:
                 last_iso = s.get("last_update")
-                last_dt = _parse_iso(last_iso)
+                last_dt = _parse_iso(last_iso, sensor_type)
                 rows.append({
                     "category": category,
                     "sensor_type": sensor_type,
@@ -1049,9 +1053,10 @@ def build_inventory_summary(inventory: dict | None) -> list[dict]:
                     "site": s.get("site"),
                     "lat": s.get("lat"),
                     "lng": s.get("lng"),
-                    "first_update": _iso_local(pd.Timestamp(s["first_update"]))
+                    "first_update": _iso_local(pd.Timestamp(s["first_update"]), sensor_type)
                                     if s.get("first_update") else None,
-                    "last_update": _iso_local(pd.Timestamp(last_iso)) if last_iso else None,
+                    "last_update": _iso_local(pd.Timestamp(last_iso), sensor_type)
+                                   if last_iso else None,
                     "data_count": s.get("data_count"),
                     "is_live": bool(last_dt and last_dt.timestamp() >= cutoff),
                     # Two ways a sensor is hand-collected: TEON says so
@@ -1075,7 +1080,7 @@ def _display_type(sensor_type: str) -> str:
     return {"Minidot": "MiniDot", "Hobo": "HOBO"}.get(sensor_type, sensor_type)
 
 
-def _parse_iso(value: str | None) -> datetime | None:
+def _parse_iso(value: str | None, sensor_type: str | None = None) -> datetime | None:
     """Parse a TEON timestamp, stamping the configured zone if naive."""
     if not value or not isinstance(value, str):
         return None
@@ -1087,7 +1092,7 @@ def _parse_iso(value: str | None) -> datetime | None:
         return parsed
     try:
         from zoneinfo import ZoneInfo
-        return parsed.replace(tzinfo=ZoneInfo(TEON_TIMEZONE))
+        return parsed.replace(tzinfo=ZoneInfo(teon_zone(sensor_type)))
     except Exception:
         return parsed.replace(tzinfo=timezone.utc)
 

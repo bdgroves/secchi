@@ -178,9 +178,13 @@ TEON_TIMESTAMP_FIELDS: tuple[str, ...] = (
 # Recorded here so the question stays visible rather than being silently
 # decided by the default.
 #
-# Until checked, MiniDot rows follow TEON_TIMEZONE like everything else —
-# at worst an hour out in summer, at best exactly right.
-MINIDOT_TIMESTAMP_IS_FIXED_PST: bool | None = None
+# SETTLED 2026-10-07, and the other way round from the column's name: the
+# stored MiniDOT timestamps FOLLOW daylight saving. On 2026-03-08 they skip
+# 02:00-02:59 (the hour that doesn't exist on a Pacific clock), and on
+# 2025-11-02 the 01:xx hour holds two readings per timestamp. So MiniDOT
+# rows are read as America/Los_Angeles (TEON_TIMEZONE_BY_SENSOR), unlike
+# every other TEON clock.
+MINIDOT_TIMESTAMP_IS_FIXED_PST: bool | None = False
 
 # A site is reported as OFFLINE rather than hand-collected when every
 # sensor type at it has gone dark. That distinction matters:
@@ -398,8 +402,27 @@ LIVE_WINDOW_HOURS = 24
 # Timestamps
 # ---------------------------------------------------------------------------
 
-# TEON emits naive ISO 8601 with no offset ("2026-09-17T08:15:00"). The
-# evidence says these are Pacific local (the loggers' wall clock), not UTC:
+# TEON emits naive ISO 8601 with no offset ("2026-09-17T08:15:00").
+#
+# CORRECTED 2026-10-07: the loggers keep PACIFIC STANDARD TIME ALL YEAR
+# (UTC-8), not Pacific local time. Until then this was "America/Los_Angeles",
+# which put every reading from March to November an hour out. The evidence:
+#
+#   * On 2026-03-08 the forest loggers, the EXO sondes and the HOBOs all
+#     logged readings stamped 02:00-02:59, an hour that doesn't exist on a
+#     Pacific clock that day; and 2025-11-02 has no doubled 01:xx hour.
+#   * The daily air-temperature minimum (just after sunrise) falls at a
+#     median ~05:15 in June and ~07:35 in December in these timestamps.
+#     Sunrise is 04:31 / 07:14 PST; on a fixed PDT clock December's minimum
+#     would come 40 minutes BEFORE sunrise.
+#
+# MiniDOT is the exception: its stored times follow daylight saving (see
+# MINIDOT_TIMESTAMP_IS_FIXED_PST above), so it keeps America/Los_Angeles.
+# Not confirmed by TEON (Campbell loggers on standard time is common
+# practice); asked in the TEON note. The original reasoning follows; it
+# rules out UTC but can't tell PST from PDT.
+#
+# The evidence said these are Pacific, not UTC:
 #
 #   * UNR Tahoe Campus reported last_update 08:15 while the observed
 #     freshness at ~16:15 PDT was 8 hours, which only works if 08:15 is
@@ -410,7 +433,19 @@ LIVE_WINDOW_HOURS = 24
 #
 # This is an inference, not documentation. If TEON confirms otherwise,
 # change this one constant — everything downstream derives from it.
-TEON_TIMEZONE = "America/Los_Angeles"
+# "Etc/GMT+8" is UTC-8: POSIX zone names invert the sign.
+TEON_TIMEZONE = "Etc/GMT+8"
+
+# Instruments whose clocks follow daylight saving (inventory and store names).
+TEON_TIMEZONE_BY_SENSOR: dict[str, str] = {
+    "MiniDotSensor": "America/Los_Angeles",
+    "Minidot": "America/Los_Angeles",
+}
+
+
+def teon_zone(sensor_type: str | None = None) -> str:
+    """The zone a TEON instrument's naive timestamps are in."""
+    return TEON_TIMEZONE_BY_SENSOR.get(sensor_type or "", TEON_TIMEZONE)
 
 
 # ===========================================================================

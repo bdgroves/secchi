@@ -3,7 +3,8 @@
 Every telemetered TEON station **measures every 15 minutes but uploads twice
 a day**. It stores 12 hours of readings and sends them as one batch, about two
 hours after the last reading in it. Each station keeps its own clock
-(Pacific local; the batch's last reading shown):
+(logger clock, PST all year, so add an hour in summer; the batch's last
+reading shown):
 
 | Station | Batch ends around |
 |---|---|

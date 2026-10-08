@@ -136,10 +136,16 @@ def _now_like(index: pd.DatetimeIndex) -> pd.Timestamp:
     ``Timestamp.now(tz="UTC")`` worked in testing and raised
     ``Cannot subtract tz-naive and tz-aware`` on the real record.
 
-    Rather than assume either way, match whatever the data has.
+    Rather than assume either way, match whatever the data has. Naive
+    stored times are on the loggers' clock (config ``TEON_TIMEZONE``,
+    UTC-8 all year), so "now" is taken on that clock too: a bare
+    ``Timestamp.now()`` is the machine's clock, UTC on CI, 8 h ahead.
     """
     tz = getattr(index, "tz", None)
-    return pd.Timestamp.now(tz=tz) if tz is not None else pd.Timestamp.now()
+    if tz is not None:
+        return pd.Timestamp.now(tz=tz)
+    from secchi.config import TEON_TIMEZONE
+    return pd.Timestamp.now(tz=TEON_TIMEZONE).tz_localize(None)
 
 
 def _battery(df: pd.DataFrame, site: str) -> pd.DataFrame:

@@ -347,8 +347,11 @@ def build(*, out: Path = WEB_DATA_DIR, processed_dir: Path = PROCESSED_DIR,
     catalog = {
         "version": CATALOG_VERSION,
         "generated_at": now.isoformat(timespec="seconds"),
-        "timestamps": ("Naive Pacific local time (no zone, daylight saving not "
-                       "marked), except USGS, which carries its UTC offset."),
+        "timestamps": ("The loggers' clocks, no zone written: Pacific Standard "
+                       "Time (UTC-8) all year, even in summer, except MiniDOT "
+                       "(nearshore loggers), which follows Pacific daylight time. "
+                       "USGS times carry their UTC offset; SNOTEL, airports and "
+                       "smoke are daily."),
         "visibility": visibility_source,
         "redistribution": REDISTRIBUTION,
         "disclaimer": _download_disclaimer(),

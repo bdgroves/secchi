@@ -24,7 +24,9 @@ next steps are there. `README.md` is the public write-up.
 - Forest-station endpoints share record IDs but return different columns.
   Fetch each one; never let one stand in for another.
 - `Soil_VWC` is stored as a fraction (display ×100). Timestamps are naive
-  Pacific local. Detect events on daily means — soil moisture has a daily cycle.
+  logger time: PST (UTC−8) all year, except MiniDOT (Pacific local); use
+  `config.teon_zone()`. Detect events on daily means — soil moisture has a
+  daily cycle.
 
 ## Working with the user
 

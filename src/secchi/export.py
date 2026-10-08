@@ -536,8 +536,10 @@ def _render_readme(m: dict) -> str:
         "`source`; `site`; `sensor_type`; `timestamp`; `lat`, `lng`; "
         "`variable`; `value`; `quality_flag`. One row per reading per "
         "variable (long format).\n",
-        "- **Timestamps are naive Pacific local time** (no zone, daylight "
-        "saving not marked).\n"
+        "- **Timestamps are the loggers' clocks, with no zone written**: "
+        "Pacific Standard Time (UTC-8) all year, even in summer, except "
+        "the MiniDOT loggers in `lake_nearshore`, which follow Pacific "
+        "daylight time. USGS times carry their own offset.\n"
         "- **`Soil_VWC` is a fraction** (0.034 = 3.4 %).\n"
         "- Four naming conventions coexist: EXO `Temp`/`Do_mgL`/`Chl_a`, "
         "MiniDOT `Temperature`/`Dissolved Oxygen`, HOBO `temperature`, "
@@ -746,7 +748,7 @@ def build_bundle(*, processed_dir: Path = PROCESSED_DIR,
         "release_tag": f"data-{day}",
         "generated_at": now.astimezone(timezone.utc).isoformat(timespec="seconds"),
         "data_through": data_through,
-        "timestamps": "naive Pacific local time",
+        "timestamps": "naive logger time: " + "Pacific Standard Time (UTC-8) all year, except MiniDOT, which follows Pacific daylight time",
         "secchi_commit": _git_commit(),
         "quality_flags_version": FLAGS_VERSION,
         "partial": bool(only),

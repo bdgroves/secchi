@@ -25,11 +25,12 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from secchi.config import PROCESSED_DIR, REFERENCE_DIR, SITE_LABELS
+from secchi.config import PROCESSED_DIR, REFERENCE_DIR, SITE_LABELS, TEON_TIMEZONE
 
 log = logging.getLogger("secchi.whats_new")
 
-PACIFIC = ZoneInfo("America/Los_Angeles")
+PACIFIC = ZoneInfo("America/Los_Angeles")     # for the calendar days people read
+TEON_TZ = ZoneInfo(TEON_TIMEZONE)              # the loggers' clock
 WINDOW_DAYS = 14
 MAX_ITEMS = 8
 # A site TEON hides and shows again within this long is a blip, not news.
@@ -231,7 +232,8 @@ def from_batteries(df_long: pd.DataFrame, since: datetime) -> list[dict]:
     items = []
     for site, v in (r or {}).get("stations", {}).items():
         for e in v.get("events", []):
-            at = pd.Timestamp(e["at"]).tz_localize(PACIFIC).to_pydatetime()
+            # A battery event is on the logger's clock (UTC-8 all year).
+            at = pd.Timestamp(e["at"]).tz_localize(TEON_TZ).to_pydatetime()
             if at < since:
                 continue
             text = (f"New battery at {site}." if e["kind"] == "replaced"

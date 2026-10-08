@@ -35,7 +35,7 @@ from zoneinfo import ZoneInfo
 
 from secchi.config import (
     LIVE_WINDOW_HOURS,
-    TEON_TIMEZONE,
+    teon_zone,
     REFERENCE_DIR,
     USGS_GAUGES,
 )
@@ -88,13 +88,14 @@ def _snapshot_state(teon_inventory: dict, disabled: set[str],
                 if isinstance(last, str):
                     try:
                         parsed = datetime.fromisoformat(last)
-                        # TEON's last_update is naive Pacific wall-clock
-                        # (docs/data-dictionary.md). Read as UTC it was 7-8 h
-                        # too old, so a station looked quiet at ~17 h instead
-                        # of 24 h, and one late 12-hour batch was enough to
-                        # report five stations quiet on 2026-10-05.
+                        # TEON's last_update is naive logger time: PST all
+                        # year, or Pacific local for MiniDOT (config
+                        # teon_zone). Read as UTC it was 7-8 h too old, so a
+                        # station looked quiet at ~17 h instead of 24 h, and
+                        # one late 12-hour batch was enough to report five
+                        # stations quiet on 2026-10-05.
                         if parsed.tzinfo is None:
-                            parsed = parsed.replace(tzinfo=ZoneInfo(TEON_TIMEZONE))
+                            parsed = parsed.replace(tzinfo=ZoneInfo(teon_zone(sensor_type)))
                     except ValueError:
                         parsed = None
                 if parsed is None:

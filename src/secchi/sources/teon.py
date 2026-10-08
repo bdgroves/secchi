@@ -30,6 +30,7 @@ from secchi.config import (
     TEON_API_BASE,
     TEON_ENDPOINTS,
     TEON_TIMEZONE,
+    teon_zone,
     USER_AGENT,
 )
 
@@ -96,7 +97,7 @@ class TeonClient:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
         live: list[dict[str, Any]] = []
         for sensor in self.iter_inventory():
-            last = _parse_teon_ts(sensor.get("last_update"))
+            last = _parse_teon_ts(sensor.get("last_update"), sensor.get("_sensor_type"))
             if last is not None and last >= cutoff:
                 live.append(sensor)
         return live
@@ -313,11 +314,12 @@ class TeonClient:
                 log.warning("fetch %s @ %s failed: %s", sensor_type, site, exc)
 
 
-def _parse_teon_ts(value: Any) -> datetime | None:
+def _parse_teon_ts(value: Any, sensor_type: str | None = None) -> datetime | None:
     """Parse a naive TEON timestamp as :data:`TEON_TIMEZONE`-local.
 
-    TEON returns wall-clock times with no offset. See the reasoning beside
-    ``TEON_TIMEZONE`` in config for why Pacific local rather than UTC.
+    TEON returns logger-clock times with no offset: UTC-8 all year, or
+    Pacific local for MiniDOT. See ``TEON_TIMEZONE`` and ``teon_zone`` in
+    config for the evidence.
     Falls back to UTC if the zone database is unavailable, which keeps
     freshness comparisons working (just offset) rather than crashing.
     """
@@ -330,9 +332,9 @@ def _parse_teon_ts(value: Any) -> datetime | None:
     if naive.tzinfo is not None:
         return naive
     try:
-        return naive.replace(tzinfo=ZoneInfo(TEON_TIMEZONE))
+        return naive.replace(tzinfo=ZoneInfo(teon_zone(sensor_type)))
     except Exception:
-        log.debug("zone %s unavailable; treating timestamps as UTC", TEON_TIMEZONE)
+        log.debug("zone %s unavailable; treating timestamps as UTC", teon_zone(sensor_type))
         return naive.replace(tzinfo=timezone.utc)
 
 

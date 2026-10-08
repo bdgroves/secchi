@@ -15,7 +15,8 @@ first) and the store. Two halves:
 
 Stations upload in 12-hour batches (docs/upload-cadence.md), so a station's
 "last 24 h" here is the 24 h ending at its own newest reading, not the
-24 h ending now. Timestamps in the store are naive Pacific.
+24 h ending now. Timestamps in the store are the loggers' clock (UTC-8 all
+year); the report shows them in Pacific time as people read a clock.
 
 Every section is gathered on its own: one missing source prints as
 "unavailable" and never costs the rest. A check that couldn't run is said
@@ -85,8 +86,11 @@ def fmt_local(ts: str | datetime | None) -> str:
     if ts is None:
         return "-"
     t = datetime.fromisoformat(ts) if isinstance(ts, str) else ts
-    if t.tzinfo is not None:
-        t = t.astimezone(PACIFIC)
+    if t.tzinfo is None:
+        # A store timestamp: the loggers' clock, UTC-8 all year.
+        from secchi.config import TEON_TIMEZONE
+        t = t.replace(tzinfo=ZoneInfo(TEON_TIMEZONE))
+    t = t.astimezone(PACIFIC)
     h = t.strftime("%I:%M %p").lstrip("0").lower()
     return f"{t:%a} {h}"
 
