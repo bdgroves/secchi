@@ -280,3 +280,28 @@ def test_custom_dates_cut_both_ends_within_a_month(site, tmp_path):
                            variables=["Temp"], period="custom",
                            **{"from": "2026-07-01", "to": "2026-07-20"})
     assert list(df.timestamp) == ["2026-07-18 12:00:00"]
+
+
+@needs_node
+def test_a_dataset_without_flags_says_so_and_names_things_in_words(tmp_path):
+    processed, ref = _store(tmp_path), _reference(tmp_path)
+    d = processed / "snotel_observations" / "source=snotel" / "year=2026" / "month=01"
+    d.mkdir(parents=True)
+    pd.DataFrame([{"uuid": "s1", "source": "snotel", "site": "Css Lab", "sensor_type": "Snotel",
+                   "timestamp": pd.Timestamp("2026-01-03"), "lat": 39.3, "lng": -120.4,
+                   "variable": "PRCP", "value": 58.4, "unit": "mm"}]).to_parquet(d / "part.parquet", index=False)
+    out = tmp_path / "web" / "data"
+    cat = webdata.build(out=out, processed_dir=processed, reference_dir=ref,
+                        disabled={"hiddenlake"}, visibility_source="test", now=NOW)
+    sn = next(x for x in cat["datasets"] if x["name"] == "snotel")
+    assert sn["sites"][0]["label"] == "Central Sierra Snow Lab"
+    assert sn["sites"][0]["variables"][0]["label"] == "Precipitation, daily"
+    res, df, readme = _download(tmp_path, out, dataset="snotel", sites=["Css Lab"],
+                                variables=["PRCP"], period="all")
+    assert len(df) == 1 and df.loc[0, "value"] == 58.4
+    assert "None: secchi flags only the TEON datasets" in readme
+    assert "Flagged readings:" not in readme and "channel_scramble" not in readme
+    assert "PRCP = Precipitation, daily, mm" in readme
+    assert "Central Sierra Snow Lab" in readme
+    z = zipfile.ZipFile(tmp_path / "node" / "out.zip")
+    assert all(i.date_time[0] >= 2026 for i in z.infolist())

@@ -103,6 +103,25 @@ def _download_disclaimer() -> str:
     return text
 
 
+# Station names the store keeps as their sources spell them.
+STATION_LABELS = {"Css Lab": "Central Sierra Snow Lab"}
+
+# SNOTEL and NWS element codes, in words. Units come from the data's own
+# `unit` column; these are only the names.
+ELEMENT_LABELS = {
+    "PRCP": "Precipitation, daily",
+    "PREC": "Precipitation, water-year total so far",
+    "WTEQ": "Snow water equivalent",
+    "SNWD": "Snow depth",
+    "SNOW": "Snowfall, daily",
+    "TAVG": "Air temperature, daily mean",
+    "TMAX": "Air temperature, daily high",
+    "TMIN": "Air temperature, daily low",
+    "hms_analysed": "Smoke analysis made that day (1 = yes)",
+    "hms_polygons": "Smoke plumes over the lake",
+    "smoke_density": "Densest smoke over the lake (HMS class)",
+}
+
 # Columns the store carries for bookkeeping that a download doesn't need.
 DROP_COLUMNS = {"year", "month"}
 
@@ -114,8 +133,8 @@ def _slug(site: str) -> str:
 
 def _units(sensor_type: str, variable: str, row_unit: str | None) -> tuple[str, str]:
     """(label, units) for one variable, units as stored, not as displayed."""
-    if row_unit:
-        return variable, row_unit
+    if row_unit or variable in ELEMENT_LABELS:
+        return ELEMENT_LABELS.get(variable, variable), row_unit or ""
     meta = (SENSOR_VARIABLES.get(sensor_type) or {}).get(variable)
     if meta:
         units = meta.get("units", "")
@@ -242,7 +261,8 @@ def _write_dataset(con, spec: dict, select: str, out: Path,
                           "rows": expected[(sl, month)],
                           "bytes": (ddir / slug / f"{month}.csv.gz").stat().st_size})
         site_entries.append({
-            "site": site, "label": SITE_LABELS.get(site, site), "slug": slug,
+            "site": site, "slug": slug,
+            "label": STATION_LABELS.get(site) or SITE_LABELS.get(site, site),
             "first": spans[site][0], "last": spans[site][1],
             "variables": sorted(variables.values(), key=lambda v: v["label"].lower()),
             "files": files,

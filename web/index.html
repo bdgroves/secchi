@@ -2839,6 +2839,7 @@
       if (!plan.vars.has(v.name) || varLines.some(l => l.startsWith(`  ${v.name} `))) continue;
       varLines.push(`  ${v.name} = ${v.label}${v.units ? ", " + v.units : ""}`);
     }
+    const flagged = (ds.columns || []).includes("quality_flag");
     const flagLines = Object.entries(cat.quality_flags || {})
       .map(([k, v]) => `  ${k}: ${v}`);
     return [
@@ -2854,7 +2855,7 @@
       `  Stations:  ${plan.sites.map(s => s.label).join(", ")}`,
       `  Period:    ${plan.from} to ${plan.to}`,
       `  Rows:      ${rows}`,
-      `  Flagged readings: ${plan.dropFlagged ? "left out" : "kept, see the quality_flag column"}`,
+      ...(flagged ? [`  Flagged readings: ${plan.dropFlagged ? "left out" : "kept, see the quality_flag column"}`] : []),
       `  Data as of: ${cat.generated_at}`,
       "",
       "One row per reading per variable. Values are exactly as stored by",
@@ -2864,9 +2865,10 @@
       "VARIABLES",
       ...varLines,
       "",
-      "QUALITY FLAGS (inferred by secchi from the data; not quality control)",
-      ...flagLines,
-      "",
+      ...(flagged ? ["QUALITY FLAGS (inferred by secchi from the data; not quality control)",
+                     ...flagLines, ""]
+                   : ["QUALITY FLAGS", "  None: secchi flags only the TEON datasets. " +
+                      "Check the source's own quality fields where it has them.", ""]),
       "SOURCE (cite this, not secchi)",
       `  ${ds.source || ""}`,
       "",
@@ -2890,8 +2892,12 @@
     for (let i = 0; i < bytes.length; i++) c = CD_CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
     return (c ^ 0xFFFFFFFF) >>> 0;
   }
-  function cdZip(entries) {
+  function cdZip(entries, when) {
     const enc = new TextEncoder();
+    const t = when instanceof Date ? when : new Date();
+    const dosTime = (t.getHours() << 11) | (t.getMinutes() << 5) | (t.getSeconds() >> 1);
+    const dosDate = ((Math.max(1980, t.getFullYear()) - 1980) << 9) |
+                    ((t.getMonth() + 1) << 5) | t.getDate();
     const parts = [], central = [];
     let offset = 0;
     for (const e of entries) {
@@ -2899,12 +2905,14 @@
       const local = new DataView(new ArrayBuffer(30));
       local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true);
       local.setUint16(6, 0x0800, true);                   // UTF-8 names
+      local.setUint16(10, dosTime, true); local.setUint16(12, dosDate, true);
       local.setUint32(14, crc, true); local.setUint32(18, data.length, true);
       local.setUint32(22, data.length, true); local.setUint16(26, name.length, true);
       parts.push(new Uint8Array(local.buffer), name, data);
       const cen = new DataView(new ArrayBuffer(46));
       cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true);
       cen.setUint16(8, 0x0800, true);
+      cen.setUint16(12, dosTime, true); cen.setUint16(14, dosDate, true);
       cen.setUint32(16, crc, true); cen.setUint32(20, data.length, true);
       cen.setUint32(24, data.length, true); cen.setUint16(28, name.length, true);
       cen.setUint32(42, offset, true);
@@ -3019,6 +3027,10 @@
     function drawDataset() {
       const ds = dataset();
       $c("cd-desc").textContent = ds.description;
+      const hasFlags = (ds.columns || []).includes("quality_flag");
+      $c("cd-drop").disabled = !hasFlags;
+      if (!hasFlags) $c("cd-drop").checked = false;
+      $c("cd-drop").parentElement.title = hasFlags ? "" : "This dataset has no quality flags.";
       $c("cd-sites").innerHTML = cdChecks(
         ds.sites.map(s => [s.site, s.label]), () => ds.sites.length === 1);
       drawVars(null);
