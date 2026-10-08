@@ -35,6 +35,7 @@ from zoneinfo import ZoneInfo
 
 from secchi.config import (
     LIVE_WINDOW_HOURS,
+    MANUAL_COLLECTION_TYPES,
     teon_zone,
     REFERENCE_DIR,
     USGS_GAUGES,
@@ -48,6 +49,14 @@ BASELINE_FILE = "watch_baseline.json"
 # well beyond the live window so a sensor doesn't flap between states on a
 # missed hourly run.
 DORMANT_AFTER_DAYS = 30
+
+# A telemetered station is worth an issue once it has sent nothing for this
+# long. Stations upload in 12-hour batches (docs/upload-cadence.md), so one
+# or two late batches leave a station "quiet" for a day or more and then it
+# catches up with nothing lost; five did on 2026-10-05/06 and opened two
+# issues. A silence shorter than this, ending in a catch-up, is a late
+# upload: logged for the page, but no issue.
+SILENT_ALERT_HOURS = 48
 
 # How many new records on a non-live sensor count as an upload rather than
 # noise. A manual sonde retrieval delivers thousands at once — Blackwood 3
@@ -115,6 +124,10 @@ def _snapshot_state(teon_inventory: dict, disabled: set[str],
                     # dormant one it should never move at all, so a jump is
                     # the signature of a manual download being uploaded.
                     "data_count": s.get("data_count"),
+                    # Hand-collected sensors are quiet between boat trips by
+                    # design; their silence is never an alert.
+                    "manual": ("Manual" in (s.get("id") or "")
+                               or sensor_type in MANUAL_COLLECTION_TYPES),
                 }
 
     return {
@@ -316,6 +329,68 @@ def news_from_snapshots(raw_dir: Path) -> list[dict]:
     return events
 
 
+def _silence_hours(last_update: str | None, at: str | None, key: str) -> float | None:
+    """Hours from a sensor's last reading to a snapshot's capture time."""
+    if not last_update or not at:
+        return None
+    try:
+        last = datetime.fromisoformat(str(last_update))
+        when = datetime.fromisoformat(str(at))
+    except ValueError:
+        return None
+    if last.tzinfo is None:
+        parts = key.split("/")
+        last = last.replace(tzinfo=ZoneInfo(teon_zone(parts[1] if len(parts) == 3 else None)))
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (when - last).total_seconds() / 3600
+
+
+def _late_uploads_are_not_alerts(old: dict, new: dict, changes: list[dict]) -> list[dict]:
+    """Turn a short silence into a log line and a long one into an alert.
+
+    * A telemetered sensor back after less than SILENT_ALERT_HOURS without
+      readings, and the upload that caught it up, become "info": still in
+      the news log (the page skips them too), but no issue.
+    * A telemetered sensor that crosses SILENT_ALERT_HOURS without readings
+      between two checks gets one notable "silent two days" change, which
+      does open an issue.
+    """
+    old_s, new_s = old.get("sensors", {}), new.get("sensors", {})
+    short: set[str] = set()
+    for c in changes:
+        if c["kind"] != "sensor resumed":
+            continue
+        key = c["detail"]
+        o = old_s.get(key, {})
+        if new_s.get(key, {}).get("manual") or o.get("state") != "quiet":
+            continue
+        silent = _silence_hours(o.get("last_update"), new.get("captured_at"), key)
+        if silent is not None and silent < SILENT_ALERT_HOURS:
+            short.add(key)
+    for c in changes:
+        if c["detail"] in short and c["kind"] in ("sensor resumed",
+                                                   "dormant sensor received an upload"):
+            c["severity"] = "info"
+            c["note"] = (c.get("note") or "") + " (a late upload, not an outage)"
+
+    for key in sorted(set(old_s) & set(new_s)):
+        n, o = new_s[key], old_s[key]
+        if n.get("manual") or n.get("state") == "live" or n.get("state") == "unknown":
+            continue
+        before = _silence_hours(o.get("last_update"), old.get("captured_at"), key)
+        after = _silence_hours(n.get("last_update"), new.get("captured_at"), key)
+        if before is None or after is None:
+            continue
+        if before < SILENT_ALERT_HOURS <= after:
+            changes.append({
+                "severity": "notable", "kind": "sensor silent two days",
+                "detail": key,
+                "note": f"nothing since {n.get('last_update')} ({after / 24:.1f} days)",
+            })
+    return changes
+
+
 def diff_state(old: dict, new: dict) -> list[dict]:
     """Compare two states and return the changes worth reporting.
 
@@ -423,7 +498,7 @@ def diff_state(old: dict, new: dict) -> list[dict]:
             changes.append({"severity": "info", "kind": "state change",
                             "detail": key, "note": f"{was} -> {now_state}"})
 
-    return changes
+    return _late_uploads_are_not_alerts(old, new, changes)
 
 
 def _grouped_lines(changes: list[dict], bold: bool) -> list[str]:

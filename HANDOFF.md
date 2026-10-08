@@ -315,6 +315,9 @@ web/assets/        built by `transform`, not committed
   re-fetched them under other record ids); removed 2026-10-07, and the
   store now drops identical repeats itself (docs/export.md).
 
+- **Watcher issues wait for two days of silence** (`SILENT_ALERT_HOURS`,
+  docs/watching-upstream.md). Late uploads are logged, not raised.
+
 **Next, roughly in order**
 
 1. **TEON replied (2026-10-06)**: batteries to be replaced before winter;

@@ -38,12 +38,21 @@ and generate a spurious notification.
 
 | Severity | Examples | Effect |
 |---|---|---|
-| **notable** | new sensor type, new category, sensor resumed, site un-hidden, new sensor appeared | Opens a GitHub issue |
-| **info** | sensor went quiet, sensor removed, other state changes | Logged only |
+| **notable** | new sensor type, new category, site hidden or un-hidden, new sensor appeared, a hand-collected upload, **a telemetered sensor silent two days**, and a sensor back after two days or more | Opens a GitHub issue |
+| **info** | sensor went quiet, a sensor back after less than two days (and the upload that caught it up), sensor removed, other state changes | Logged only |
 
-"Sensor resumed" is notable because it means data that was unreachable is
-now flowing. "Sensor went quiet" is info because it's usually seasonal and
-there's nothing to act on.
+**Two days of silence is the line** (`SILENT_ALERT_HOURS = 48`, added
+2026-10-07). Stations upload twice a day (`upload-cadence.md`), so one or
+two late batches make a station "quiet" for a day or more before it
+catches up with nothing lost; on 2026-10-05/06 five stations did and two
+issues opened for nothing. Now a telemetered sensor that crosses 48 hours
+without a reading opens one issue ("sensor silent two days"), and its
+return is notable too. A shorter silence ending in a catch-up is marked "a
+late upload, not an outage" and only logged. Hand-collected loggers are
+quiet between boat trips by design and never trigger the silence alert;
+their uploads are still notable. Replaying the stored snapshots from
+2026-10-01 to 10-08: the Oct 1 boat-trip uploads open issues, the Oct 5-7
+late uploads don't. Tests: `tests/test_watch_silence.py`.
 
 Exit codes carry the signal so the workflow can branch without parsing
 text: `0` no notable changes, `2` notable changes found, `1` the check
