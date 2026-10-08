@@ -73,7 +73,7 @@ isn't defined.
 | `impossible_range` | 11,481 |
 | `repeated_hour` | 192 (added 2026-10-08: MiniDOT's fall-back hour, two real readings per timestamp) |
 | `duplicate_reading` | 579,460 (0 since the 2026-10-07 store cleanup) |
-| `conflicting_duplicate` | 380 |
+| `conflicting_duplicate` | 380 (148 since 2026-10-08: the rest were the fall-back hour) |
 
 `channel_scramble` is per reading, and its trigger is the signature of the
 swap itself: oxygen *saturation* (~85) in the concentration field
