@@ -1,0 +1,105 @@
+name: export
+
+# Builds the downloadable data bundle (docs/export.md).
+#
+# MANUAL ONLY, ON PURPOSE. There is no schedule here. TEON said on
+# 2026-10-06 that it is comfortable with this project being shared
+# publicly. Republishing its data as downloadable files is a different
+# step, so nothing is published until someone records who at TEON allowed
+# it. When that is recorded, a weekly or monthly `schedule:` can be added
+# below; until then every release is a deliberate click.
+#
+#   publish = false  ->  a PREVIEW bundle, kept as a workflow artifact for
+#                        7 days. Not a release; the README says so.
+#   publish = true   ->  needs teon_permission. Builds with --release and
+#                        creates a GitHub Release tagged data-YYYY-MM-DD
+#                        (the date of the newest reading). Refuses to
+#                        overwrite a release that already exists.
+#
+# Not run on a laptop by default: the export reads the whole store and
+# writes ~570 MB. A runner has the room.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Create a GitHub Release (needs teon_permission). Off = preview artifact only."
+        type: boolean
+        default: false
+      teon_permission:
+        description: "Who at TEON allowed redistributing its data as files, and when (recorded in the bundle)."
+        type: string
+        default: ""
+
+permissions:
+  contents: write   # to create the release; a preview run does not use it
+
+concurrency:
+  group: export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          manifest-path: pyproject.toml
+          environments: default
+          cache: true
+
+      - name: Refuse a release with no recorded permission
+        if: ${{ inputs.publish }}
+        env:
+          PERM: ${{ inputs.teon_permission }}
+        run: |
+          if [ -z "$(printf '%s' "$PERM" | tr -d '[:space:]')" ]; then
+            echo "::error title=No permission recorded::publish needs teon_permission: who at TEON allowed redistributing its data as files, and when."
+            exit 1
+          fi
+
+      - name: Build a preview bundle
+        if: ${{ !inputs.publish }}
+        run: pixi run export
+
+      - name: Build a release bundle
+        if: ${{ inputs.publish }}
+        env:
+          # Through the environment, never interpolated into the script.
+          PERM: ${{ inputs.teon_permission }}
+        run: pixi run export --release --teon-permission "$PERM"
+
+      - name: Verify the bundle against its own checksums
+        run: |
+          set -euo pipefail
+          dir="$(ls -d exports/secchi-data-* | head -n 1)"
+          pixi run export --verify "$dir"
+          echo "BUNDLE_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Keep the preview as an artifact
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: secchi-data-preview
+          path: ${{ env.BUNDLE_DIR }}
+          retention-days: 7
+
+      - name: Publish the release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(python3 -c "import json;print(json.load(open('$BUNDLE_DIR/manifest.json'))['release_tag'])")"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error title=Release exists::$tag already exists; not overwriting it. Delete it first if that is really what you want."
+            exit 1
+          fi
+          gh release create "$tag" "$BUNDLE_DIR"/* \
+            --title "secchi data through ${tag#data-}" \
+            --notes-file "$BUNDLE_DIR/README.md"

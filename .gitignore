@@ -102,5 +102,9 @@ web/assets/latest.json
 web/assets/watersheds.geojson
 
 data/scratch/
+
+# Downloadable bundles from `pixi run export`. Never committed: the store is
+# already in git, and a second copy of it would double the repository.
+exports/
 data/processed/*.premigration
 *.tmp

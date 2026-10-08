@@ -180,6 +180,10 @@ status = "python -m secchi.status"
 # (lake, forest, lake level, Beyond TEON). Run `transform` first.
 # `pixi run daily --out report.md` also writes it to a file.
 daily = "python -m secchi.daily"
+# Downloadable files: Parquet and per-year CSV for every dataset, with a
+# manifest, checksums, README and sources. Writes to exports/ (gitignored).
+# A preview unless --release --teon-permission "..." is given. docs/export.md.
+export = "python -m secchi.export"
 # Daily precipitation and air temperature from SNOTEL (Ward Creek #3,
 # Rubicon #2, Marlette Lake). First run: pixi run snotel --since 2024-06-01
 snotel = "python -m secchi.ingest --mode snotel"

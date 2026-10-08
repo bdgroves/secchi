@@ -93,6 +93,10 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.sources.cssl", "parse"),
     ("secchi.sources.asos", "ingest"),
     ("secchi.sources.asos", "parse"),
+    # Downloadable bundles, added 2026-10-08
+    ("secchi.export", "build_bundle"),
+    ("secchi.export", "load_disabled"),
+    ("secchi.export", "verify_bundle"),
 ]
 
 # Functions that must remain in transform.py. write_web_watersheds was
