@@ -164,10 +164,11 @@ server.
   fail. Also driven by hand in Chromium against the real 2026-10-07 data:
   Sunnyside and Glenbrook chlorophyll, last 7 days, 1,337 rows, equal to a
   query on the store; USGS lake level, Oct 1-3, 66 rows, equal.
-- **Permission**: Brooks recorded on 2026-10-07 that TEON has given
-  permission to work with and share its data with provisional-data
-  language (`webdata.REDISTRIBUTION`). The name and date of the TEON
-  contact belong there and in the export's `--teon-permission`.
+- **Permission**: Sudeep Chandra (TEON lead, UNR) wrote to Brooks on
+  2026-10-06, 3:31 pm: "we are comfortable with you sharing this
+  publicly". Brooks recorded on 2026-10-07 that this covers sharing the
+  data with provisional-data language. Quoted in `webdata.REDISTRIBUTION`
+  and in the first release's `--teon-permission`.
 
 ## Testing
 

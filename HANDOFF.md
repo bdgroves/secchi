@@ -13,7 +13,7 @@ automatically by Claude Code.*
 1. **It runs itself.** Hourly CI fetches TEON, USGS, SNOTEL and NOAA smoke data, rebuilds the store and commits; the page redeploys hourly; a watcher opens GitHub issues on anything notable.
 2. **The data is complete and verified**: about 12.0 million TEON observations, June 2024 to now, plus USGS gauges, SNOTEL precipitation and snowpack, and a daily smoke record.
 3. **`pixi run status`** is the one screen to check. Today its to-do list is two items, both TEON's: Glenbrook 1 and Glenbrook 5 aren't charging.
-4. **TEON has been told.** An email went on 2026-10-02 to Carina Seitz and Sudeep Chandra, with the full note linked. TEON replied on 2026-10-06 (comfortable with the project being shared); permission to share the data with provisional-data language recorded 2026-10-07.
+4. **TEON has been told.** An email went on 2026-10-02 to Carina Seitz and Sudeep Chandra, with the full note linked. Sudeep Chandra replied on 2026-10-06: TEON knows about the low batteries and plans to replace them **before winter**; "we are comfortable with you sharing this publicly"; keep in touch with suggestions ("on a shoe string budget"). No follow-up needed. Brooks recorded 2026-10-07 that this covers sharing the data with provisional-data language.
 5. **Social posts are drafted and held** until TEON replies.
 6. **The rainfall transect is answered, as a range**: west/east precipitation 2.16× at the best-matched gauge, 1.20× at the other; soil wetting 2.32×.
 7. **Snowmelt is measured**: of 8 no-rain wetting events, 5 coincide with a shrinking snowpack and 3 remain unexplained.
@@ -316,8 +316,8 @@ web/assets/        built by `transform`, not committed
 
 **Next, roughly in order**
 
-1. **Answer TEON** when they reply; adjust anything they ask about the page.
-   Follow up ~2026-10-09 if not.
+1. **TEON replied (2026-10-06)**: batteries to be replaced before winter;
+   sharing is fine. Watch for the battery swaps in the daily report.
 2. **No external trigger.** GitHub's schedule (~4-6 fetches a day) is
    enough for twice-daily uploads (`docs/upload-cadence.md`). The Cloudflare
    Worker was dropped on 2026-10-05; it's in git history if ever wanted.

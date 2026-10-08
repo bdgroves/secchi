@@ -56,9 +56,10 @@ CATALOG_VERSION = 1
 REDISTRIBUTION = {
     "status": "cleared",
     "recorded": "2026-10-07",
-    "statement": ("TEON has given permission to work with and share its data, "
-                  "provided it is presented with provisional-data language "
-                  "(recorded by Brooks Groves, 2026-10-07)."),
+    "statement": ("Sudeep Chandra (TEON lead, University of Nevada, Reno), email "
+                  "to Brooks Groves, 2026-10-06: \"we are comfortable with you "
+                  "sharing this publicly\". Shared with provisional-data language, "
+                  "as Brooks recorded on 2026-10-07."),
 }
 
 # How each dataset is grouped on the page. TEON first; everything else is
