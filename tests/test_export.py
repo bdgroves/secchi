@@ -417,3 +417,12 @@ def test_the_same_store_exports_to_identical_files(tmp_path):
 def test_exports_are_never_committed():
     lines = {ln.strip() for ln in (ROOT / ".gitignore").read_text().splitlines()}
     assert "exports/" in lines, "exports/ must be gitignored: it would double the repo's size"
+
+
+def test_zenodo_metadata_files_this_as_a_dataset_by_brooks():
+    """Zenodo archives each GitHub release; without this it filed the first
+    one as Software with "Claude" as an author (from commit credits)."""
+    meta = json.loads((ROOT / ".zenodo.json").read_text(encoding="utf-8"))
+    assert meta["upload_type"] == "dataset"
+    assert [c["name"] for c in meta["creators"]] == ["Groves, Brooks"]
+    assert "not an official product" in meta["notes"] and "without warranty" in meta["notes"]
