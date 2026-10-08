@@ -58,12 +58,13 @@ from pathlib import Path
 
 from secchi.config import PROCESSED_DIR, REFERENCE_DIR, REPO_ROOT
 from secchi.sources.teon import VisibilityUnavailable, slugify_site
+from secchi.store import DST_CLOCK_SENSORS
 from secchi.sources.watch import BASELINE_FILE, IMPOSSIBLE
 
 log = logging.getLogger(__name__)
 
 EXPORT_DIR = REPO_ROOT / "exports"
-FLAGS_VERSION = 2   # 2: negative_chlorophyll, negative_phycocyanin (2026-10-07)
+FLAGS_VERSION = 3   # 2: negative_chlorophyll, negative_phycocyanin; 3: repeated_hour (2026-10-08)
 BASELINE_MAX_AGE_HOURS = 48
 
 LAKE_SENSORS = ("ExoSensor", "MiniDotSensor", "HoboSensor")
@@ -114,6 +115,11 @@ QUALITY_FLAGS = {
     "ph_zero": (
         "EXO pH exactly 0: a dead channel. pH works only on the "
         "hand-collected sondes."),
+    "repeated_hour": (
+        "MiniDOT clocks follow daylight saving, so when clocks fall back "
+        "(01:00-01:59 on the first Sunday of November) the same timestamps "
+        "happen twice: two real readings an hour apart share each one. "
+        "Both are kept; nothing in the record says which came first."),
     "duplicate_reading": (
         "Another row has the same site, sensor, variable and timestamp, "
         "under a different record id, with the same value. Keep one: "
@@ -271,12 +277,20 @@ def _prepare_observations(con, glob: str, disabled: set[str]) -> None:
         FROM {_read(glob)}
         WHERE {visible}""")
 
+    # The hour a daylight-saving clock repeats: its two readings per
+    # timestamp are real, an hour apart, not duplicates (store.py).
+    dst = ", ".join(f"'{s}'" for s in sorted(DST_CLOCK_SENSORS))
+    fall_back = (f"(o.sensor_type IN ({dst}) AND month(o.timestamp) = 11 "
+                 f"AND dayofweek(o.timestamp) = 0 AND day(o.timestamp) <= 7 "
+                 f"AND hour(o.timestamp) = 1)")
+
     # Exact duplicate keys under different record ids.
-    con.execute("""
+    con.execute(f"""
         CREATE TEMP TABLE dup_keys AS
         SELECT site, sensor_type, variable, timestamp,
                min(value) = max(value) AS same
-        FROM obs_visible
+        FROM obs_visible o
+        WHERE NOT {fall_back}
         GROUP BY site, sensor_type, variable, timestamp
         HAVING count(*) > 1""")
 
@@ -326,6 +340,7 @@ def _prepare_observations(con, glob: str, disabled: set[str]) -> None:
                  CASE WHEN o.sensor_type = 'ExoSensor'
                        AND o.variable = 'pH' AND o.value = 0
                       THEN 'ph_zero' END,
+                 CASE WHEN {fall_back} THEN 'repeated_hour' END,
                  CASE WHEN d.site IS NOT NULL THEN
                       CASE WHEN d.same THEN 'duplicate_reading'
                            ELSE 'conflicting_duplicate' END END

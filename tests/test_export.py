@@ -62,6 +62,12 @@ def _store(tmp_path) -> pathlib.Path:
     # A nearshore logger reading 50 C.
     rows.append(_row("m1", "Lakeside", "MiniDotSensor", "Temperature", "2026-06-01 12:00", 50.0))
     rows.append(_row("m2", "Lakeside", "MiniDotSensor", "Temperature", "2026-06-01 12:10", 14.0))
+    # Fall-back night: a MiniDOT clock repeats 01:xx. Two real readings per
+    # timestamp, same value and different value, are not duplicates.
+    rows.append(_row("d1", "Lakeside", "MiniDotSensor", "Battery", "2025-11-02 01:03", 3.52))
+    rows.append(_row("d2", "Lakeside", "MiniDotSensor", "Battery", "2025-11-02 01:03", 3.52))
+    rows.append(_row("d3", "Lakeside", "MiniDotSensor", "Temperature", "2025-11-02 01:03", 11.9))
+    rows.append(_row("d4", "Lakeside", "MiniDotSensor", "Temperature", "2025-11-02 01:03", 11.8))
     # Forest: a duplicate pair (same value, different record ids) and a
     # conflicting pair (same timestamp, different values).
     rows.append(_row("f1", "Glenbrook 4", "SoilEnvironmentalConditions", "Soil_VWC", "2026-01-05 12:00", 0.077))
@@ -426,3 +432,12 @@ def test_zenodo_metadata_files_this_as_a_dataset_by_brooks():
     assert meta["upload_type"] == "dataset"
     assert [c["name"] for c in meta["creators"]] == ["Groves, Brooks"]
     assert "not an official product" in meta["notes"] and "without warranty" in meta["notes"]
+
+
+def test_the_fall_back_hour_on_a_dst_clock_is_repeated_hour_not_duplicate(bundle):
+    out, _ = bundle
+    df = _all_teon(out)
+    rows = df[(df.site == "Lakeside") & (df.timestamp == pd.Timestamp("2025-11-02 01:03"))]
+    assert len(rows) == 4
+    for flags in rows.quality_flag:
+        assert set(str(flags).split(";")) == {"repeated_hour"}

@@ -71,6 +71,7 @@ isn't defined.
 | `channel_scramble` | 54,150 |
 | `ph_zero` | 46,698 |
 | `impossible_range` | 11,481 |
+| `repeated_hour` | 192 (added 2026-10-08: MiniDOT's fall-back hour, two real readings per timestamp) |
 | `duplicate_reading` | 579,460 (0 since the 2026-10-07 store cleanup) |
 | `conflicting_duplicate` | 380 |
 
