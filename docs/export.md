@@ -98,9 +98,18 @@ before.
    162,516 duplicated keys alone. That is 2.4 % of the store, and it would
    double-count in anyone's monthly mean. The export flags them and
    deletes nothing; whether to delete is a decision about the committed
-   store. The cause is not known. Either TEON re-issued records under new
-   ids in that period, or something here wrote them; `git log` on those
-   months and a look at the raw buffers would say which.
+   store.
+
+   **Resolved 2026-10-07.** `git log` on the November 2025 file showed the
+   repeats arriving with two of our backfills (2026-09-22 "backfill
+   telemetered sensor history" and 2026-09-23 "recover lost forest and EXO
+   rows"), which fetched readings TEON had already given us under other
+   record ids. 289,825 identical repeats (store-wide, including 79 lake
+   rows) were removed, keeping the lowest id; 8 month files rewritten,
+   nothing unique lost (distinct readings = new total, 11,804,468). The
+   store now drops identical repeats on every write (`store.READING_KEY`).
+   The 149 moments where two copies disagree are kept and flagged
+   `conflicting_duplicate`.
 2. **Negative turbidity is every EXO sonde, not two.** The README and the
    TEON note say Sunnyside and 4H Camp. In the store, all five read below
    zero for most of their record: Blackwood 3 98.9 % of readings (median

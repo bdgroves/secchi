@@ -311,8 +311,9 @@ web/assets/        built by `transform`, not committed
   with the project being shared; Brooks recorded 2026-10-07 that TEON has
   given permission to share the data with provisional-data language.
   Release assets can't be read by page scripts (no CORS), hence web/data.
-  The export also found ~290,000 duplicated forest readings in the store
-  (Nov 2025-Feb 2026, mostly Glenbrook 4); flagged, not yet explained.
+  The export found 289,825 readings stored twice (our Sept 22-23 backfills
+  re-fetched them under other record ids); removed 2026-10-07, and the
+  store now drops identical repeats itself (docs/export.md).
 
 **Next, roughly in order**
 

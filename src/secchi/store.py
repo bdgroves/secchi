@@ -102,6 +102,30 @@ def _canonical(df: pd.DataFrame, dedupe_on: list[str]) -> pd.DataFrame:
               .reset_index(drop=True))
 
 
+# The same reading, whatever record id it arrived under. TEON's live and
+# history routes can label one reading with different ids; the September
+# 2026 backfills stored ~290,000 forest readings twice that way, because
+# the store only compared ids. A row is a repeat when all of these AND its
+# value match another row; differing values are kept (they are not
+# provably the same reading) and the export flags them.
+READING_KEY = ["site", "sensor_type", "variable", "timestamp"]
+
+
+def drop_repeat_readings(df: pd.DataFrame, reading_key: list[str] | None,
+                         id_col: str = "uuid") -> pd.DataFrame:
+    """Keep one row per identical reading: the lowest record id, so the
+    choice never depends on which copy arrived first."""
+    if not reading_key or df.empty:
+        return df
+    key = [c for c in reading_key if c in df.columns]
+    if len(key) != len(reading_key) or "value" not in df.columns:
+        return df
+    order = [*key, "value"] + ([id_col] if id_col in df.columns else [])
+    out = (df.sort_values(order, kind="mergesort", na_position="first")
+             .drop_duplicates(subset=[*key, "value"], keep="first"))
+    return out if len(out) < len(df) else df
+
+
 def _signatures(df: pd.DataFrame, dedupe_on: list[str], cols: list[str]) -> pd.Series:
     """One hash per row of ``cols``, indexed by a hash of the key."""
     key = pd.util.hash_pandas_object(df[dedupe_on].astype(str), index=False)
@@ -109,7 +133,8 @@ def _signatures(df: pd.DataFrame, dedupe_on: list[str], cols: list[str]) -> pd.S
     return pd.Series(val.to_numpy(), index=key.to_numpy())
 
 
-def _merge_into(path: Path, incoming: pd.DataFrame, dedupe_on: list[str]) -> dict:
+def _merge_into(path: Path, incoming: pd.DataFrame, dedupe_on: list[str],
+                reading_key: list[str] | None = None) -> dict:
     """Merge rows into one file; leave the file alone if nothing changed.
 
     New rows win over stored copies of the same reading, as before, so a
@@ -146,7 +171,14 @@ def _merge_into(path: Path, incoming: pd.DataFrame, dedupe_on: list[str]) -> dic
         merged = incoming
         before = 0
 
-    merged = _canonical(merged.drop_duplicates(subset=dedupe_on), dedupe_on)
+    merged = drop_repeat_readings(merged.drop_duplicates(subset=dedupe_on), reading_key)
+    merged = _canonical(merged, dedupe_on)
+    if existing is not None and len(merged) == len(existing):
+        # A re-sent reading under a new id collapses back to what is stored:
+        # don't rewrite the file for nothing.
+        old = _canonical(existing, dedupe_on)
+        if list(old.columns) == list(merged.columns) and old.equals(merged):
+            return {"written": False, "rows": len(existing), "added": 0}
     path.parent.mkdir(parents=True, exist_ok=True)
     _write_atomic(merged, path)
     return {"written": True, "rows": len(merged), "added": max(0, len(merged) - before)}
@@ -297,7 +329,8 @@ def append_partitions(df: pd.DataFrame,
     return {"partitions_touched": touched, "rows_written": written}
 
 
-def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
+def compact_partitions(root: Path, dedupe_on: list[str],
+                       reading_key: list[str] | None = None) -> dict:
     """Merge every partition's part files into one, deduplicating.
 
     The other half of append-then-compact. Only partitions holding more
@@ -339,7 +372,7 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
             if len(merged) and "timestamp" in merged.columns:
                 days = pd.to_datetime(merged["timestamp"], errors="coerce", utc=True).dt.day
                 for d, g in merged.groupby(days.fillna(1).astype(int)):
-                    _merge_into(day_file(target, int(d)), g, dedupe_on)
+                    _merge_into(day_file(target, int(d)), g, dedupe_on, reading_key)
             for f in loose:
                 f.unlink()
                 removed_files += 1
@@ -380,7 +413,8 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
             continue
 
         merged = pd.concat(frames, ignore_index=True)
-        merged = _canonical(merged.drop_duplicates(subset=dedupe_on), dedupe_on)
+        merged = drop_repeat_readings(merged.drop_duplicates(subset=dedupe_on), reading_key)
+        merged = _canonical(merged, dedupe_on)
 
         # Write the canonical file first, then remove the parts, so an
         # interruption leaves duplicates rather than a hole.
@@ -406,7 +440,8 @@ def compact_partitions(root: Path, dedupe_on: list[str]) -> dict:
 def write_partitions(df: pd.DataFrame,
                      root: Path,
                      source: str,
-                     dedupe_on: list[str]) -> dict:
+                     dedupe_on: list[str],
+                     reading_key: list[str] | None = None) -> dict:
     """Merge rows into the store, rewriting only the partitions they touch.
 
     For each (year, month) present in ``df``: read the existing partition
@@ -438,7 +473,7 @@ def write_partitions(df: pd.DataFrame,
 
         for path, g in pieces:
             out = _merge_into(path, g.drop(columns=["_year", "_month", "_day", "_source"]),
-                              dedupe_on)
+                              dedupe_on, reading_key)
             if out["written"]:
                 touched += 1
                 total_added += out["added"]
@@ -451,6 +486,31 @@ def write_partitions(df: pd.DataFrame,
     return {"partitions_touched": touched,
             "rows_written": total_rows,
             "rows_added": total_added}
+
+
+def drop_repeats_in_store(root: Path, dedupe_on: list[str],
+                          reading_key: list[str] = READING_KEY,
+                          dry_run: bool = False) -> dict:
+    """Remove repeat readings already stored, rewriting only files that
+    change. One file at a time, atomically. A repeat is only ever found
+    within one file, since a reading's timestamp decides its file."""
+    if not root.exists():
+        return {"files_changed": 0, "rows_removed": 0, "files": []}
+    changed, removed = [], 0
+    for f in sorted(root.rglob(PARTITION_GLOB)):
+        df = pd.read_parquet(f)
+        out = drop_repeat_readings(df, reading_key)
+        n = len(df) - len(out)
+        if not n:
+            continue
+        removed += n
+        changed.append({"file": f.relative_to(root).as_posix(), "removed": n,
+                        "rows": len(out)})
+        if not dry_run:
+            _write_atomic(_canonical(out, dedupe_on), f)
+    log.info("%s: %d repeat reading(s) %s in %d file(s)", root.name, removed,
+             "found" if dry_run else "removed", len(changed))
+    return {"files_changed": len(changed), "rows_removed": removed, "files": changed}
 
 
 def partition_summary(root: Path) -> list[dict]:

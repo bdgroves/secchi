@@ -2037,7 +2037,7 @@ def main() -> int:
     # stores each version as a new blob, so at backfill scale (~150 MB)
     # the hourly cron would add 3.5 GB/day of history. Partitioned by
     # month, only the current month churns. See docs/storage.md.
-    from secchi.store import migrate_monolith, read_partitions, write_partitions
+    from secchi.store import READING_KEY, migrate_monolith, read_partitions, write_partitions
 
     obs_root = PROCESSED_DIR / "observations"
     assets_root = PROCESSED_DIR / "assets"
@@ -2058,7 +2058,7 @@ def main() -> int:
             log.info("migrated %s -> %s (%d rows)", monolith.name,
                      root.name, outcome.get("source_rows", 0))
 
-    write_partitions(df_obs, obs_root, "teon", ["uuid", "site", "variable"])
+    write_partitions(df_obs, obs_root, "teon", ["uuid", "site", "variable"], READING_KEY)
     write_partitions(df_assets, assets_root, "teon", ["uuid", "site", "kind"])
     write_partitions(df_usgs, usgs_root, "usgs",
                      ["uuid", "variable", "statistic_id"])

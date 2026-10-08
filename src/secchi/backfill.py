@@ -341,7 +341,7 @@ def run_backfill(stage_name: str,
     Sensors already complete in the store are skipped unless
     ``refetch_complete`` is set (``--force`` on the command line).
     """
-    from secchi.store import append_partitions, compact_partitions
+    from secchi.store import READING_KEY, append_partitions, compact_partitions
 
     stage = STAGES.get(stage_name)
     if not stage:
@@ -401,7 +401,9 @@ def run_backfill(stage_name: str,
     # nothing.
     if not dry_run:
         print("\n  compacting...")
-        out = compact_partitions(root, ["uuid", "site", "variable"])
+        # READING_KEY: the same reading under a second record id is a repeat
+        # (how ~290,000 forest readings got stored twice in September 2026).
+        out = compact_partitions(root, ["uuid", "site", "variable"], READING_KEY)
         if out.get("compacted"):
             print(f"  merged {out['compacted']} partition(s), "
                   f"{out['rows']:,} rows, removed {out['files_removed']} "

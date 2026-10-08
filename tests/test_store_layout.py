@@ -152,3 +152,69 @@ def test_undated_duplicates_are_told_apart_from_undated_originals(root):
     orphan = rows([None], prefix="orphan")
     write_partitions(orphan, root, "teon", KEY)
     assert undated_summary(root) == {"undated": 3, "only_undated": 1}
+
+
+# ---- one reading under two record ids (the September 2026 backfills) ----
+
+from secchi.store import READING_KEY, drop_repeats_in_store  # noqa: E402
+
+
+def test_the_same_reading_under_a_new_id_is_not_stored_twice(root):
+    write_partitions(rows(["2025-12-01 12:00", "2025-12-01 12:15"]), root, "teon", KEY, READING_KEY)
+    before = snapshot(root)
+    # A history route re-sends both readings under different, higher ids:
+    # nothing changes and nothing is rewritten.
+    write_partitions(rows(["2025-12-01 12:00", "2025-12-01 12:15"], prefix="z"),
+                     root, "teon", KEY, READING_KEY)
+    assert len(read_partitions(root)) == 2
+    assert snapshot(root) == before
+    # Lower ids win whatever arrives first, so the store is the same either
+    # way round; after that, re-sends of either set change nothing.
+    write_partitions(rows(["2025-12-01 12:00", "2025-12-01 12:15"], prefix="h"),
+                     root, "teon", KEY, READING_KEY)
+    assert sorted(read_partitions(root).uuid) == ["h0", "h1"]
+    settled = snapshot(root)
+    for p in ("r", "z", "h"):
+        write_partitions(rows(["2025-12-01 12:00", "2025-12-01 12:15"], prefix=p),
+                         root, "teon", KEY, READING_KEY)
+    assert snapshot(root) == settled
+
+
+def test_append_then_compact_drops_repeats_keeping_the_lowest_id(root):
+    append_partitions(rows(["2026-01-05 12:00"], prefix="z"), root, "teon")
+    append_partitions(rows(["2026-01-05 12:00"], prefix="a"), root, "teon")
+    compact_partitions(root, KEY, READING_KEY)
+    df = read_partitions(root)
+    assert list(df.uuid) == ["a0"]
+
+
+def test_different_values_at_the_same_moment_are_both_kept(root):
+    a = rows(["2026-01-05 12:15"], value=0.080, prefix="f")
+    b = rows(["2026-01-05 12:15"], value=0.090, prefix="g")
+    write_partitions(pd.concat([a, b]), root, "teon", KEY, READING_KEY)
+    assert sorted(read_partitions(root).value) == [0.080, 0.090]
+
+
+def test_other_sites_sensors_and_variables_are_not_repeats(root):
+    a = rows(["2026-01-05 12:00"], prefix="a")
+    b = rows(["2026-01-05 12:00"], site="Homewood", prefix="b")
+    c = rows(["2026-01-05 12:00"], prefix="c").assign(variable="Do_mgL")
+    d = rows(["2026-01-05 12:00"], prefix="d").assign(sensor_type="MiniDotSensor")
+    write_partitions(pd.concat([a, b, c, d]), root, "teon", KEY, READING_KEY)
+    assert len(read_partitions(root)) == 4
+
+
+def test_cleaning_the_store_rewrites_only_files_with_repeats(root):
+    # Written the old way (id-only), so the repeat gets in.
+    write_partitions(pd.concat([rows(["2025-11-05 15:15"], prefix="x"),
+                                rows(["2025-11-05 15:15"], prefix="y")]), root, "teon", KEY)
+    write_partitions(rows(["2025-12-01 00:00"]), root, "teon", KEY)
+    dec = root / "source=teon/year=2025/month=12/part.parquet"
+    dec_bytes = dec.read_bytes()
+    dry = drop_repeats_in_store(root, KEY, dry_run=True)
+    assert dry["rows_removed"] == 1 and len(read_partitions(root)) == 3
+    out = drop_repeats_in_store(root, KEY)
+    assert out["rows_removed"] == 1 and out["files_changed"] == 1
+    assert sorted(read_partitions(root).uuid) == ["r0", "x0"]
+    assert dec.read_bytes() == dec_bytes
+    assert drop_repeats_in_store(root, KEY)["rows_removed"] == 0

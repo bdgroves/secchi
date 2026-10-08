@@ -34,12 +34,14 @@ no hidden site anywhere in the output.
 
 Why the duplicate flags exist
 -----------------------------
-The store deduplicates on the source's record ids. Between November 2025
-and February 2026, ~290,000 forest-station readings were stored twice
-under *different* record ids with the same site, variable and timestamp
-(and nearly always the same value). Nothing upstream of this module
-removes them, so they would double-count in anyone's monthly mean. They
-are flagged, not deleted; deleting is a decision about the store.
+Until 2026-10-07 the store deduplicated on record ids only, and the
+September 2026 backfills stored 289,825 readings twice under *different*
+ids (mostly forest stations, November 2025 to February 2026). They were
+removed from the store that day and the store now drops identical repeat
+readings itself (``store.READING_KEY``). The flags stay as a check: an
+identical repeat should no longer appear, and ``conflicting_duplicate``
+marks the 149 moments where two copies disagree on the value, which are
+kept because neither is provably wrong.
 """
 
 from __future__ import annotations
