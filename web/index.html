@@ -486,6 +486,32 @@
   .dl-sz { color: var(--muted); font-size: 0.75rem; }
   .dl-docs { font-size: 0.85rem; margin-top: 1rem; }
   @media (max-width: 40rem) { .dl-row { grid-template-columns: 1fr; } }
+  .dl-h { font-size: 1rem; margin: 2rem 0 0.25rem; }
+  .cd-form { border: 1px solid var(--line); padding: 1rem 1.1rem; margin-top: 0.75rem;
+             font-size: 0.9rem; }
+  .cd-field { border: 0; padding: 0; margin: 0 0 1rem; min-width: 0; }
+  .cd-field > label, .cd-field > legend { display: block; font-weight: 600;
+             font-size: 0.85rem; margin-bottom: 0.35rem; padding: 0; }
+  .cd-form select, .cd-form input[type="date"] { font: inherit; color: var(--ink);
+             background: var(--paper); border: 1px solid var(--line); padding: 0.3rem 0.4rem;
+             max-width: 100%; }
+  .cd-checks { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; max-height: 12rem;
+             overflow-y: auto; }
+  .cd-checks label { white-space: nowrap; }
+  .cd-unit, .cd-hint { color: var(--muted); font-size: 0.8rem; }
+  .cd-hint { margin: 0.35rem 0 0; }
+  .cd-all, .cd-none { appearance: none; background: none; border: 0; padding: 0 0.2rem;
+             font: inherit; font-weight: 400; font-size: 0.78rem; color: var(--muted);
+             text-decoration: underline; cursor: pointer; }
+  .cd-check { display: block; margin: 0.35rem 0; }
+  .cd-agree { margin-top: 0.75rem; }
+  .cd-est { color: var(--slate); margin: 0.75rem 0 0.5rem; }
+  .cd-go { appearance: none; font: inherit; font-weight: 600; cursor: pointer;
+           background: var(--ink); color: var(--paper); border: 1px solid var(--ink);
+           padding: 0.45rem 1rem; }
+  .cd-go:disabled { opacity: 0.45; cursor: not-allowed; }
+  .cd-status { margin: 0.5rem 0 0; color: var(--slate); }
+  @media (max-width: 40rem) { .cd-checks label { white-space: normal; } }
 </style>
 </head>
 <body>
@@ -549,6 +575,7 @@
     <a href="#lake-and-outlet">USGS gauges</a>
     <a href="#beyond-teon">Beyond TEON</a>
     <a href="#observatory-inventory">Inventory</a>
+    <a href="#downloads">Download</a>
   </nav>
 
   <h2 id="the-lake">Three anchors on the lake</h2>
@@ -778,8 +805,10 @@
 
   <h2 id="downloads">Download the data</h2>
   <p>
-    Everything on this page, as files: Parquet for Python, R and DuckDB, and
-    gzipped CSV by year for Excel. Values are exactly as stored. A
+    Pick a dataset, the stations and variables you want and a period, and
+    download just those readings as a CSV. Whole datasets are below too:
+    Parquet for Python, R and DuckDB, and gzipped CSV by year for Excel.
+    Values are exactly as stored. A
     <code>quality_flag</code> column marks readings that look wrong, such as
     impossible values, scrambled sonde channels, duplicated records and
     sensors reading below zero.
@@ -793,6 +822,11 @@
     not for safety-critical, regulatory or legal decisions. Each source's own
     terms govern its data. Cite the sources, not this page.
   </div>
+  <h3 class="dl-h">Custom download</h3>
+  <section id="custom-download" aria-label="Custom download">
+    <div class="placeholder-card">Loading the data catalog&hellip;</div>
+  </section>
+  <h3 class="dl-h">Whole datasets</h3>
   <section id="downloads-panel" aria-label="Data downloads">
     <div class="placeholder-card">Looking for the latest data release&hellip;</div>
   </section>
@@ -2679,6 +2713,401 @@
     }
   }
 
+  // custom-download:start
+  // "Custom download": pick a dataset, stations, variables and a period,
+  // get exactly those rows as a CSV, zipped with a README carrying the
+  // disclaimer. Reads data/catalog.json and the per-site, per-month files
+  // that `pixi run webdata` writes beside this page (secchi/webdata.py).
+  // Pure functions first (tested in Node: tests/test_custom_download.py),
+  // the form after. Independent of latest.json, like the release list.
+  const CD_MAX_FETCH = 150e6;       // compressed bytes; beyond this, use the whole-dataset files
+  const CD_PERIODS = [["7d", "Last 7 days", 7], ["30d", "Last 30 days", 30],
+                      ["3m", "Last 3 months", 91], ["12m", "Last 12 months", 365],
+                      ["all", "Everything", null], ["custom", "Custom dates", null]];
+
+  // "2026-10-07 15:00:00" -> shifted by whole days, same clock time. UTC
+  // arithmetic on the parts only: these are naive local strings, never
+  // parsed as dates (a date-only string parses as midnight UTC).
+  function cdShift(ts, days) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(ts || "");
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] - days, +m[4], +m[5], +m[6]));
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
+           `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+  }
+
+  // Share of one month's file ("2026-10") inside [from, to], for the row
+  // estimate. The month is clipped to the station's own first and last
+  // reading, so a month that is only a week old counts as a week.
+  function cdMonthShare(month, from, to, first, last) {
+    const y = +month.slice(0, 4), m = +month.slice(5, 7);
+    const ms = (t) => Date.UTC(+t.slice(0, 4), +t.slice(5, 7) - 1, +t.slice(8, 10),
+                               +t.slice(11, 13) || 0, +t.slice(14, 16) || 0);
+    const a = Math.max(Date.UTC(y, m - 1, 1), first ? ms(first) : -Infinity);
+    const b = Math.min(Date.UTC(y, m, 1), last ? ms(last) + 1000 : Infinity);
+    if (!(b > a)) return 1;
+    const lo = Math.max(a, ms(from)), hi = Math.min(b, ms(to) + 1000);
+    return hi > lo ? (hi - lo) / (b - a) : 0;
+  }
+
+  // The plan: which files to fetch and what to keep from them.
+  function cdPlan(cat, sel) {
+    const ds = (cat.datasets || []).find(d => d.name === sel.dataset);
+    if (!ds) return { error: "Pick a dataset." };
+    const sites = ds.sites.filter(s => sel.sites.includes(s.site));
+    if (!sites.length) return { error: "Pick at least one station." };
+    if (!sel.variables.length) return { error: "Pick at least one variable." };
+    const last = sites.map(s => s.last).sort().pop();
+    const first = sites.map(s => s.first).sort()[0];
+    let from, to;
+    const per = CD_PERIODS.find(p => p[0] === sel.period);
+    if (sel.period === "custom") {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(sel.from || "") || !/^\d{4}-\d{2}-\d{2}$/.test(sel.to || ""))
+        return { error: "Enter both dates." };
+      if (sel.from > sel.to) return { error: "The start date is after the end date." };
+      from = `${sel.from} 00:00:00`; to = `${sel.to} 23:59:59`;
+    } else if (per && per[2]) {
+      from = cdShift(last, per[2]); to = last.slice(0, 19);
+    } else {
+      from = first.slice(0, 19); to = last.slice(0, 19);
+    }
+    const mFrom = from.slice(0, 7), mTo = to.slice(0, 7);
+    const vars = new Set(sel.variables);
+    const files = [];
+    let rowsEst = 0;
+    for (const s of sites) {
+      const total = s.variables.reduce((a, v) => a + v.rows, 0) || 1;
+      const share = s.variables.filter(v => vars.has(v.name)).reduce((a, v) => a + v.rows, 0) / total;
+      for (const f of s.files) {
+        if (f.month < mFrom || f.month > mTo) continue;
+        if (!/^data\/[\w.-]+\/[\w.-]+\/\d{4}-\d{2}\.csv\.gz$/.test(f.path)) continue;
+        files.push(f);
+        rowsEst += f.rows * share * cdMonthShare(f.month, from, to, s.first, s.last);
+      }
+    }
+    const bytes = files.reduce((a, f) => a + f.bytes, 0);
+    return { ds, sites, from, to, vars, files, bytes, rowsEst: Math.round(rowsEst),
+             dropFlagged: !!sel.dropFlagged };
+  }
+
+  // One CSV line into fields. DuckDB quotes a field only when it must.
+  function cdSplit(line) {
+    if (line.indexOf('"') < 0) return line.split(",");
+    const out = []; let cur = "", q = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (q) {
+        if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { out.push(cur); cur = ""; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  // Keep the lines of one file that the plan asks for, exactly as written.
+  function cdFilter(text, plan) {
+    const lines = text.split(/\r?\n/);
+    const header = lines[0];
+    const cols = cdSplit(header);
+    const iT = cols.indexOf("timestamp"), iV = cols.indexOf("variable"),
+          iF = cols.indexOf("quality_flag");
+    if (iT < 0 || iV < 0) throw new Error("unexpected file layout");
+    const keep = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      const f = cdSplit(line);
+      const ts = (f[iT] || "").slice(0, 19);
+      if (ts < plan.from || ts > plan.to) continue;
+      if (!plan.vars.has(f[iV])) continue;
+      if (plan.dropFlagged && iF >= 0 && f[iF]) continue;
+      keep.push(line);
+    }
+    return { header, lines: keep };
+  }
+
+  const cdPlain = (md) => String(md || "").replace(/\*\*/g, "");
+
+  function cdReadme(cat, plan, rows, made) {
+    const ds = plan.ds;
+    const varLines = [];
+    for (const s of plan.sites) for (const v of s.variables) {
+      if (!plan.vars.has(v.name) || varLines.some(l => l.startsWith(`  ${v.name} `))) continue;
+      varLines.push(`  ${v.name} = ${v.label}${v.units ? ", " + v.units : ""}`);
+    }
+    const flagLines = Object.entries(cat.quality_flags || {})
+      .map(([k, v]) => `  ${k}: ${v}`);
+    return [
+      `secchi data: ${ds.label}`,
+      `Custom download made ${made} from https://brooksgroves.com/secchi/`,
+      "",
+      "PROVISIONAL DATA. NOT AN OFFICIAL PRODUCT. PROVIDED AS IS, WITHOUT WARRANTY.",
+      "",
+      cdPlain(cat.disclaimer),
+      "",
+      "WHAT IS IN THIS FILE",
+      `  Dataset:   ${ds.name} (${ds.description})`,
+      `  Stations:  ${plan.sites.map(s => s.label).join(", ")}`,
+      `  Period:    ${plan.from} to ${plan.to}`,
+      `  Rows:      ${rows}`,
+      `  Flagged readings: ${plan.dropFlagged ? "left out" : "kept, see the quality_flag column"}`,
+      `  Data as of: ${cat.generated_at}`,
+      "",
+      "One row per reading per variable. Values are exactly as stored by",
+      "secchi; nothing was corrected.",
+      `Timestamps: ${cat.timestamps || ""}`,
+      "",
+      "VARIABLES",
+      ...varLines,
+      "",
+      "QUALITY FLAGS (inferred by secchi from the data; not quality control)",
+      ...flagLines,
+      "",
+      "SOURCE (cite this, not secchi)",
+      `  ${ds.source || ""}`,
+      "",
+      `Data dictionary: ${cat.data_dictionary || ""}`,
+      "",
+    ].join("\r\n");
+  }
+
+  // A minimal ZIP (stored, no compression): enough for a CSV and a README.
+  const CD_CRC = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function cdCrc(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CD_CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function cdZip(entries) {
+    const enc = new TextEncoder();
+    const parts = [], central = [];
+    let offset = 0;
+    for (const e of entries) {
+      const name = enc.encode(e.name), data = e.data, crc = cdCrc(data);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true);
+      local.setUint16(6, 0x0800, true);                   // UTF-8 names
+      local.setUint32(14, crc, true); local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true); local.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(local.buffer), name, data);
+      const cen = new DataView(new ArrayBuffer(46));
+      cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true);
+      cen.setUint16(8, 0x0800, true);
+      cen.setUint32(16, crc, true); cen.setUint32(20, data.length, true);
+      cen.setUint32(24, data.length, true); cen.setUint16(28, name.length, true);
+      cen.setUint32(42, offset, true);
+      central.push(new Uint8Array(cen.buffer), name);
+      offset += 30 + name.length + data.length;
+    }
+    const cenSize = central.reduce((a, p) => a + p.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, cenSize, true); end.setUint32(16, offset, true);
+    return [...parts, ...central, new Uint8Array(end.buffer)];
+  }
+
+  async function cdGunzip(buf) {
+    if (typeof DecompressionStream !== "function")
+      throw new Error("this browser can't unpack the files (no DecompressionStream)");
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(stream).text();
+  }
+
+  // Fetch, filter, assemble. `fetchFn(path)` returns a Response-like object.
+  async function cdRun(cat, plan, fetchFn, progress) {
+    if (plan.bytes > CD_MAX_FETCH) throw new Error("too large for the browser");
+    let header = null;
+    const chunks = [];
+    let rows = 0, done = 0;
+    for (const f of plan.files) {
+      const res = await fetchFn(f.path);
+      if (!res.ok) throw new Error(`${f.path}: HTTP ${res.status}`);
+      const text = await cdGunzip(await res.arrayBuffer());
+      const got = cdFilter(text, plan);
+      if (header === null) header = got.header;
+      else if (got.header !== header) throw new Error(`${f.path}: columns differ`);
+      if (got.lines.length) { chunks.push(got.lines.join("\r\n")); rows += got.lines.length; }
+      done++;
+      if (progress) progress(done, plan.files.length, rows);
+    }
+    const csv = (header || plan.ds.columns.join(",")) + "\r\n" +
+                chunks.join("\r\n") + (chunks.length ? "\r\n" : "");
+    const base = `secchi_${plan.ds.name}_${plan.from.slice(0, 10)}_to_${plan.to.slice(0, 10)}`;
+    const made = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
+    const enc = new TextEncoder();
+    const zip = cdZip([{ name: `${base}.csv`, data: enc.encode(csv) },
+                       { name: "README.txt", data: enc.encode(cdReadme(cat, plan, rows, made)) }]);
+    return { rows, base, zip };
+  }
+
+  // ---- the form ----------------------------------------------------------
+  function cdFormHtml(cat) {
+    const groups = ["TEON", "Beyond TEON"].map(g => {
+      const opts = cat.datasets.filter(d => d.group === g)
+        .map(d => `<option value="${esc(d.name)}">${esc(d.label)}</option>`).join("");
+      return opts ? `<optgroup label="${esc(g)}">${opts}</optgroup>` : "";
+    }).join("");
+    const periods = CD_PERIODS.map(p =>
+      `<option value="${p[0]}"${p[0] === "30d" ? " selected" : ""}>${esc(p[1])}</option>`).join("");
+    return `<form class="cd-form" id="cd-form" novalidate>
+      <div class="cd-field"><label for="cd-dataset">Dataset</label>
+        <select id="cd-dataset">${groups}</select>
+        <p class="cd-hint" id="cd-desc"></p></div>
+      <fieldset class="cd-field"><legend>Stations
+          <button type="button" class="cd-all" data-for="cd-sites">all</button>
+          <button type="button" class="cd-none" data-for="cd-sites">none</button></legend>
+        <div class="cd-checks" id="cd-sites"></div></fieldset>
+      <fieldset class="cd-field"><legend>Variables
+          <button type="button" class="cd-all" data-for="cd-vars">all</button>
+          <button type="button" class="cd-none" data-for="cd-vars">none</button></legend>
+        <div class="cd-checks" id="cd-vars"></div></fieldset>
+      <div class="cd-field"><label for="cd-period">Period</label>
+        <select id="cd-period">${periods}</select>
+        <span class="cd-dates" id="cd-dates" hidden>
+          <input type="date" id="cd-from" aria-label="From"> to
+          <input type="date" id="cd-to" aria-label="To"></span>
+        <p class="cd-hint" id="cd-span"></p></div>
+      <label class="cd-check"><input type="checkbox" id="cd-drop">
+        Leave out readings that have a quality flag</label>
+      <label class="cd-check cd-agree"><input type="checkbox" id="cd-agree">
+        I understand these are provisional data, not an official product, provided
+        as is without warranty.</label>
+      <p class="cd-est" id="cd-est" aria-live="polite"></p>
+      <button type="submit" class="cd-go" id="cd-go" disabled>Download CSV</button>
+      <p class="cd-hint">A .zip with the CSV and a README carrying the disclaimer,
+        the variables and units, and what the quality flags mean.</p>
+      <p class="cd-status" id="cd-status" role="status" aria-live="polite"></p>
+    </form>`;
+  }
+
+  function cdChecks(items, checked) {
+    return items.map(([value, label, extra]) =>
+      `<label><input type="checkbox" value="${esc(value)}"${checked(value) ? " checked" : ""}>
+        ${esc(label)}${extra ? ` <span class="cd-unit">${esc(extra)}</span>` : ""}</label>`).join("");
+  }
+
+  function cdWire(root, cat) {
+    const $c = (id) => root.querySelector("#" + id);
+    const form = $c("cd-form");
+    const picked = (id) => [...$c(id).querySelectorAll("input:checked")].map(i => i.value);
+    const dataset = () => cat.datasets.find(d => d.name === $c("cd-dataset").value);
+
+    function drawVars(keep) {
+      const ds = dataset(), on = new Set(picked("cd-sites"));
+      const seen = new Map();
+      for (const s of ds.sites) if (on.has(s.site)) for (const v of s.variables)
+        if (!seen.has(v.name)) seen.set(v.name, v);
+      const vars = [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
+      $c("cd-vars").innerHTML = vars.length ? cdChecks(
+        vars.map(v => [v.name, v.label.toLowerCase() === v.name.toLowerCase() ? v.name
+          : `${v.label} (${v.name})`, v.units]),
+        (n) => keep ? keep.has(n) : false) : `<span class="cd-hint">Pick a station first.</span>`;
+    }
+    function drawDataset() {
+      const ds = dataset();
+      $c("cd-desc").textContent = ds.description;
+      $c("cd-sites").innerHTML = cdChecks(
+        ds.sites.map(s => [s.site, s.label]), () => ds.sites.length === 1);
+      drawVars(null);
+      const f = ds.first.slice(0, 10), l = ds.last.slice(0, 10);
+      $c("cd-span").textContent = `Data from ${fmtDay(f)} to ${fmtDay(l)}. ` +
+        `"Last" periods count back from the newest reading.`;
+      for (const id of ["cd-from", "cd-to"]) { $c(id).min = f; $c(id).max = l; }
+      if (!$c("cd-from").value) { $c("cd-from").value = cdShift(ds.last, 30).slice(0, 10); $c("cd-to").value = l; }
+    }
+    function selection() {
+      return { dataset: $c("cd-dataset").value, sites: picked("cd-sites"),
+               variables: picked("cd-vars"), period: $c("cd-period").value,
+               from: $c("cd-from").value, to: $c("cd-to").value,
+               dropFlagged: $c("cd-drop").checked };
+    }
+    function update() {
+      $c("cd-dates").hidden = $c("cd-period").value !== "custom";
+      const plan = cdPlan(cat, selection());
+      let ok = !plan.error;
+      if (plan.error) $c("cd-est").textContent = plan.error;
+      else if (!plan.files.length) { $c("cd-est").textContent = "No readings in that period."; ok = false; }
+      else if (plan.bytes > CD_MAX_FETCH) {
+        $c("cd-est").textContent = `That's ${dlBytes(plan.bytes)} to fetch, more than a browser ` +
+          `should handle. Narrow it, or use the whole-dataset files below.`;
+        ok = false;
+      } else {
+        $c("cd-est").textContent = `About ${plan.rowsEst.toLocaleString()} rows, from ` +
+          `${plan.files.length} file${plan.files.length === 1 ? "" : "s"} (${dlBytes(plan.bytes)} to fetch).`;
+      }
+      $c("cd-go").disabled = !(ok && $c("cd-agree").checked);
+    }
+
+    $c("cd-dataset").addEventListener("change", () => { drawDataset(); update(); });
+    $c("cd-sites").addEventListener("change", () => { drawVars(new Set(picked("cd-vars"))); update(); });
+    for (const id of ["cd-vars", "cd-period", "cd-from", "cd-to", "cd-drop", "cd-agree"])
+      $c(id).addEventListener("change", update);
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest(".cd-all, .cd-none");
+      if (!b) return;
+      for (const i of $c(b.dataset.for).querySelectorAll("input")) i.checked = b.classList.contains("cd-all");
+      if (b.dataset.for === "cd-sites") drawVars(new Set(picked("cd-vars")));
+      update();
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const plan = cdPlan(cat, selection());
+      if (plan.error || !$c("cd-agree").checked) return;
+      const status = $c("cd-status"), go = $c("cd-go");
+      go.disabled = true;
+      try {
+        const out = await cdRun(cat, plan, (p) => fetch(p),
+          (d, n, r) => { status.textContent = `Fetched ${d} of ${n} files, ${r.toLocaleString()} rows so far…`; });
+        const url = URL.createObjectURL(new Blob(out.zip, { type: "application/zip" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = `${out.base}.zip`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        status.textContent = out.rows ? `Done: ${out.rows.toLocaleString()} rows.`
+          : "Done, but nothing matched: the zip holds an empty CSV.";
+      } catch (err) {
+        console.error("custom download:", err);
+        status.textContent = `Couldn't build the download (${err.message}).`;
+      } finally { update(); }
+    });
+    drawDataset();
+    update();
+  }
+
+  async function loadCustomDownload() {
+    const root = document.getElementById("custom-download");
+    if (!root) return;
+    try {
+      const res = await fetch("data/catalog.json", { cache: "no-cache" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const cat = await res.json();
+      if (!cat || !Array.isArray(cat.datasets) || !cat.datasets.length) throw new Error("empty catalog");
+      root.innerHTML = cdFormHtml(cat);
+      cdWire(root, cat);
+      const out = Object.keys(cat.left_out || {});
+      if (out.length) root.insertAdjacentHTML("beforeend",
+        `<p class="cd-hint">Not available right now: ${esc(out.join(", "))}.</p>`);
+    } catch (err) {
+      console.error("custom download:", err);
+      root.innerHTML = `<div class="placeholder-card">The custom download isn't
+        available right now. The whole-dataset files below still are.</div>`;
+    }
+  }
+  // custom-download:end
+
   // downloads:start
   // "Download the data". Reads the newest data-* release from GitHub's
   // public API (CORS-enabled), so the page lists exactly what has been
@@ -2845,6 +3274,7 @@ df = pd.read_parquet("${esc(first)}")</code></pre></details>` : "";
     }
     // Independent of the snapshot: never blanked by it, never blanks it.
     loadDownloads();
+    loadCustomDownload();
   }
 
   function hasStoredUnitPref() {

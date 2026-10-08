@@ -81,6 +81,7 @@ REQUIRED_ENTRY_POINTS = [
     ("secchi.analysis.trees", "analyse"),
     ("secchi.whats_new", "build"),
     ("secchi.daily", "gather"),
+    ("secchi.webdata", "build"),
     ("secchi.daily", "render"),
     ("secchi.daily", "changes"),
     ("secchi.sources.watch", "append_news"),

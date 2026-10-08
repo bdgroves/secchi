@@ -100,6 +100,8 @@ data/processed/latest_wide.parquet
 # don't race the cron for the same path.
 web/assets/latest.json
 web/assets/watersheds.geojson
+# Built by `pixi run webdata` in the pages deploy (docs/export.md)
+web/data/
 
 data/scratch/
 

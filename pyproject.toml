@@ -184,6 +184,10 @@ daily = "python -m secchi.daily"
 # manifest, checksums, README and sources. Writes to exports/ (gitignored).
 # A preview unless --release --teon-permission "..." is given. docs/export.md.
 export = "python -m secchi.export"
+# The custom-download files the page reads: web/data/ (gitignored), one
+# gzipped CSV per dataset, site and month, plus catalog.json. Run after
+# transform; the pages deploy does. docs/export.md.
+webdata = "python -m secchi.webdata"
 # Daily precipitation and air temperature from SNOTEL (Ward Creek #3,
 # Rubicon #2, Marlette Lake). First run: pixi run snotel --since 2024-06-01
 snotel = "python -m secchi.ingest --mode snotel"
