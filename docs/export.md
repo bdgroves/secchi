@@ -147,8 +147,16 @@ before.
 - **No corrected oxygen column.** `exo_sat_sea_level` marks the problem; a
   derived lake-pressure saturation column would be a second set of
   numbers to defend, and is left out until TEON has responded.
-- **No schedule.** `.github/workflows/export.yml` is manual only. Add a
-  `schedule:` after the permission is recorded.
+- **Weekly releases** (since 2026-10-08). `.github/workflows/export.yml`
+  runs Mondays at 16:20 UTC and publishes `data-YYYY-MM-DD` (the newest
+  reading's date) with the permission recorded in
+  `webdata.REDISTRIBUTION`. If that date already has a release, it notes
+  "no new data" and stops. After a successful publish it deletes the older
+  `data-*` releases and their tags, so GitHub holds one current release;
+  Zenodo has already archived each one as a version with its own DOI.
+  Manual runs still work (preview, or publish with your own permission
+  text). `.zenodo.json` makes Zenodo file each version as a dataset by
+  Brooks Groves.
 
 ## The custom download
 

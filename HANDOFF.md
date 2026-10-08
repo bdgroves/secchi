@@ -318,6 +318,10 @@ web/assets/        built by `transform`, not committed
 - **Watcher issues wait for two days of silence** (`SILENT_ALERT_HOURS`,
   docs/watching-upstream.md). Late uploads are logged, not raised.
 
+- **Data releases are weekly** (Mondays, `export.yml`), each archived by
+  Zenodo as a new version; older GitHub releases are removed automatically.
+  The first scheduled run is 2026-10-12: check it published and pruned.
+
 **Next, roughly in order**
 
 1. **TEON replied (2026-10-06)**: batteries to be replaced before winter;

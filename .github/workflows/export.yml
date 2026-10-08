@@ -2,24 +2,32 @@ name: export
 
 # Builds the downloadable data bundle (docs/export.md).
 #
-# MANUAL ONLY, ON PURPOSE. There is no schedule here. TEON said on
-# 2026-10-06 that it is comfortable with this project being shared
-# publicly. Republishing its data as downloadable files is a different
-# step, so nothing is published until someone records who at TEON allowed
-# it. When that is recorded, a weekly or monthly `schedule:` can be added
-# below; until then every release is a deliberate click.
+# WEEKLY, Mondays ~09:20 Pacific, since 2026-10-08. Sudeep Chandra (TEON)
+# wrote on 2026-10-06 "we are comfortable with you sharing this publicly";
+# that permission is recorded once, in secchi.webdata.REDISTRIBUTION, and
+# a scheduled run uses it. A manual run can still give its own text.
 #
-#   publish = false  ->  a PREVIEW bundle, kept as a workflow artifact for
-#                        7 days. Not a release; the README says so.
-#   publish = true   ->  needs teon_permission. Builds with --release and
-#                        creates a GitHub Release tagged data-YYYY-MM-DD
-#                        (the date of the newest reading). Refuses to
-#                        overwrite a release that already exists.
+#   schedule          ->  publish, with the recorded permission. If the
+#                         newest reading's date already has a release (no
+#                         new data that week), it says so and stops.
+#   publish = false   ->  a PREVIEW bundle, kept as a workflow artifact for
+#                         7 days. Not a release; the README says so.
+#   publish = true    ->  teon_permission, or the recorded one if left
+#                         empty. Creates a GitHub Release tagged
+#                         data-YYYY-MM-DD (the date of the newest reading).
+#                         Refuses to overwrite a release that exists.
+#
+# After a successful publish, older data-* releases and their tags are
+# deleted, so the page and anyone browsing see one current release. Each
+# release is archived by Zenodo first (with its own DOI), so nothing is
+# lost: older versions stay on Zenodo.
 #
 # Not run on a laptop by default: the export reads the whole store and
 # writes ~570 MB. A runner has the room.
 
 on:
+  schedule:
+    - cron: "20 16 * * 1"   # Mondays 16:20 UTC
   workflow_dispatch:
     inputs:
       publish:
@@ -27,7 +35,7 @@ on:
         type: boolean
         default: false
       teon_permission:
-        description: "Who at TEON allowed redistributing its data as files, and when (recorded in the bundle)."
+        description: "Who at TEON allowed redistributing its data as files, and when. Empty = the recorded permission."
         type: string
         default: ""
 
@@ -53,25 +61,36 @@ jobs:
           environments: default
           cache: true
 
-      - name: Refuse a release with no recorded permission
-        if: ${{ inputs.publish }}
+      # Publish on the weekly schedule or when asked; the permission is the
+      # one given, else the one recorded in secchi.webdata.REDISTRIBUTION.
+      - name: Decide what this run does
         env:
-          PERM: ${{ inputs.teon_permission }}
+          # Through the environment, never interpolated into the script.
+          INPUT_PERM: ${{ inputs.teon_permission }}
+          EVENT: ${{ github.event_name }}
+          ASKED: ${{ inputs.publish }}
         run: |
-          if [ -z "$(printf '%s' "$PERM" | tr -d '[:space:]')" ]; then
-            echo "::error title=No permission recorded::publish needs teon_permission: who at TEON allowed redistributing its data as files, and when."
+          set -euo pipefail
+          publish=false
+          if [ "$EVENT" = "schedule" ] || [ "$ASKED" = "true" ]; then publish=true; fi
+          perm="$(printf '%s' "$INPUT_PERM" | tr -d '\r')"
+          if [ "$publish" = "true" ] && [ -z "$(printf '%s' "$perm" | tr -d '[:space:]')" ]; then
+            perm="$(pixi run --quiet python -c 'from secchi.webdata import REDISTRIBUTION as R; print(R["statement"] if R.get("status") == "cleared" else "")')"
+          fi
+          if [ "$publish" = "true" ] && [ -z "$(printf '%s' "$perm" | tr -d '[:space:]')" ]; then
+            echo "::error title=No permission recorded::publishing needs teon_permission, or a cleared REDISTRIBUTION in secchi/webdata.py."
             exit 1
           fi
+          echo "PUBLISH=$publish" >> "$GITHUB_ENV"
+          { echo "PERM<<__PERM__"; printf '%s\n' "$perm"; echo "__PERM__"; } >> "$GITHUB_ENV"
+          echo "publish=$publish (event: $EVENT)"
 
       - name: Build a preview bundle
-        if: ${{ !inputs.publish }}
+        if: ${{ env.PUBLISH != 'true' }}
         run: pixi run export
 
       - name: Build a release bundle
-        if: ${{ inputs.publish }}
-        env:
-          # Through the environment, never interpolated into the script.
-          PERM: ${{ inputs.teon_permission }}
+        if: ${{ env.PUBLISH == 'true' }}
         run: pixi run export --release --teon-permission "$PERM"
 
       - name: Verify the bundle against its own checksums
@@ -82,7 +101,7 @@ jobs:
           echo "BUNDLE_DIR=$dir" >> "$GITHUB_ENV"
 
       - name: Keep the preview as an artifact
-        if: ${{ !inputs.publish }}
+        if: ${{ env.PUBLISH != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: secchi-data-preview
@@ -90,16 +109,38 @@ jobs:
           retention-days: 7
 
       - name: Publish the release
-        if: ${{ inputs.publish }}
+        if: ${{ env.PUBLISH == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           tag="$(python3 -c "import json;print(json.load(open('$BUNDLE_DIR/manifest.json'))['release_tag'])")"
           if gh release view "$tag" >/dev/null 2>&1; then
+            if [ "$EVENT" = "schedule" ]; then
+              echo "::notice title=No new data::$tag is already published; nothing new this week."
+              exit 0
+            fi
             echo "::error title=Release exists::$tag already exists; not overwriting it. Delete it first if that is really what you want."
             exit 1
           fi
           gh release create "$tag" "$BUNDLE_DIR"/* \
             --title "secchi data through ${tag#data-}" \
             --notes-file "$BUNDLE_DIR/README.md"
+          echo "NEW_TAG=$tag" >> "$GITHUB_ENV"
+
+      # One current release on GitHub. Zenodo has already archived each one
+      # with its own DOI, so the older versions stay findable there.
+      - name: Remove older data releases
+        if: ${{ env.NEW_TAG != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "$NEW_TAG" >/dev/null   # never prune unless the new one is really there
+          for t in $(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^data-' || true); do
+            if [ "$t" != "$NEW_TAG" ]; then
+              gh release delete "$t" --yes --cleanup-tag
+              echo "removed $t"
+            fi
+          done
