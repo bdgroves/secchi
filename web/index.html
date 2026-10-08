@@ -467,6 +467,25 @@
   footer { margin-top: 5rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 0.9rem; }
   footer a { color: var(--muted); }
+  /* Download the data */
+  .dl-notice { border: 1px solid var(--line); padding: 0.9rem 1.1rem; margin-top: 1rem;
+               font-size: 0.85rem; color: var(--muted); }
+  .dl-notice strong { color: var(--ink); font-weight: 600; }
+  #downloads-panel .placeholder-card { margin-top: 1rem; }
+  .dl-meta { font-size: 0.85rem; color: var(--muted); margin: 1.25rem 0 0.5rem; }
+  .dl-list { border-top: 1px solid var(--line); }
+  .dl-row { display: grid; grid-template-columns: minmax(10rem, 17rem) 1fr; gap: 0.4rem 1.25rem;
+            padding: 0.8rem 0; border-bottom: 1px solid var(--line); }
+  .dl-name { font-size: 0.9rem; }
+  .dl-name code { font-weight: 600; }
+  .dl-desc { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
+  .dl-files { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; align-items: baseline;
+              font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  .dl-kind { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.05em;
+             text-transform: uppercase; margin-right: 0.3rem; }
+  .dl-sz { color: var(--muted); font-size: 0.75rem; }
+  .dl-docs { font-size: 0.85rem; margin-top: 1rem; }
+  @media (max-width: 40rem) { .dl-row { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -756,6 +775,27 @@
     pulled over the summer for maintenance.
   </p>
   <section id="inventory" aria-label="Observatory inventory"></section>
+
+  <h2 id="downloads">Download the data</h2>
+  <p>
+    Everything on this page, as files: Parquet for Python, R and DuckDB, and
+    gzipped CSV by year for Excel. Values are exactly as stored. A
+    <code>quality_flag</code> column marks readings that look wrong, such as
+    impossible values, scrambled sonde channels, duplicated records and
+    sensors reading below zero.
+  </p>
+  <div class="dl-notice">
+    <strong>Provisional data, not an official product.</strong> These are raw
+    or lightly processed readings, not reviewed or approved by TEON, USGS or
+    any other agency, and their sources may revise or withdraw them. The
+    quality flags are inferred here and are <strong>not quality control</strong>;
+    an unflagged reading is not certified. Provided as is, without warranty;
+    not for safety-critical, regulatory or legal decisions. Each source's own
+    terms govern its data. Cite the sources, not this page.
+  </div>
+  <section id="downloads-panel" aria-label="Data downloads">
+    <div class="placeholder-card">Looking for the latest data release&hellip;</div>
+  </section>
 
   <hr class="rule">
 
@@ -2639,6 +2679,143 @@
     }
   }
 
+  // downloads:start
+  // "Download the data". Reads the newest data-* release from GitHub's
+  // public API (CORS-enabled), so the page lists exactly what has been
+  // published, never what we hope was. Independent of latest.json: a bad
+  // snapshot must not blank this, and this must never blank a snapshot.
+  const DL_REPO = "bdgroves/secchi";
+  const DL_PREFIX = `https://github.com/${DL_REPO}/releases/`;
+  const DL_DATASETS = [
+    ["lake_exo", "Lake sondes (EXO)", "Telemetered and hand-collected sondes."],
+    ["lake_nearshore", "Nearshore loggers", "MiniDOT and HOBO loggers, read by boat."],
+    ["forest", "Forest stations", "Soil, air, trees, streams, precipitation."],
+    ["usgs", "USGS stream gauges", "Tahoe basin gauges."],
+    ["snotel", "SNOTEL", "Precipitation and snowpack, four stations."],
+    ["smoke", "Wildfire smoke", "NOAA's daily smoke analysis over the lake."],
+    ["asos", "Airport weather", "South Lake Tahoe and Truckee."],
+    ["terc_secchi", "TERC Secchi record", "UC Davis, since 1967. CC BY 4.0."],
+  ];
+  const DL_DOCS = [
+    ["README.md", "README"], ["DISCLAIMER.md", "Disclaimer"], ["SOURCES.md", "Sources"],
+    ["CITATION.cff", "Citation"], ["manifest.json", "Manifest"], ["SHA256SUMS", "Checksums"],
+  ];
+
+  function dlBytes(n) {
+    n = Number(n);
+    if (!isFinite(n) || n < 0) return "";
+    if (n < 1e6) return `${Math.max(1, Math.round(n / 1e3))} kB`;
+    if (n < 1e9) return `${(n / 1e6).toFixed(n < 1e7 ? 1 : 0)} MB`;
+    return `${(n / 1e9).toFixed(1)} GB`;
+  }
+
+  // Only links into this repo's own releases are ever drawn.
+  function dlUrl(a, tag) {
+    const u = a && a.browser_download_url;
+    if (typeof u !== "string") return null;
+    return u.startsWith(`${DL_PREFIX}download/${tag}/`) ? u : null;
+  }
+
+  function dlGroup(assets, tag) {
+    const sets = {}, docs = {};
+    const set = (n) => (sets[n] = sets[n] || { parquet: null, csv: [], plain: null });
+    for (const a of assets || []) {
+      if (!a || typeof a.name !== "string" || !dlUrl(a, tag)) continue;
+      let m;
+      if ((m = a.name.match(/^(.+)_(\d{4})\.csv\.gz$/))) set(m[1]).csv.push({ year: m[2], a });
+      else if ((m = a.name.match(/^(.+)\.parquet$/))) set(m[1]).parquet = a;
+      else if ((m = a.name.match(/^(.+)\.csv$/))) set(m[1]).plain = a;
+      else docs[a.name] = a;
+    }
+    for (const s of Object.values(sets)) s.csv.sort((x, y) => x.year.localeCompare(y.year));
+    return { sets, docs };
+  }
+
+  function renderDownloads(rel) {
+    if (!rel) {
+      return `<div class="placeholder-card">No data release has been published yet.
+        The code, and the store it reads, are on
+        <a href="https://github.com/${DL_REPO}">GitHub</a>.</div>`;
+    }
+    const tag = String(rel.tag_name || "");
+    if (!/^data-[\w.-]+$/.test(tag)) throw new Error(`unexpected release tag ${tag}`);
+    const { sets, docs } = dlGroup(rel.assets, tag);
+    const known = DL_DATASETS.map(d => d[0]);
+    const order = [...known.filter(n => sets[n]),
+                   ...Object.keys(sets).filter(n => !known.includes(n)).sort()];
+    if (!order.length) {
+      return `<div class="placeholder-card">The latest release (${esc(tag)}) has no
+        data files attached. <a href="${esc(DL_PREFIX)}">All releases</a>.</div>`;
+    }
+    const info = Object.fromEntries(DL_DATASETS.map(d => [d[0], d]));
+
+    const rows = order.map(n => {
+      const s = sets[n], d = info[n];
+      const links = [];
+      if (s.parquet) {
+        links.push(`<span><span class="dl-kind">Parquet</span>
+          <a href="${esc(dlUrl(s.parquet, tag))}">${esc(s.parquet.name)}</a>
+          <span class="dl-sz">${esc(dlBytes(s.parquet.size))}</span></span>`);
+      }
+      if (s.plain) {
+        links.push(`<span><span class="dl-kind">CSV</span>
+          <a href="${esc(dlUrl(s.plain, tag))}">${esc(s.plain.name)}</a>
+          <span class="dl-sz">${esc(dlBytes(s.plain.size))}</span></span>`);
+      }
+      if (s.csv.length) {
+        links.push(`<span><span class="dl-kind">CSV by year</span> ` +
+          s.csv.map(c => `<a href="${esc(dlUrl(c.a, tag))}">${esc(c.year)}</a>
+            <span class="dl-sz">${esc(dlBytes(c.a.size))}</span>`).join(" · ") + `</span>`);
+      }
+      return `<div class="dl-row">
+        <div class="dl-name"><code>${esc(n)}</code>
+          ${d ? `<div class="dl-desc">${esc(d[1])}. ${esc(d[2])}</div>` : ""}</div>
+        <div class="dl-files">${links.join("")}</div></div>`;
+    }).join("");
+
+    const docLinks = DL_DOCS.filter(d => docs[d[0]])
+      .map(d => `<a href="${esc(dlUrl(docs[d[0]], tag))}">${esc(d[1])}</a>`).join(" · ");
+
+    const dataThrough = tag.slice(5);
+    const when = /^\d{4}-\d{2}-\d{2}$/.test(dataThrough) ? `Data through ${fmtDay(dataThrough)}. ` : "";
+    const pub = typeof rel.published_at === "string" && rel.published_at.length >= 10
+      ? `Published ${fmtDay(rel.published_at.slice(0, 10))}. ` : "";
+    const relLink = typeof rel.html_url === "string" && rel.html_url.startsWith(DL_PREFIX)
+      ? ` <a href="${esc(rel.html_url)}">Release page</a>` : "";
+
+    const first = sets.lake_exo && sets.lake_exo.parquet ? dlUrl(sets.lake_exo.parquet, tag) : null;
+    const snippet = first ? `<details class="explainer"><summary>Read a file directly, without downloading it</summary>
+      <pre style="overflow-x:auto"><code>import duckdb
+duckdb.sql("SELECT site, avg(value) FROM '${esc(first)}'
+            WHERE variable = 'Temp' AND quality_flag IS NULL GROUP BY site")
+
+import pandas as pd
+df = pd.read_parquet("${esc(first)}")</code></pre></details>` : "";
+
+    return `<p class="dl-meta">${esc(when)}${esc(pub)}${relLink}</p>
+      <div class="dl-list">${rows}</div>
+      ${docLinks ? `<p class="dl-docs"><strong>Read before using:</strong> ${docLinks}</p>` : ""}
+      ${snippet}`;
+  }
+
+  async function loadDownloads() {
+    const el = document.getElementById("downloads-panel");
+    if (!el) return;
+    try {
+      const res = await fetch(`https://api.github.com/repos/${DL_REPO}/releases?per_page=10`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = await res.json();
+      const rel = (Array.isArray(list) ? list : [])
+        .find(r => r && !r.draft && /^data-/.test(r.tag_name || ""));
+      el.innerHTML = renderDownloads(rel || null);
+    } catch (err) {
+      console.error("downloads:", err);
+      el.innerHTML = `<div class="placeholder-card">Couldn't reach GitHub just now. The
+        releases are listed at <a href="${esc(DL_PREFIX)}">github.com/${DL_REPO}/releases</a>.</div>`;
+    }
+  }
+  // downloads:end
+
   async function load() {
     const $ = (id) => document.getElementById(id);
     UNITS = loadUnitPref(UNITS);
@@ -2666,6 +2843,8 @@
         $(id).innerHTML = "";
       }
     }
+    // Independent of the snapshot: never blanked by it, never blanks it.
+    loadDownloads();
   }
 
   function hasStoredUnitPref() {
