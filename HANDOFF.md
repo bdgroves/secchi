@@ -221,8 +221,8 @@ web/assets/        built by `transform`, not committed
   two batteries and links `docs/teon-note-2026-09-28.md`, which has since
   gained an addendum on the Blackwood 2 gauge. **If no reply by ~2026-10-09**,
   a short follow-up to both; Katie Senft (research vessel) for the field side.
-- **Then**, Kylie Papson (Tahoe Institute communications) and the UNR alumni
-  association; social posts went out 2026-10-19 (celebrate the open
+- **Parked (2026-10-19, Brooks's call)**: a note to Kylie Papson (Tahoe Institute
+  communications) and the UNR alumni association; social posts went out 2026-10-19 (celebrate the open
   data, don't list faults).
 - **Batteries**: no *repair* seen yet. **Correction (2026-10-02 evening):**
   this note originally said no swap had been seen either, which was wrong.
