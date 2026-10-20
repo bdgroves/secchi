@@ -14,7 +14,7 @@ automatically by Claude Code.*
 2. **The data is complete and verified**: about 12.0 million TEON observations, June 2024 to now, plus USGS gauges, SNOTEL precipitation and snowpack, and a daily smoke record.
 3. **`pixi run status`** is the one screen to check. Today its to-do list is two items, both TEON's: Glenbrook 1 and Glenbrook 5 aren't charging.
 4. **TEON has been told.** An email went on 2026-10-02 to Carina Seitz and Sudeep Chandra, with the full note linked. Sudeep Chandra replied on 2026-10-06: TEON knows about the low batteries and plans to replace them **before winter**; "we are comfortable with you sharing this publicly"; keep in touch with suggestions ("on a shoe string budget"). No follow-up needed. Brooks recorded 2026-10-07 that this covers sharing the data with provisional-data language.
-5. **Social posts are drafted and held** until TEON replies.
+5. **Social posts are out** (2026-10-19): LinkedIn (also in Featured) and X, tagging @UNRLakeTahoe and @unevadareno. The page and blog post now carry a link-preview image (`web/social/secchi-og.jpg`).
 6. **The rainfall transect is answered, as a range**: west/east precipitation 2.16× at the best-matched gauge, 1.20× at the other; soil wetting 2.32×.
 7. **Snowmelt is measured**: of 8 no-rain wetting events, 5 coincide with a shrinking snowpack and 3 remain unexplained.
 8. **Wildfire smoke left no detectable mark** on the lake in 2025–26, once each month's trend is removed (114 smoke days since June 2024; no lake data for summer 2024).
@@ -222,7 +222,7 @@ web/assets/        built by `transform`, not committed
   gained an addendum on the Blackwood 2 gauge. **If no reply by ~2026-10-09**,
   a short follow-up to both; Katie Senft (research vessel) for the field side.
 - **Then**, Kylie Papson (Tahoe Institute communications) and the UNR alumni
-  association; then social posts (drafts in the old chat: celebrate the open
+  association; social posts went out 2026-10-19 (celebrate the open
   data, don't list faults).
 - **Batteries**: no *repair* seen yet. **Correction (2026-10-02 evening):**
   this note originally said no swap had been seen either, which was wrong.
