@@ -90,6 +90,40 @@ SELECT record_uuid, site, sensor_type, ts, variable, value, quality_flag
 FROM secchi.obs_flagged
 WHERE {blocking};
 GO
+{MAP_VIEWS}"""
+
+
+# Views for a GIS client (QGIS's MS SQL provider, an ArcGIS Pro query
+# layer). Each has a single integer key, which both need to identify
+# features, and one spatial column.
+MAP_VIEWS = """CREATE OR ALTER VIEW secchi.site_map AS
+-- One point per TEON site: where it is, which catchment, what it has recorded.
+SELECT s.site_id, s.site, w.watershed_id, w.watershed,
+       a.readings, a.variables, a.first_reading, a.last_reading,
+       s.location
+FROM secchi.site AS s
+LEFT JOIN secchi.site_watershed AS w ON w.site_id = s.site_id
+OUTER APPLY (SELECT COUNT_BIG(*) AS readings, COUNT(DISTINCT o.variable_id) AS variables,
+                    MIN(o.ts) AS first_reading, MAX(o.ts) AS last_reading
+             FROM secchi.obs AS o WHERE o.site_id = s.site_id) AS a;
+GO
+CREATE OR ALTER VIEW secchi.lake_temp_month AS
+-- Monthly mean water temperature at each EXO sonde, from obs_clean, so a
+-- failed sonde (Sunnyside, May-June 2026) drops out instead of reading 85 C.
+-- fid = site_id * 1,000,000 + yyyymm: stable from run to run.
+WITH m AS (
+    SELECT site, YEAR(ts) AS yr, MONTH(ts) AS mo,
+           AVG(value) AS temp_c, COUNT_BIG(*) AS readings
+    FROM secchi.obs_clean
+    WHERE sensor_type = 'ExoSensor' AND variable = 'Temp'
+    GROUP BY site, YEAR(ts), MONTH(ts))
+SELECT CAST(s.site_id AS bigint) * 1000000 + m.yr * 100 + m.mo AS fid,
+       m.site, DATEFROMPARTS(m.yr, m.mo, 1) AS month_start,
+       EOMONTH(DATEFROMPARTS(m.yr, m.mo, 1)) AS month_end,
+       CAST(ROUND(m.temp_c, 2) AS decimal(6, 2)) AS temp_c, m.readings,
+       s.location
+FROM m JOIN secchi.site AS s ON s.site = m.site;
+GO
 """
 
 
