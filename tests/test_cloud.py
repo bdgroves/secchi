@@ -74,11 +74,14 @@ def test_compare_flags_a_missing_row_and_a_missing_month():
     assert any("missing in database" in p for p in res[1]["problems"])
 
 
-def test_compare_allows_rounding_in_the_sum_but_says_so():
-    [r] = compare([_fp()], [_fp(v_sum="50.0001")])
-    assert r["ok"] and r["problems"][0].startswith("note:")
-    [r] = compare([_fp()], [_fp(v_sum="51.0000")])
+def test_compare_sums_must_match_exactly():
+    # A per-row rounding allowance once let a change of 1 through in a
+    # 60,000-row month. The smallest difference must fail.
+    [r] = compare([_fp(n_rows=60000, n_keys=60000)], [_fp(n_rows=60000, n_keys=60000,
+                                                          v_sum="50.0001")])
     assert not r["ok"]
+    [r] = compare([_fp()], [_fp(v_sum="50.0000")])
+    assert r["ok"]
 
 
 def test_tsql_shapes():

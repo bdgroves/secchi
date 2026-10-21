@@ -426,9 +426,14 @@ def _f(s):
 
 
 def compare(store: list[dict], server: list[dict]) -> list[dict]:
-    """One result per table-month. Counts, keys, times and min/max must be
-    equal; the 4-place sums may differ by rounding at most 0.0001 per row
-    (expected: 0)."""
+    """One result per table-month. Everything must be equal, the 4-place
+    sums included.
+
+    The sums once had an allowance of 0.0001 per row for rounding. The
+    sync's sabotage test (cloud.yml) showed what that cost: in a month of
+    60,000 USGS readings it added up to 6, and a reading changed by 1
+    passed. Every real run had matched to the last digit, so the allowance
+    went (2026-10-21)."""
     s_map = {(r["tbl"], r["part"]): r for r in store}
     d_map = {(r["tbl"], r["part"]): r for r in server}
     results = []
@@ -448,10 +453,8 @@ def compare(store: list[dict], server: list[dict]) -> list[dict]:
                 if _f(a[m]) != _f(b[m]):
                     problems.append(f"{m} {a[m]} vs {b[m]}")
             sa, sb = Decimal(a["v_sum"] or 0), Decimal(b["v_sum"] or 0)
-            if abs(sa - sb) > Decimal("0.0001") * int(a["n_rows"]):
+            if sa != sb:
                 problems.append(f"v_sum {sa} vs {sb}")
-            elif sa != sb:
-                problems.append(f"note: v_sum differs by {sa - sb} (within rounding)")
         hard = [p for p in problems if not p.startswith("note:")]
         results.append({"tbl": key[0], "part": key[1],
                         "rows": int((a or b)["n_rows"]),

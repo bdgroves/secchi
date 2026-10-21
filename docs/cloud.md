@@ -46,9 +46,11 @@ For every table and every month, both sides compute:
   checked by the min and max instead);
 - the number of missing values.
 
-Everything must be equal. The one allowance: the 4-place sums may differ by
-rounding at most 0.0001 per row. Any such difference is reported as a note,
-and none is expected.
+Everything must be equal, to the last digit. (The sums first had an
+allowance of 0.0001 per row for rounding. The sync's sabotage test showed
+that over a month of 60,000 USGS readings the allowance added up to 6, so a
+reading changed by 1 passed. Every real run had matched exactly, so the
+allowance went.)
 
 ## How the tables are laid out
 
