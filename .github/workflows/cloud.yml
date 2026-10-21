@@ -83,8 +83,21 @@ jobs:
           SECCHI_SQL_USER: sa
           SECCHI_SQL_TRUST_CERT: "1"
         run: |
-          pixi run cloud-load
-          pixi run cloud-reconcile
+          set -o pipefail
+          pixi run cloud-load 2>&1 | tee cloud/out/load.log
+          pixi run cloud-reconcile 2>&1 | tee cloud/out/reconcile.log
+
+      # Annotations are readable from the API and the run page without
+      # opening the log: the last lines of whatever stopped the job.
+      - name: Say why
+        if: failure()
+        run: |
+          for f in cloud/out/reconcile.log cloud/out/load.log; do
+            if [ -f "$f" ]; then
+              msg=$(tail -n 25 "$f" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+              echo "::error title=$(basename $f)::$msg"
+            fi
+          done
 
       - name: Report
         if: always()
