@@ -88,11 +88,15 @@ jobs:
       - name: Keep the auto-pause delay at 15 minutes
         continue-on-error: true
         run: |
-          now=$(az sql db show -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi --query autoPauseDelay -o tsv)
-          echo "auto-pause delay is ${now} minutes"
+          now=$(az sql db show -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi --query autoPauseDelay -o tsv 2>&1)
+          echo "::notice title=auto-pause delay::was ${now} minutes"
           if [ "$now" != "15" ]; then
-            az sql db update -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi --auto-pause-delay 15 \
-              --query autoPauseDelay -o tsv && echo "set to 15"
+            if out=$(az sql db update -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi \
+                       --auto-pause-delay 15 --query autoPauseDelay -o tsv 2>&1); then
+              echo "::notice title=auto-pause delay::now ${out} minutes"
+            else
+              echo "::warning title=auto-pause delay not changed::$(echo "$out" | tail -n 3 | tr '\n' ' ')"
+            fi
           fi
 
       - name: Wake the database
