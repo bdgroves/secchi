@@ -151,6 +151,25 @@ WHERE sensor_type = 'ExoSensor' AND variable = 'Temp'
 GROUP BY site, YEAR(ts), MONTH(ts) ORDER BY site, yr, mo;
 ```
 
+## Map views
+
+Also generated in `secchi.cloud.quality` (`MAP_VIEWS`) and recreated on
+every sync, so a GIS client (QGIS, ArcGIS Pro) reads them with the
+read-only `secchi_reader` login. Each has a stable integer key and a
+`location` geography (SRID 4326).
+
+| View | One row per | Shows |
+|---|---|---|
+| `site_map` | TEON site (18) | kind (lake sonde, nearshore logger, forest and stream station), its instruments, catchment, readings, first and last, camera frames |
+| `lake_temp_month` | EXO sonde and month | mean water temperature from `obs_clean`; month start and end for a time slider |
+| `usgs_gauge_map` | USGS gauge (10) | inflow, lake level or outflow; latest discharge, gage height, water temperature (UTC) |
+| `usgs_flow_day` | gauge and day | daily mean discharge, Pacific standard days, for a time slider |
+| `context_station_map` | SNOTEL or airport station (6) | network, latest snow depth. Beyond TEON: context only |
+
+Checked against DuckDB on 2026-10-21: 2,738 camera frames, the latest flows
+(Trout Creek 12.5 cfs, Truckee River outflow 78.7 cfs) and 322 gauge-days
+are the same in both.
+
 ## Keeping Azure current (GitHub Actions)
 
 `cloud-azure.yml`, every other morning at 6:52 AM Pacific, and by hand:
