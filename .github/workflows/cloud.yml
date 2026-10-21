@@ -140,7 +140,18 @@ jobs:
           dotnet $CLI files 2>&1 | tee cloud/out/dotnet-files.log
           dotnet $CLI check 2>&1 | tee cloud/out/dotnet-check.log
 
-      - name: "C#: load with SqlBulkCopy, reconcile, check"
+      - name: "C#: load with SqlBulkCopy in DataTable batches, reconcile"
+        env:
+          SECCHI_SQL_SERVER: localhost
+          SECCHI_SQL_DATABASE: secchi
+          SECCHI_SQL_USER: sa
+          SECCHI_SQL_TRUST_CERT: "1"
+        run: |
+          set -o pipefail
+          pixi run cloud-load --loader dotnet-batches 2>&1 | tee cloud/out/load-dotnet-batches.log
+          pixi run cloud-reconcile 2>&1 | tee cloud/out/reconcile-dotnet-batches.log
+
+      - name: "C#: load with SqlBulkCopy streaming, reconcile, check"
         env:
           SECCHI_SQL_SERVER: localhost
           SECCHI_SQL_DATABASE: secchi
@@ -157,7 +168,7 @@ jobs:
       - name: Say why
         if: failure()
         run: |
-          for f in cloud/out/dotnet-check2.log cloud/out/reconcile-dotnet.log cloud/out/load-dotnet.log cloud/out/dotnet-check.log cloud/out/dotnet-files.log cloud/out/sync2.log cloud/out/sync1.log cloud/out/reconcile.log cloud/out/load.log; do
+          for f in cloud/out/dotnet-check2.log cloud/out/reconcile-dotnet.log cloud/out/load-dotnet.log cloud/out/reconcile-dotnet-batches.log cloud/out/load-dotnet-batches.log cloud/out/dotnet-check.log cloud/out/dotnet-files.log cloud/out/sync2.log cloud/out/sync1.log cloud/out/reconcile.log cloud/out/load.log; do
             if [ -f "$f" ]; then
               msg=$(tail -n 25 "$f" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
               echo "::error title=$(basename $f)::$msg"
@@ -170,8 +181,9 @@ jobs:
           msg=$(tail -n 3 cloud/out/load.log; grep -A2 "^reconcile:" cloud/out/reconcile.log; grep -E "^sync:|reloaded|flags:" cloud/out/sync2.log; cat cloud/out/run_log.txt)
           echo "::notice title=matched::$(echo "$msg" | awk '{printf "%s%%0A", $0}')"
           race=$(echo "bcp:"; grep -E "^  [a-z_]+ +[0-9,]+ rows|rows copied" cloud/out/load.log;
-                 echo "SqlBulkCopy:"; grep -E "^  [a-z_]+ +[0-9,]+ rows|rows copied|SqlBulkCopy" cloud/out/load-dotnet.log;
-                 grep -hE "^(files|check|reconcile)" cloud/out/dotnet-files.log cloud/out/dotnet-check.log cloud/out/reconcile-dotnet.log cloud/out/dotnet-check2.log)
+                 echo "SqlBulkCopy, DataTable batches:"; grep -E "^  (obs|usgs) +[0-9,]+ rows|rows copied" cloud/out/load-dotnet-batches.log;
+                 echo "SqlBulkCopy, streaming:"; grep -E "^  [a-z_]+ +[0-9,]+ rows|rows copied|SqlBulkCopy" cloud/out/load-dotnet.log;
+                 grep -hE "^(files|check|reconcile)" cloud/out/dotnet-files.log cloud/out/dotnet-check.log cloud/out/reconcile-dotnet-batches.log cloud/out/reconcile-dotnet.log cloud/out/dotnet-check2.log)
           echo "::notice title=csharp::$(echo "$race" | awk '{printf "%s%%0A", $0}')"
 
       - name: Report

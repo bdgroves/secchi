@@ -5,6 +5,7 @@
     python -m secchi.cloud load        # 01_schema.sql, bcp every file, 02_after_load.sql
     python -m secchi.cloud load --loader dotnet
                                        # the same, with C#'s SqlBulkCopy instead of bcp
+                                       # (dotnet-batches: the first, DataTable version)
     python -m secchi.cloud reconcile   # SQL Server's fingerprints vs the store's
     python -m secchi.cloud all         # the four in order
     python -m secchi.cloud sync        # keep a copy current: reload only what differs,
@@ -377,7 +378,7 @@ def load(args) -> int:
         for m in manifest:
             bcp_in(c, m["table"], BCP_DIR / m["file"], m["rows"], m.get("utf8", False))
     else:
-        dotnet(["load"])
+        dotnet(["load"] + (["--batches"] if loader == "dotnet-batches" else []))
     print(f"load: rows copied in {time.perf_counter() - t0:.0f}s")
     sqlcmd(c, "-i", str(SQL_DIR / "02_after_load.sql"))
     apply_quality(c)
@@ -743,8 +744,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m secchi.cloud", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("step", choices=["inventory", "export", "load", "reconcile", "sync", "all"])
-    ap.add_argument("--loader", choices=["bcp", "dotnet"], default="bcp",
-                    help="load: bcp (default) or C#'s SqlBulkCopy (cloud/dotnet)")
+    ap.add_argument("--loader", choices=["bcp", "dotnet", "dotnet-batches"], default="bcp",
+                    help="load: bcp (default) or C#'s SqlBulkCopy (cloud/dotnet), streaming "
+                         "or in DataTable batches")
     args = ap.parse_args(argv)
     steps = {"inventory": inventory, "export": export, "load": load, "reconcile": reconcile,
              "sync": sync}

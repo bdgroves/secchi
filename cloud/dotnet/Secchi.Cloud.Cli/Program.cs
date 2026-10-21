@@ -1,7 +1,9 @@
 // secchi-cloud: the C# half of the SQL Server copy (docs/cloud.md, "C# and .NET").
 //
 //   secchi-cloud files    fingerprint the export's bcp files, compare with the store
-//   secchi-cloud load     bulk-copy the export into SQL Server with SqlBulkCopy
+//   secchi-cloud load     bulk-copy the export into SQL Server with SqlBulkCopy,
+//                         streaming rows from the file (add --batches for the
+//                         first version: 100,000-row DataTables)
 //   secchi-cloud check    read every row back from SQL Server, fingerprint it in C#,
 //                         compare with the store
 //
@@ -24,7 +26,7 @@ try
     return args.FirstOrDefault() switch
     {
         "files" => Files(),
-        "load" => Load(),
+        "load" => Load(batches: args.Contains("--batches")),
         "check" => Check(),
         _ => Usage(),
     };
@@ -56,7 +58,7 @@ int Files()
 // ---------------------------------------------------------------------------
 // load: SqlBulkCopy, the .NET way to do what bcp does
 // ---------------------------------------------------------------------------
-int Load()
+int Load(bool batches)
 {
     using var conn = Open();
     using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(bcpDir, "manifest.json")));
@@ -74,26 +76,13 @@ int Load()
             DestinationTableName = $"secchi.[{table}]",
             BatchSize = 100_000,          // the same batch size bcp uses (-b 100000)
             BulkCopyTimeout = 0,          // no time limit: obs is 12 million rows
+            EnableStreaming = true,       // pull rows from the reader as the server takes them
         };
         foreach (var c in layout.Columns)
             bulk.ColumnMappings.Add(c.Name, c.Name);
 
-        // Rows go up in chunks of one batch: read 100,000 lines into a
-        // DataTable, send them, reuse the table. Memory stays flat however
-        // big the file is.
-        var chunk = NewTable(layout);
-        long sent = 0;
-        foreach (var row in BcpFile.Read(Path.Combine(bcpDir, m.GetProperty("file").GetString()!), layout))
-        {
-            chunk.Rows.Add(row.Select(v => v ?? DBNull.Value).ToArray());
-            if (chunk.Rows.Count == bulk.BatchSize)
-            {
-                bulk.WriteToServer(chunk);
-                sent += chunk.Rows.Count;
-                chunk.Clear();
-            }
-        }
-        if (chunk.Rows.Count > 0) { bulk.WriteToServer(chunk); sent += chunk.Rows.Count; }
+        var path = Path.Combine(bcpDir, m.GetProperty("file").GetString()!);
+        var sent = batches ? LoadBatches(bulk, path, layout) : LoadStreaming(bulk, path, layout);
 
         // Count what the server holds, not what we think we sent.
         var have = Scalar(conn, $"SELECT COUNT_BIG(*) FROM secchi.[{table}]");
@@ -101,8 +90,37 @@ int Load()
         if (have != expected || sent != expected)
             throw new InvalidOperationException($"{table}: expected {expected:N0} rows, sent {sent:N0}, table holds {have:N0}");
     }
-    Console.WriteLine($"load (SqlBulkCopy): {t0.Elapsed.TotalSeconds:F0}s");
+    Console.WriteLine($"load (SqlBulkCopy, {(batches ? "DataTable batches" : "streaming")}): {t0.Elapsed.TotalSeconds:F0}s");
     return 0;
+}
+
+// The streaming way: hand SqlBulkCopy a reader over the file. It pulls one
+// row at a time and sends them as fast as the server takes them.
+static long LoadStreaming(SqlBulkCopy bulk, string path, Layout layout)
+{
+    using var reader = new BcpDataReader(path, layout);
+    bulk.WriteToServer(reader);
+    return reader.RowsRead;
+}
+
+// The first version: read 100,000 lines into a DataTable, send them, reuse
+// the table. Simple, but every value is boxed into a DataRow first.
+static long LoadBatches(SqlBulkCopy bulk, string path, Layout layout)
+{
+    var chunk = NewTable(layout);
+    long sent = 0;
+    foreach (var row in BcpFile.Read(path, layout))
+    {
+        chunk.Rows.Add(row.Select(v => v ?? DBNull.Value).ToArray());
+        if (chunk.Rows.Count == bulk.BatchSize)
+        {
+            bulk.WriteToServer(chunk);
+            sent += chunk.Rows.Count;
+            chunk.Clear();
+        }
+    }
+    if (chunk.Rows.Count > 0) { bulk.WriteToServer(chunk); sent += chunk.Rows.Count; }
+    return sent;
 }
 
 static DataTable NewTable(Layout layout)
