@@ -114,3 +114,5 @@ data/processed/*.premigration
 # SQL Server copy (docs/cloud.md): bcp files, fingerprints and reports are
 # rebuilt from the store on demand. docs/cloud/inventory.md IS committed.
 cloud/out/
+cloud/dotnet/**/bin/
+cloud/dotnet/**/obj/

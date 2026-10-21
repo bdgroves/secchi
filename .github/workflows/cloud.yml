@@ -16,6 +16,7 @@ on:
     paths:
       - "src/secchi/cloud/**"
       - "cloud/sql/**"
+      - "cloud/dotnet/**"
       - ".github/workflows/cloud.yml"
   schedule:
     - cron: "17 14 * * 1"
@@ -115,12 +116,48 @@ jobs:
           grep -q "^sync: MATCH" cloud/out/sync2.log
           q -Q "SET NOCOUNT ON; SELECT run_id, kind, rows_loaded, months_matched, months_checked, flags_matched, result, seconds FROM secchi.run_log ORDER BY run_id" -W -s " | " | tee cloud/out/run_log.txt
 
+      # The C# half (cloud/dotnet). A third, independent fingerprint: C#
+      # reads the rows and does the arithmetic itself, so DuckDB, SQL Server
+      # and .NET must all agree. Then a race: reload everything with
+      # SqlBulkCopy instead of bcp, and prove the result is identical.
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build the C# tool
+        run: dotnet build -c Release cloud/dotnet/Secchi.Cloud.Cli -nologo
+
+      - name: "C#: fingerprint the files, then SQL Server"
+        env:
+          SECCHI_SQL_SERVER: localhost
+          SECCHI_SQL_DATABASE: secchi
+          SECCHI_SQL_USER: sa
+          SECCHI_SQL_TRUST_CERT: "1"
+        run: |
+          set -o pipefail
+          CLI=cloud/dotnet/Secchi.Cloud.Cli/bin/Release/net8.0/secchi-cloud.dll
+          dotnet $CLI files 2>&1 | tee cloud/out/dotnet-files.log
+          dotnet $CLI check 2>&1 | tee cloud/out/dotnet-check.log
+
+      - name: "C#: load with SqlBulkCopy, reconcile, check"
+        env:
+          SECCHI_SQL_SERVER: localhost
+          SECCHI_SQL_DATABASE: secchi
+          SECCHI_SQL_USER: sa
+          SECCHI_SQL_TRUST_CERT: "1"
+        run: |
+          set -o pipefail
+          pixi run cloud-load --loader dotnet 2>&1 | tee cloud/out/load-dotnet.log
+          pixi run cloud-reconcile 2>&1 | tee cloud/out/reconcile-dotnet.log
+          dotnet cloud/dotnet/Secchi.Cloud.Cli/bin/Release/net8.0/secchi-cloud.dll check 2>&1 | tee cloud/out/dotnet-check2.log
+
       # Annotations are readable from the API and the run page without
       # opening the log: the last lines of whatever stopped the job.
       - name: Say why
         if: failure()
         run: |
-          for f in cloud/out/sync2.log cloud/out/sync1.log cloud/out/reconcile.log cloud/out/load.log; do
+          for f in cloud/out/dotnet-check2.log cloud/out/reconcile-dotnet.log cloud/out/load-dotnet.log cloud/out/dotnet-check.log cloud/out/dotnet-files.log cloud/out/sync2.log cloud/out/sync1.log cloud/out/reconcile.log cloud/out/load.log; do
             if [ -f "$f" ]; then
               msg=$(tail -n 25 "$f" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
               echo "::error title=$(basename $f)::$msg"
@@ -132,6 +169,10 @@ jobs:
         run: |
           msg=$(tail -n 3 cloud/out/load.log; grep -A2 "^reconcile:" cloud/out/reconcile.log; grep -E "^sync:|reloaded|flags:" cloud/out/sync2.log; cat cloud/out/run_log.txt)
           echo "::notice title=matched::$(echo "$msg" | awk '{printf "%s%%0A", $0}')"
+          race=$(echo "bcp:"; grep -E "^  [a-z_]+ +[0-9,]+ rows|rows copied" cloud/out/load.log;
+                 echo "SqlBulkCopy:"; grep -E "^  [a-z_]+ +[0-9,]+ rows|rows copied|SqlBulkCopy" cloud/out/load-dotnet.log;
+                 grep -hE "^(files|check|reconcile)" cloud/out/dotnet-files.log cloud/out/dotnet-check.log cloud/out/reconcile-dotnet.log cloud/out/dotnet-check2.log)
+          echo "::notice title=csharp::$(echo "$race" | awk '{printf "%s%%0A", $0}')"
 
       - name: Report
         if: always()

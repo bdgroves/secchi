@@ -3,6 +3,8 @@
     python -m secchi.cloud inventory   # docs/cloud/inventory.md + cloud/out/fingerprints.json
     python -m secchi.cloud export      # cloud/out/bcp/*.txt, ready for bcp
     python -m secchi.cloud load        # 01_schema.sql, bcp every file, 02_after_load.sql
+    python -m secchi.cloud load --loader dotnet
+                                       # the same, with C#'s SqlBulkCopy instead of bcp
     python -m secchi.cloud reconcile   # SQL Server's fingerprints vs the store's
     python -m secchi.cloud all         # the four in order
     python -m secchi.cloud sync        # keep a copy current: reload only what differs,
@@ -49,6 +51,8 @@ BCP_DIR = OUT / "bcp"
 SQL_DIR = REPO_ROOT / "cloud" / "sql"
 INVENTORY_MD = REPO_ROOT / "docs" / "cloud" / "inventory.md"
 FINGERPRINTS = OUT / "fingerprints.json"
+DOTNET_CLI = REPO_ROOT / "cloud" / "dotnet" / "Secchi.Cloud.Cli"
+DOTNET_DLL = DOTNET_CLI / "bin" / "Release" / "net8.0" / "secchi-cloud.dll"
 RECONCILE_MD = OUT / "reconcile.md"
 
 # Field separator in the bcp files. Export refuses to write any text that
@@ -332,12 +336,12 @@ def write_bcp_file(con, table: str, sql: str, path: Path, utf8: bool) -> int:
 # SQL Server side
 # ---------------------------------------------------------------------------
 
-def _conn() -> dict:
+def _conn(tools: tuple[str, ...] = ("sqlcmd", "bcp")) -> dict:
     need = ["SECCHI_SQL_SERVER", "SECCHI_SQL_DATABASE", "SECCHI_SQL_USER", "SECCHI_SQL_PASSWORD"]
     missing = [k for k in need if not os.environ.get(k)]
     if missing:
         raise SystemExit("set " + ", ".join(missing) + " first (see docs/cloud.md)")
-    for tool in ("sqlcmd", "bcp"):
+    for tool in tools:
         if not shutil.which(tool):
             raise SystemExit(f"{tool} not found on PATH (see docs/cloud.md)")
     return {"server": os.environ["SECCHI_SQL_SERVER"],
@@ -363,17 +367,33 @@ def sqlcmd(c: dict, *args: str, capture: bool = False) -> str:
 
 
 def load(args) -> int:
-    c = _conn()
+    loader = getattr(args, "loader", "bcp")
+    c = _conn(("sqlcmd", "bcp") if loader == "bcp" else ("sqlcmd", "dotnet"))
     manifest = json.loads((BCP_DIR / "manifest.json").read_text(encoding="utf-8"))
     t0 = time.perf_counter()
-    print(f"load: {c['server']} / {c['db']}")
+    print(f"load: {c['server']} / {c['db']}, with {loader}")
     sqlcmd(c, "-i", str(SQL_DIR / "01_schema.sql"))
-    for m in manifest:
-        bcp_in(c, m["table"], BCP_DIR / m["file"], m["rows"], m.get("utf8", False))
+    if loader == "bcp":
+        for m in manifest:
+            bcp_in(c, m["table"], BCP_DIR / m["file"], m["rows"], m.get("utf8", False))
+    else:
+        dotnet(["load"])
+    print(f"load: rows copied in {time.perf_counter() - t0:.0f}s")
     sqlcmd(c, "-i", str(SQL_DIR / "02_after_load.sql"))
     apply_quality(c)
     print(f"load: done in {time.perf_counter() - t0:.0f}s")
     return 0
+
+
+def dotnet(args: list[str]) -> None:
+    """Run the C# tool (cloud/dotnet), which reads the same SECCHI_SQL_* variables.
+    Build it first: dotnet build -c Release cloud/dotnet/Secchi.Cloud.Cli"""
+    if not DOTNET_DLL.exists():
+        raise SystemExit(f"{DOTNET_DLL.relative_to(REPO_ROOT)} not built; run "
+                         "dotnet build -c Release cloud/dotnet/Secchi.Cloud.Cli")
+    r = subprocess.run(["dotnet", str(DOTNET_DLL), *args], cwd=REPO_ROOT)
+    if r.returncode != 0:
+        raise SystemExit(f"secchi-cloud {' '.join(args)} failed ({r.returncode})")
 
 
 def bcp_in(c: dict, table: str, path: Path, expected: int, utf8: bool) -> int:
@@ -723,6 +743,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m secchi.cloud", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("step", choices=["inventory", "export", "load", "reconcile", "sync", "all"])
+    ap.add_argument("--loader", choices=["bcp", "dotnet"], default="bcp",
+                    help="load: bcp (default) or C#'s SqlBulkCopy (cloud/dotnet)")
     args = ap.parse_args(argv)
     steps = {"inventory": inventory, "export": export, "load": load, "reconcile": reconcile,
              "sync": sync}
