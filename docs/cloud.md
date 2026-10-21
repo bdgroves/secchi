@@ -219,7 +219,26 @@ file, line and column. `bcp` doesn't do that check.
   the file made exactly that month fail (`v_sum ...330 vs ...331`).
 - **In CI, every run.** `cloud.yml` runs `files` and `check`, then reloads
   everything with `SqlBulkCopy`, reconciles, and checks again. It reports
-  bcp's and SqlBulkCopy's times side by side.
+  bcp's and SqlBulkCopy's times side by side. First green run, SQL Server
+  2022 on a GitHub runner:
+
+| | bcp | SqlBulkCopy |
+|---|---:|---:|
+| obs (11,952,429 rows) | 27.5 s | 41.6 s |
+| everything | 29 s | 43 s |
+| reconcile afterwards (T-SQL) | 131 of 131 | 131 of 131 |
+| `check` afterwards (C#) | 131 of 131 | 131 of 131 |
+
+bcp wins the race by about half again. SqlBulkCopy parses and checks every
+field into a typed `DataTable` first, which bcp doesn't. Both loads are
+identical to the last digit, including the one TERC note with a garbled
+apostrophe. A streaming `IDataReader` instead of `DataTable` batches would be
+the next thing to try for speed.
+
+The first CI run failed at a useful spot: `Microsoft.Data.SqlClient`
+refuses to connect when .NET's "invariant globalization" mode is on, because
+it uses the culture data to map SQL Server collations to code pages. The
+core library keeps invariant mode; the command-line tool turns it off.
 
 `tests/test_cloud_dotnet.py` keeps `Layouts.cs` in step with
 `01_schema.sql`, and builds the core library when the .NET SDK is
