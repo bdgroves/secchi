@@ -55,6 +55,11 @@ RECONCILE_MD = OUT / "reconcile.md"
 # after it.
 SEP = "|"
 
+# The files end lines with a bare line feed. Windows bcp reads "\n" as
+# CR+LF and needs the hex form; Linux bcp doesn't take the hex form and reads
+# "\n" as a line feed.
+ROW_END = "0x0a" if os.name == "nt" else "\\n"
+
 FOLDERS = {"obs": "observations", "usgs": "usgs_observations",
            "snotel": "snotel_observations", "smoke": "smoke_observations",
            "asos": "asos_observations", "assets": "assets"}
@@ -351,7 +356,7 @@ def load(args) -> int:
         err = OUT / f"bcp-{m['table']}.err"
         cmd = ["bcp", f"secchi.{m['table']}", "in", str(BCP_DIR / m["file"]),
                "-S", c["server"], "-d", c["db"], "-U", c["user"], "-P", c["password"],
-               "-c", "-t", SEP, "-r", "0x0a", "-b", "100000", "-h", "TABLOCK",
+               "-c", "-t", SEP, "-r", ROW_END, "-b", "100000", "-h", "TABLOCK",
                "-m", "1", "-e", str(err)]
         if c["trust"]:
             cmd.append("-u")
