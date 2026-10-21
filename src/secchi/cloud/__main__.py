@@ -5,6 +5,8 @@
     python -m secchi.cloud load        # 01_schema.sql, bcp every file, 02_after_load.sql
     python -m secchi.cloud reconcile   # SQL Server's fingerprints vs the store's
     python -m secchi.cloud all         # the four in order
+    python -m secchi.cloud sync        # keep a copy current: reload only what differs,
+                                       # refresh the quality views, check, log the run
 
 The connection comes from the environment, never from a file in the repo:
 
@@ -110,6 +112,7 @@ def duck():
     from secchi.query import connect
 
     con = connect()
+    con.execute("SET enable_progress_bar = false")
     frame = pd.DataFrame(watershed_rows(),
                          columns=["watershed_id", "name", "area_km", "wkt"])
     con.register("_ws", frame)
@@ -141,6 +144,17 @@ def store_fingerprints(con) -> list[dict]:
     return rows
 
 
+def save_fingerprints(con) -> list[dict]:
+    """Fingerprint the store and keep it where reconcile reads it."""
+    prints = store_fingerprints(con)
+    OUT.mkdir(parents=True, exist_ok=True)
+    FINGERPRINTS.write_text(json.dumps(
+        {"made": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "rows": prints,
+         "site_watershed": expected_site_watershed(con)},
+        indent=1, default=str), encoding="utf-8")
+    return prints
+
+
 def check_keys_ascii(con) -> None:
     """MD5 is taken over bytes. Both sides agree byte for byte only if the
     keys are plain ASCII, so check rather than assume."""
@@ -167,12 +181,7 @@ def inventory(args) -> int:
     t0 = time.perf_counter()
     con = duck()
     check_keys_ascii(con)
-    prints = store_fingerprints(con)
-    OUT.mkdir(parents=True, exist_ok=True)
-    FINGERPRINTS.write_text(json.dumps(
-        {"made": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "rows": prints,
-         "site_watershed": expected_site_watershed(con)},
-        indent=1, default=str), encoding="utf-8")
+    prints = save_fingerprints(con)
 
     by_table: dict[str, list[dict]] = {}
     for p in prints:
@@ -283,25 +292,8 @@ def export(args) -> int:
              for t in TABLES]
     manifest = []
     for table, sql, utf8 in jobs:
-        rel = con.sql(sql)
-        text_cols = [c for c, ty in zip(rel.columns, rel.types, strict=True)
-                     if str(ty) == "VARCHAR"]
-        for c in text_cols:
-            bad = con.sql(f"SELECT count(*) FROM ({sql}) WHERE \"{c}\" LIKE '%{SEP}%' "
-                          f"OR \"{c}\" LIKE '%' || chr(10) || '%' "
-                          f"OR \"{c}\" LIKE '%' || chr(13) || '%' "
-                          + ("" if utf8 else
-                             f"OR NOT regexp_full_match(\"{c}\", '[\\x20-\\x7e]*')")
-                          ).fetchone()[0]
-            if bad:
-                raise SystemExit(f"{table}.{c}: {bad} values contain '{SEP}', a line break "
-                                 "or (in an ASCII-only table) non-ASCII text; bcp's "
-                                 "character format can't carry them")
         path = BCP_DIR / f"{table}.txt"
-        con.execute(f"COPY ({sql}) TO '{path.as_posix()}' "
-                    f"(FORMAT CSV, DELIMITER '{SEP}', HEADER false, QUOTE '', ESCAPE '', "
-                    f"NULLSTR '', TIMESTAMPFORMAT '%Y-%m-%d %H:%M:%S')")
-        n = con.sql(f"SELECT count(*) FROM ({sql})").fetchone()[0]
+        n = write_bcp_file(con, table, sql, path, utf8)
         manifest.append({"table": table, "file": path.name, "rows": n, "utf8": utf8,
                          "bytes": path.stat().st_size})
         print(f"  {table:<16} {n:>12,} rows  {path.stat().st_size / 1e6:8.1f} MB")
@@ -309,6 +301,31 @@ def export(args) -> int:
     print(f"export: {len(manifest)} files in {BCP_DIR.relative_to(REPO_ROOT)}, "
           f"{time.perf_counter() - t0:.1f}s")
     return 0
+
+
+def write_bcp_file(con, table: str, sql: str, path: Path, utf8: bool) -> int:
+    """Write one query's rows as a bcp character file; return the row count.
+
+    Refuses text bcp can't carry rather than quoting it (see SEP).
+    """
+    rel = con.sql(sql)
+    text_cols = [c for c, ty in zip(rel.columns, rel.types, strict=True)
+                 if str(ty) == "VARCHAR"]
+    for c in text_cols:
+        bad = con.sql(f"SELECT count(*) FROM ({sql}) WHERE \"{c}\" LIKE '%{SEP}%' "
+                      f"OR \"{c}\" LIKE '%' || chr(10) || '%' "
+                      f"OR \"{c}\" LIKE '%' || chr(13) || '%' "
+                      + ("" if utf8 else
+                         f"OR NOT regexp_full_match(\"{c}\", '[\\x20-\\x7e]*')")
+                      ).fetchone()[0]
+        if bad:
+            raise SystemExit(f"{table}.{c}: {bad} values contain '{SEP}', a line break "
+                             "or (in an ASCII-only table) non-ASCII text; bcp's "
+                             "character format can't carry them")
+    con.execute(f"COPY ({sql}) TO '{path.as_posix()}' "
+                f"(FORMAT CSV, DELIMITER '{SEP}', HEADER false, QUOTE '', ESCAPE '', "
+                f"NULLSTR '', TIMESTAMPFORMAT '%Y-%m-%d %H:%M:%S')")
+    return con.sql(f"SELECT count(*) FROM ({sql})").fetchone()[0]
 
 
 # ---------------------------------------------------------------------------
@@ -352,28 +369,36 @@ def load(args) -> int:
     print(f"load: {c['server']} / {c['db']}")
     sqlcmd(c, "-i", str(SQL_DIR / "01_schema.sql"))
     for m in manifest:
-        t1 = time.perf_counter()
-        err = OUT / f"bcp-{m['table']}.err"
-        cmd = ["bcp", f"secchi.{m['table']}", "in", str(BCP_DIR / m["file"]),
-               "-S", c["server"], "-d", c["db"], "-U", c["user"], "-P", c["password"],
-               "-c", "-t", SEP, "-r", ROW_END, "-b", "100000", "-h", "TABLOCK",
-               "-m", "1", "-e", str(err)]
-        if c["trust"]:
-            cmd.append("-u")
-        if m.get("utf8") and os.name == "nt":
-            cmd += ["-C", "65001"]          # Windows bcp reads OEM text unless told; Linux is UTF-8
-        r = subprocess.run(cmd, text=True, capture_output=True)
-        copied = re.search(r"(\d+) rows copied", r.stdout)
-        n = int(copied.group(1)) if copied else -1
-        print(f"  {m['table']:<16} {n:>12,} rows  {time.perf_counter() - t1:6.1f}s")
-        if r.returncode != 0 or n != m["rows"]:
-            sys.stderr.write(r.stdout[-3000:].replace(c["password"], "***") + r.stderr)
-            if err.exists():
-                sys.stderr.write(err.read_text(errors="replace")[:3000])
-            raise SystemExit(f"bcp {m['table']}: expected {m['rows']:,} rows, got {n:,}")
+        bcp_in(c, m["table"], BCP_DIR / m["file"], m["rows"], m.get("utf8", False))
     sqlcmd(c, "-i", str(SQL_DIR / "02_after_load.sql"))
+    apply_quality(c)
     print(f"load: done in {time.perf_counter() - t0:.0f}s")
     return 0
+
+
+def bcp_in(c: dict, table: str, path: Path, expected: int, utf8: bool) -> int:
+    """Bulk-copy one file into secchi.<table>; stop unless every row arrived."""
+    m = {"table": table, "rows": expected, "utf8": utf8}
+    t1 = time.perf_counter()
+    err = OUT / f"bcp-{m['table']}.err"
+    cmd = ["bcp", f"secchi.{m['table']}", "in", str(path),
+           "-S", c["server"], "-d", c["db"], "-U", c["user"], "-P", c["password"],
+           "-c", "-t", SEP, "-r", ROW_END, "-b", "100000", "-h", "TABLOCK",
+           "-m", "1", "-e", str(err)]
+    if c["trust"]:
+        cmd.append("-u")
+    if m.get("utf8") and os.name == "nt":
+        cmd += ["-C", "65001"]          # Windows bcp reads OEM text unless told; Linux is UTF-8
+    r = subprocess.run(cmd, text=True, capture_output=True)
+    copied = re.search(r"(\d+) rows copied", r.stdout)
+    n = int(copied.group(1)) if copied else -1
+    print(f"  {m['table']:<16} {n:>12,} rows  {time.perf_counter() - t1:6.1f}s")
+    if r.returncode != 0 or n != m["rows"]:
+        sys.stderr.write(r.stdout[-3000:].replace(c["password"], "***") + r.stderr)
+        if err.exists():
+            sys.stderr.write(err.read_text(errors="replace")[:3000])
+        raise SystemExit(f"bcp {m['table']}: expected {m['rows']:,} rows, got {n:,}")
+    return n
 
 
 def server_fingerprints(c: dict) -> list[dict]:
@@ -486,12 +511,215 @@ def reconcile(args) -> int:
     return 1 if bad or spatial["differences"] else 0
 
 
+# ---------------------------------------------------------------------------
+# sync: keep an existing copy current, and log every run
+# ---------------------------------------------------------------------------
+
+# More differing table-months than this and a full reload is simpler and
+# about as fast.
+MAX_MONTHS = 24
+
+RUN_LOG_SQL = """SET NOCOUNT ON;
+IF OBJECT_ID('secchi.run_log') IS NULL
+CREATE TABLE secchi.run_log (
+    run_id          int IDENTITY PRIMARY KEY,
+    run_utc         datetime2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+    kind            varchar(20)  NOT NULL,     -- full, months, none
+    detail          varchar(4000) NULL,        -- which table-months were reloaded
+    rows_loaded     bigint NULL,
+    months_checked  int NULL,
+    months_matched  int NULL,
+    flags_matched   bit NULL,
+    result          varchar(20)  NOT NULL,     -- MATCH or DIFFERENT
+    seconds         int NULL,
+    commit_sha      varchar(40) NULL,
+    free_vcore_s_remaining float NULL          -- filled by the workflow, from Azure Monitor
+);"""
+
+
+def _query(c: dict, sql: str) -> list[list[str]]:
+    out = sqlcmd(c, "-Q", "SET NOCOUNT ON; " + sql, "-h", "-1", "-W", "-s", SEP, capture=True)
+    return [line.strip().split(SEP) for line in out.splitlines() if line.strip()]
+
+
+def _q(v) -> str:
+    """A T-SQL literal."""
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def month_bounds(part: str) -> tuple[str, str]:
+    """'2026-02' -> ('2026-02-01', '2026-03-01')."""
+    y, m = (int(x) for x in part.split("-"))
+    y2, m2 = (y + 1, 1) if m == 12 else (y, m + 1)
+    return f"{y:04d}-{m:02d}-01", f"{y2:04d}-{m2:02d}-01"
+
+
+def plan_sync(results: list[dict]) -> tuple[str, list[dict]]:
+    """Decide what a sync does from the reconcile results: nothing, reload
+    some table-months, or reload everything."""
+    diffs = [r for r in results if not r["ok"]]
+    if not diffs:
+        return "none", []
+    if any(r["tbl"] == "watershed" for r in diffs) or len(diffs) > MAX_MONTHS:
+        return "full", diffs
+    return "months", diffs
+
+
+def _sync_dimensions(c: dict, con) -> None:
+    """Make DuckDB's lookup tables the server's, adding any new names to both.
+
+    Ids must never change once loaded: the server's ids are the truth, and a
+    new site or variable gets the next number.
+    """
+    for name, cols in (("site", "site_id, site, lat, lng"),
+                       ("sensor_type", "sensor_type_id, sensor_type"),
+                       ("variable", "variable_id, variable")):
+        rows = _query(c, f"SELECT {cols} FROM secchi.{name} ORDER BY 1")
+        have = {r[1]: int(r[0]) for r in rows}
+        con.execute(f"DROP TABLE IF EXISTS dim_{name}")
+        if name == "site":
+            con.execute("CREATE TABLE dim_site (site_id INTEGER, site VARCHAR, lat DOUBLE, lng DOUBLE)")
+            store = con.sql("SELECT site, any_value(lat), any_value(lng) FROM obs GROUP BY site").fetchall()
+        else:
+            con.execute(f"CREATE TABLE dim_{name} ({name}_id INTEGER, {name} VARCHAR)")
+            store = [(r[0],) for r in con.sql(f"SELECT DISTINCT {name} FROM obs").fetchall()]
+        for i, n in have.items():
+            con.execute(f"INSERT INTO dim_{name} ({name}_id, {name}) VALUES (?, ?)", [n, i])
+        next_id = max(have.values(), default=0) + 1
+        for row in sorted(store):
+            if row[0] in have:
+                continue
+            values = [next_id, *row]
+            con.execute(f"INSERT INTO dim_{name} VALUES ({', '.join('?' * len(values))})", values)
+            cols = "site_id, site, lat, lng" if name == "site" else f"{name}_id, {name}"
+            sqlcmd(c, "-Q", f"INSERT INTO secchi.{name} ({cols}) "
+                            f"VALUES ({', '.join(_q(v) for v in values)})")
+            print(f"  new {name}: {row[0]!r} = {next_id}")
+            next_id += 1
+    sqlcmd(c, "-Q", "UPDATE secchi.site SET location = geography::Point(lat, lng, 4326) "
+                    "WHERE location IS NULL")
+
+
+def reload_parts(c: dict, con, diffs: list[dict]) -> tuple[int, list[str]]:
+    """Delete and reload just the table-months that differ."""
+    by_name = {t.name: t for t in TABLES}
+    _sync_dimensions(c, con)
+    slices = OUT / "slices"
+    slices.mkdir(parents=True, exist_ok=True)
+    total, done = 0, []
+    for r in diffs:
+        t = by_name[r["tbl"]]
+        if r["part"] == "all":
+            delete = f"DELETE FROM secchi.{t.name}"
+            sql = t.export_sql
+        else:
+            lo, hi = month_bounds(r["part"])
+            tz = " +00:00" if t.name == "usgs" else ""
+            delete = f"DELETE FROM secchi.{t.name} WHERE ts >= '{lo}{tz}' AND ts < '{hi}{tz}'"
+            sql = (f"SELECT * FROM ({t.export_sql}) AS q "
+                   f"WHERE substr(CAST(ts AS VARCHAR), 1, 7) = '{r['part']}'")
+        path = slices / f"{t.name}-{r['part']}.txt"
+        n = write_bcp_file(con, t.name, sql, path, t.utf8)
+        sqlcmd(c, "-Q", delete)
+        if n:
+            bcp_in(c, t.name, path, n, t.utf8)
+        total += n
+        done.append(f"{t.name} {r['part']} ({n:,})")
+    return total, done
+
+
+def apply_quality(c: dict) -> None:
+    from secchi.cloud.quality import quality_sql
+
+    path = OUT / "03_quality.sql"
+    path.write_text(quality_sql(), encoding="utf-8")
+    sqlcmd(c, "-i", str(path))
+
+
+def check_flags(c: dict, con) -> dict:
+    """SQL Server's flag counts against DuckDB's, flag by flag."""
+    from secchi.cloud.quality import PORTED, flag_counts_duck, flag_counts_tsql
+
+    duck_counts = flag_counts_duck(con)
+    path = OUT / "flag_counts.sql"
+    path.write_text(flag_counts_tsql(), encoding="utf-8")
+    out = sqlcmd(c, "-i", str(path), "-h", "-1", "-W", "-s", SEP, capture=True)
+    row = next(line.strip().split(SEP) for line in out.splitlines() if SEP in line)
+    server = {f: int(v) for f, v in zip(PORTED, row, strict=True)}
+    diffs = {f: (duck_counts[f], server[f]) for f in PORTED if duck_counts[f] != server[f]}
+    print("  flags: " + ", ".join(f"{f} {server[f]:,}" for f in PORTED))
+    for f, (a, b) in diffs.items():
+        print(f"  DIFFERENT flag {f}: DuckDB {a:,}, SQL Server {b:,}")
+    return {"duck": duck_counts, "server": server, "differences": diffs}
+
+
+def _git_sha() -> str | None:
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True,
+                              capture_output=True).stdout.strip() or None
+    except OSError:
+        return None
+
+
+def sync(args) -> int:
+    """Bring an existing copy up to date and prove it, then log the run.
+
+    The reconcile decides the work: only table-months whose fingerprints
+    differ are reloaded, so revised history is caught as well as new days.
+    An empty database gets a full load.
+    """
+    c = _conn()
+    t0 = time.perf_counter()
+    con = duck()
+    check_keys_ascii(con)
+    store = save_fingerprints(con)
+    sqlcmd(c, "-Q", RUN_LOG_SQL)
+    exists = _query(c, "SELECT CASE WHEN OBJECT_ID('secchi.obs') IS NULL THEN 0 ELSE 1 END")
+    if exists and exists[0][0] == "1":
+        kind, diffs = plan_sync(compare(store, server_fingerprints(c)))
+    else:
+        kind, diffs = "full", []
+    print(f"sync: {kind}" + (f", {len(diffs)} table-months differ" if diffs else ""))
+    rows, detail = 0, []
+    if kind == "full":
+        export(args)
+        load(args)
+        rows = sum(m["rows"] for m in json.loads((BCP_DIR / "manifest.json").read_text()))
+        detail = ["everything"]
+    elif kind == "months":
+        rows, detail = reload_parts(c, con, diffs)
+        for d in detail:
+            print(f"  reloaded {d}")
+    apply_quality(c)
+    rc = reconcile(args)
+    flags = check_flags(c, con)
+    results = json.loads((OUT / "reconcile.json").read_text())["months"]
+    ok = rc == 0 and not flags["differences"]
+    sqlcmd(c, "-Q", "INSERT INTO secchi.run_log (kind, detail, rows_loaded, months_checked, "
+           "months_matched, flags_matched, result, seconds, commit_sha) VALUES ("
+           + ", ".join(_q(v) for v in (
+               kind, "; ".join(detail)[:4000] or None, rows, len(results),
+               sum(r["ok"] for r in results), not flags["differences"],
+               "MATCH" if ok else "DIFFERENT", int(time.perf_counter() - t0), _git_sha()))
+           + ")")
+    print(f"sync: {'MATCH' if ok else 'DIFFERENT'}, {rows:,} rows loaded, "
+          f"{time.perf_counter() - t0:.0f}s")
+    return 0 if ok else 1
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m secchi.cloud", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("step", choices=["inventory", "export", "load", "reconcile", "all"])
+    ap.add_argument("step", choices=["inventory", "export", "load", "reconcile", "sync", "all"])
     args = ap.parse_args(argv)
-    steps = {"inventory": inventory, "export": export, "load": load, "reconcile": reconcile}
+    steps = {"inventory": inventory, "export": export, "load": load, "reconcile": reconcile,
+             "sync": sync}
     if args.step == "all":
         for name in ("inventory", "export", "load", "reconcile"):
             rc = steps[name](args)

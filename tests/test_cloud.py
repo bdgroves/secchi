@@ -129,3 +129,40 @@ def test_tables_have_as_many_columns_as_their_files():
         cols = re.search(r"SELECT(.*?)FROM", by[name].export_sql, re.S).group(1)
         assert len(re.split(r",(?![^(]*\))", cols)) == expect[name], name
     con.close()
+
+
+def test_month_bounds_roll_over_the_year():
+    from secchi.cloud.__main__ import month_bounds
+
+    assert month_bounds("2026-02") == ("2026-02-01", "2026-03-01")
+    assert month_bounds("2025-12") == ("2025-12-01", "2026-01-01")
+
+
+def test_sync_reloads_only_what_differs():
+    from secchi.cloud.__main__ import MAX_MONTHS, plan_sync
+
+    ok = {"tbl": "obs", "part": "2026-01", "ok": True}
+    bad = {"tbl": "obs", "part": "2026-10", "ok": False}
+    assert plan_sync([ok]) == ("none", [])
+    assert plan_sync([ok, bad]) == ("months", [bad])
+    assert plan_sync([{"tbl": "watershed", "part": "all", "ok": False}])[0] == "full"
+    many = [dict(bad, part=f"m{i}") for i in range(MAX_MONTHS + 1)]
+    assert plan_sync(many)[0] == "full"
+
+
+def test_tsql_literals_are_quoted():
+    from secchi.cloud.__main__ import _q
+
+    assert _q("Lake's edge") == "'Lake''s edge'"
+    assert _q(None) == "NULL" and _q(True) == "1" and _q(3) == "3"
+
+
+def test_quality_view_uses_the_projects_rules():
+    from secchi.cloud.quality import BLOCKING, PORTED, quality_sql
+    from secchi.sources.watch import IMPOSSIBLE
+
+    sql = quality_sql()
+    for _inst, var, lo, hi in IMPOSSIBLE:
+        assert f"n.variable = '{var}' AND (n.value < {lo} OR n.value > {hi})" in sql
+    assert set(BLOCKING) <= set(PORTED)
+    assert "CREATE OR ALTER VIEW secchi.obs_clean" in sql

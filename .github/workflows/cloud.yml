@@ -87,12 +87,39 @@ jobs:
           pixi run cloud-load 2>&1 | tee cloud/out/load.log
           pixi run cloud-reconcile 2>&1 | tee cloud/out/reconcile.log
 
+      # The nightly sync, tested the way the Handoff tested its port: break
+      # the copy on purpose and check the sync finds and repairs exactly
+      # that. First run: nothing to do. Then delete a month of TEON
+      # readings and change one USGS value; the sync must reload those two
+      # table-months and nothing else, and everything must match again.
+      - name: Sync, sabotage, sync
+        env:
+          SECCHI_SQL_SERVER: localhost
+          SECCHI_SQL_DATABASE: secchi
+          SECCHI_SQL_USER: sa
+          SECCHI_SQL_TRUST_CERT: "1"
+          SQLCMDPASSWORD: ${{ env.SECCHI_SQL_PASSWORD }}
+        run: |
+          set -o pipefail
+          q() { sqlcmd -C -S localhost -U sa -d secchi -b -I "$@"; }
+          pixi run cloud-sync 2>&1 | tee cloud/out/sync1.log
+          grep -q "^sync: none" cloud/out/sync1.log
+          q -Q "DELETE FROM secchi.obs WHERE ts >= '2025-08-01' AND ts < '2025-09-01';
+                UPDATE TOP (1) secchi.usgs SET value = value + 1
+                WHERE ts >= '2026-09-01 +00:00' AND ts < '2026-10-01 +00:00';"
+          pixi run cloud-sync 2>&1 | tee cloud/out/sync2.log
+          grep -q "^sync: months, 2 table-months differ" cloud/out/sync2.log
+          grep -q "reloaded obs 2025-08" cloud/out/sync2.log
+          grep -q "reloaded usgs 2026-09" cloud/out/sync2.log
+          grep -q "^sync: MATCH" cloud/out/sync2.log
+          q -Q "SET NOCOUNT ON; SELECT run_id, kind, rows_loaded, months_matched, months_checked, flags_matched, result, seconds FROM secchi.run_log ORDER BY run_id" -W -s " | " | tee cloud/out/run_log.txt
+
       # Annotations are readable from the API and the run page without
       # opening the log: the last lines of whatever stopped the job.
       - name: Say why
         if: failure()
         run: |
-          for f in cloud/out/reconcile.log cloud/out/load.log; do
+          for f in cloud/out/sync2.log cloud/out/sync1.log cloud/out/reconcile.log cloud/out/load.log; do
             if [ -f "$f" ]; then
               msg=$(tail -n 25 "$f" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
               echo "::error title=$(basename $f)::$msg"
@@ -102,7 +129,7 @@ jobs:
       - name: Headline
         if: success()
         run: |
-          msg=$(tail -n 3 cloud/out/load.log; grep -A2 "^reconcile:" cloud/out/reconcile.log)
+          msg=$(tail -n 3 cloud/out/load.log; grep -A2 "^reconcile:" cloud/out/reconcile.log; grep -E "^sync:|reloaded|flags:" cloud/out/sync2.log; cat cloud/out/run_log.txt)
           echo "::notice title=matched::$(echo "$msg" | awk '{printf "%s%%0A", $0}')"
 
       - name: Report

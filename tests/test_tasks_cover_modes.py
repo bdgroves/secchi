@@ -31,7 +31,7 @@ TASKS_WITHOUT_MODES = {
     "pipeline", "ingest", "ingest-all", "ingest-history",
     "watch-update",  # same mode as `watch`, different flag
     # python -m secchi.cloud, its own argparse (docs/cloud.md)
-    "cloud-inventory", "cloud-export", "cloud-load", "cloud-reconcile",
+    "cloud-inventory", "cloud-export", "cloud-load", "cloud-reconcile", "cloud-sync",
 }
 
 

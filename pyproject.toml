@@ -231,6 +231,9 @@ cloud-inventory = "python -m secchi.cloud inventory"
 cloud-export    = "python -m secchi.cloud export"
 cloud-load      = "python -m secchi.cloud load"
 cloud-reconcile = "python -m secchi.cloud reconcile"
+# Keep an existing copy current: reload only the table-months that differ,
+# refresh the quality views, reconcile, check the flags, log the run.
+cloud-sync      = "python -m secchi.cloud sync"
 
 # ---------------------------------------------------------------------------
 # Features — additive dependency sets, composed into environments below.
