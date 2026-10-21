@@ -34,6 +34,12 @@ public static partial class StoreCompare
         var store = new Dictionary<(string, string), StorePrint>();
         foreach (var r in doc.RootElement.GetProperty("rows").EnumerateArray())
         {
+            // Before the exact check (2026-10-21) v_sum was a sum of values
+            // rounded to 4 places, written with a decimal point.
+            if (r.GetProperty("v_sum").GetString() is { } old && old.Contains('.'))
+                throw new InvalidOperationException(
+                    $"{fingerprintsJson} is from before the exact check (v_sum {old}); " +
+                    "run pixi run cloud-inventory and cloud-export again");
             var p = new StorePrint(
                 r.GetProperty("tbl").GetString()!, r.GetProperty("part").GetString()!,
                 r.GetProperty("n_rows").GetInt64(), r.GetProperty("n_keys").GetInt64(),
