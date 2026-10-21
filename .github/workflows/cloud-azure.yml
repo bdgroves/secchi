@@ -1,0 +1,156 @@
+name: cloud-azure
+
+# Every morning: keep the Azure SQL Database copy current, and prove it
+# (docs/cloud.md, "Nightly sync to Azure").
+#
+#   1. Sign in to Azure with GitHub's OpenID Connect token. No Azure
+#      password or key is stored anywhere: Microsoft Entra trusts tokens
+#      from this repo's main branch only (a federated credential).
+#   2. Open the database firewall for this runner's address, and only this
+#      runner's, for the length of the job.
+#   3. `pixi run cloud-sync`: reload only the table-months whose fingerprints
+#      differ, refresh the quality views, reconcile everything, check the
+#      flags, write a row to secchi.run_log.
+#   4. Record how much of the month's free compute is left.
+#   5. Close the firewall again, whatever happened. On failure, open an issue.
+#
+# The database login it uses (secchi_loader) owns only the secchi database.
+# Its password is a GitHub encrypted secret, the one stored credential.
+#
+# Off until the repo has the AZURE_CLIENT_ID variable set (see docs/cloud.md).
+
+on:
+  schedule:
+    - cron: "52 13 * * *"      # 6:52 AM PDT, after the hourly fetch has landed
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write              # the OpenID Connect token for Azure
+  issues: write                # an issue when a night fails
+
+concurrency:
+  group: cloud-azure
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: vars.AZURE_CLIENT_ID != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SECCHI_SQL_SERVER: ${{ vars.SECCHI_SQL_SERVER }}
+      SECCHI_SQL_DATABASE: secchi
+      SECCHI_SQL_USER: ${{ secrets.SECCHI_SQL_USER }}
+      SECCHI_SQL_PASSWORD: ${{ secrets.SECCHI_SQL_PASSWORD }}
+      RESOURCE_GROUP: ${{ vars.SECCHI_RESOURCE_GROUP || 'secchi-rg' }}
+      RULE: gh-run-${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          manifest-path: pyproject.toml
+          cache: true
+
+      - name: Install sqlcmd and bcp (mssql-tools18)
+        run: |
+          if ! command -v bcp > /dev/null; then
+            curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+            curl -sSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+            sudo apt-get update -qq
+            sudo ACCEPT_EULA=Y apt-get install -y -qq mssql-tools18 unixodbc > /dev/null
+            echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Sign in to Azure (OpenID Connect, no stored password)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Open the firewall for this runner only
+        run: |
+          SERVER_NAME="${SECCHI_SQL_SERVER%%.*}"
+          echo "SERVER_NAME=$SERVER_NAME" >> "$GITHUB_ENV"
+          IP=$(curl -fsS https://api.ipify.org)
+          az sql server firewall-rule create -g "$RESOURCE_GROUP" -s "$SERVER_NAME" \
+            -n "$RULE" --start-ip-address "$IP" --end-ip-address "$IP" -o none
+          echo "Opened $RULE for $IP"
+
+      - name: Wake the database
+        env:
+          SQLCMDPASSWORD: ${{ secrets.SECCHI_SQL_PASSWORD }}
+        run: |
+          export PATH="/opt/mssql-tools18/bin:$PATH"
+          # A paused serverless database wakes on the first connection, which
+          # can take a minute; the first attempts may fail.
+          for i in $(seq 1 12); do
+            if sqlcmd -S "$SECCHI_SQL_SERVER" -d secchi -U "$SECCHI_SQL_USER" -l 60 -b -Q "SELECT 1" > /dev/null 2>&1; then
+              echo "awake after $i attempt(s)"; exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::database did not wake"; exit 1
+
+      - name: Sync and prove it
+        run: |
+          set -o pipefail
+          mkdir -p cloud/out
+          pixi run cloud-sync 2>&1 | tee cloud/out/sync.log
+
+      - name: Free compute left this month
+        if: always()
+        continue-on-error: true
+        env:
+          SQLCMDPASSWORD: ${{ secrets.SECCHI_SQL_PASSWORD }}
+        run: |
+          export PATH="/opt/mssql-tools18/bin:$PATH"
+          DB_ID=$(az sql db show -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi --query id -o tsv)
+          az monitor metrics list --resource "$DB_ID" --metric free_amount_remaining \
+            --interval PT1H --aggregation Minimum -o json > cloud/out/free.json
+          LEFT=$(python3 -c "import json; d=json.load(open('cloud/out/free.json')); pts=[p['minimum'] for p in d['value'][0]['timeseries'][0]['data'] if p.get('minimum') is not None]; print(int(pts[-1]) if pts else '')")
+          echo "free vCore-seconds left this month: ${LEFT:-unknown}"
+          echo "FREE_LEFT=$LEFT" >> "$GITHUB_ENV"
+          if [ -n "$LEFT" ]; then
+            sqlcmd -S "$SECCHI_SQL_SERVER" -d secchi -U "$SECCHI_SQL_USER" -b -Q \
+              "UPDATE secchi.run_log SET free_vcore_s_remaining = $LEFT WHERE run_id = (SELECT MAX(run_id) FROM secchi.run_log)"
+          fi
+
+      - name: Close the firewall
+        if: always()
+        run: |
+          if [ -n "${SERVER_NAME:-}" ]; then
+            az sql server firewall-rule delete -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n "$RULE" -o none \
+              && echo "Closed $RULE"
+          fi
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "### Azure sync"
+            echo '```'
+            grep -E "^sync:|reloaded|^reconcile:|spatial:|flags:|DIFFERENT" cloud/out/sync.log 2>/dev/null || echo "no sync output"
+            echo "free vCore-seconds left this month: ${FREE_LEFT:-unknown}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          msg=$(grep -E "^sync:|^reconcile:|DIFFERENT" cloud/out/sync.log 2>/dev/null | head -8; echo "free vCore-s left: ${FREE_LEFT:-unknown}")
+          echo "::notice title=azure sync::$(echo "$msg" | awk '{printf "%s%%0A", $0}')"
+
+      - name: Open an issue if the night failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "The nightly Azure sync failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo '```'
+            tail -n 30 cloud/out/sync.log 2>/dev/null || echo "no sync output (it stopped before the sync)"
+            echo '```'
+          } > issue.md
+          gh issue create --title "cloud-azure: nightly sync failed $(date -u +%F)" --body-file issue.md

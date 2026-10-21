@@ -106,7 +106,7 @@ jobs:
           grep -q "^sync: none" cloud/out/sync1.log
           q -Q "DELETE FROM secchi.obs WHERE ts >= '2025-08-01' AND ts < '2025-09-01';
                 UPDATE TOP (1) secchi.usgs SET value = value + 1
-                WHERE ts >= '2026-09-01 +00:00' AND ts < '2026-10-01 +00:00';"
+                WHERE ts >= '2026-09-01 00:00:00 +00:00' AND ts < '2026-10-01 00:00:00 +00:00';"
           pixi run cloud-sync 2>&1 | tee cloud/out/sync2.log
           grep -q "^sync: months, 2 table-months differ" cloud/out/sync2.log
           grep -q "reloaded obs 2025-08" cloud/out/sync2.log

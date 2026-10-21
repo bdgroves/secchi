@@ -620,7 +620,9 @@ def reload_parts(c: dict, con, diffs: list[dict]) -> tuple[int, list[str]]:
             sql = t.export_sql
         else:
             lo, hi = month_bounds(r["part"])
-            tz = " +00:00" if t.name == "usgs" else ""
+            # datetimeoffset needs a time before the offset: '2026-09-01 +00:00'
+            # doesn't convert, '2026-09-01 00:00:00 +00:00' does
+            tz = " 00:00:00 +00:00" if t.name == "usgs" else ""
             delete = f"DELETE FROM secchi.{t.name} WHERE ts >= '{lo}{tz}' AND ts < '{hi}{tz}'"
             sql = (f"SELECT * FROM ({t.export_sql}) AS q "
                    f"WHERE substr(CAST(ts AS VARCHAR), 1, 7) = '{r['part']}'")
