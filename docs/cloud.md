@@ -185,7 +185,7 @@ for COBOL: two implementations side by side, and they must agree exactly.
 dotnet build -c Release cloud/dotnet/Secchi.Cloud.Cli
 CLI=cloud/dotnet/Secchi.Cloud.Cli/bin/Release/net8.0/secchi-cloud.dll
 dotnet $CLI files                     # are the export files a faithful copy of the store?
-pixi run cloud-load --loader dotnet   # schema, SqlBulkCopy instead of bcp, indexes, views
+pixi run cloud-load --loader dotnet   # schema, SqlBulkCopy (streaming) instead of bcp, indexes, views
 dotnet $CLI check                     # read every row back from SQL Server, fingerprint in C#
 ```
 
@@ -202,8 +202,9 @@ month's keys are in memory at a time.
 
 1. Before copying a row, it checks the live table's columns against
    `Layouts.cs`, and stops if they differ.
-2. It reads each export file in batches of 100,000 rows into a `DataTable`
-   and sends each batch.
+2. It streams each export file to the server through `BcpDataReader`, in
+   batches of 100,000 rows like bcp (`--batches`: the first version, which
+   filled a `DataTable` per batch).
 3. Afterwards it counts what the server holds, rather than trusting what it
    sent.
 
@@ -219,21 +220,25 @@ file, line and column. `bcp` doesn't do that check.
   the file made exactly that month fail (`v_sum ...330 vs ...331`).
 - **In CI, every run.** `cloud.yml` runs `files` and `check`, then reloads
   everything with `SqlBulkCopy`, reconciles, and checks again. It reports
-  bcp's and SqlBulkCopy's times side by side. First green run, SQL Server
+  bcp's and both SqlBulkCopy versions' times side by side. SQL Server
   2022 on a GitHub runner:
 
-| | bcp | SqlBulkCopy |
-|---|---:|---:|
-| obs (11,952,429 rows) | 27.5 s | 41.6 s |
-| everything | 29 s | 43 s |
-| reconcile afterwards (T-SQL) | 131 of 131 | 131 of 131 |
-| `check` afterwards (C#) | 131 of 131 | 131 of 131 |
+| | bcp | SqlBulkCopy, DataTable batches | SqlBulkCopy, streaming |
+|---|---:|---:|---:|
+| obs (11,952,429 rows), first race | 27.5 s | 41.6 s | |
+| obs, rematch | 24.2 s | 39.4 s | 23.9 s |
+| everything, rematch | 26 s | 41 s | 25 s |
+| reconcile and C# check afterwards | 131 of 131 | 131 of 131 | 131 of 131 |
 
-bcp wins the race by about half again. SqlBulkCopy parses and checks every
-field into a typed `DataTable` first, which bcp doesn't. Both loads are
-identical to the last digit, including the one TERC note with a garbled
-apostrophe. A streaming `IDataReader` instead of `DataTable` batches would be
-the next thing to try for speed.
+The first version filled a 100,000-row `DataTable`, sent it, and repeated,
+and bcp won by about half again. Every value was boxed into a `DataRow`
+first. The rematch streams instead: `BcpDataReader` presents the file as a
+data reader, and `SqlBulkCopy` pulls rows from it as the server takes them.
+That tied bcp (one run each; a shared runner varies by a few seconds), and
+it still parses and checks every field on the way in, which bcp doesn't.
+All three loads are identical to the last digit, including the TERC note
+with the garbled apostrophe. How it all works, file by file:
+[cloud/dotnet.md](cloud/dotnet.md).
 
 The first CI run failed at a useful spot: `Microsoft.Data.SqlClient`
 refuses to connect when .NET's "invariant globalization" mode is on, because
