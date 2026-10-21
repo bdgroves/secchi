@@ -105,9 +105,13 @@ Runs when this code changes, Mondays, and by hand.
    serverless database with 32 GB and 100,000 vCore-seconds a month.
 3. Resource group: new, `secchi-rg`. Database name: `secchi`.
 4. Server: **Create new**. Name it something unique, like `secchi-brooks`
-   (it becomes `secchi-brooks.database.windows.net`). Location: West US 2
-   or West US 3. Authentication: **Use SQL authentication**, admin login
-   `secchiadmin` and a strong password. Keep the password in 1Password.
+   (it becomes `secchi-brooks.database.windows.net`). Location: West US 3.
+   (On 2026-10-21 a new subscription was refused West US 2: "Your
+   subscription does not have access to create a server in the selected
+   region." West US 3 worked.) Authentication: **Use both SQL and Microsoft
+   Entra authentication**: SQL login `secchiadmin` for the loader, your
+   Microsoft account as Entra admin for the portal. Keep the password in
+   1Password.
 5. **Behavior when free limit reached: Auto-pause the database until
    next month.** This is the setting that makes it free. The other choice
    bills you.
