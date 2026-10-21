@@ -602,7 +602,7 @@ def _sync_dimensions(c: dict, con) -> None:
                             f"VALUES ({', '.join(_q(v) for v in values)})")
             print(f"  new {name}: {row[0]!r} = {next_id}")
             next_id += 1
-    sqlcmd(c, "-Q", "UPDATE secchi.site SET location = geography::Point(lat, lng, 4326) "
+    sqlcmd(c, "-Q", "SET NOCOUNT ON; UPDATE secchi.site SET location = geography::Point(lat, lng, 4326) "
                     "WHERE location IS NULL")
 
 
@@ -628,7 +628,7 @@ def reload_parts(c: dict, con, diffs: list[dict]) -> tuple[int, list[str]]:
                    f"WHERE substr(CAST(ts AS VARCHAR), 1, 7) = '{r['part']}'")
         path = slices / f"{t.name}-{r['part']}.txt"
         n = write_bcp_file(con, t.name, sql, path, t.utf8)
-        sqlcmd(c, "-Q", delete)
+        sqlcmd(c, "-Q", "SET NOCOUNT ON; " + delete)
         if n:
             bcp_in(c, t.name, path, n, t.utf8)
         total += n
@@ -703,7 +703,7 @@ def sync(args) -> int:
     flags = check_flags(c, con)
     results = json.loads((OUT / "reconcile.json").read_text())["months"]
     ok = rc == 0 and not flags["differences"]
-    sqlcmd(c, "-Q", "INSERT INTO secchi.run_log (kind, detail, rows_loaded, months_checked, "
+    sqlcmd(c, "-Q", "SET NOCOUNT ON; INSERT INTO secchi.run_log (kind, detail, rows_loaded, months_checked, "
            "months_matched, flags_matched, result, seconds, commit_sha) VALUES ("
            + ", ".join(_q(v) for v in (
                kind, "; ".join(detail)[:4000] or None, rows, len(results),
