@@ -20,7 +20,7 @@ automatically by Claude Code.*
 8. **Wildfire smoke left no detectable mark** on the lake in 2025–26, once each month's trend is removed (114 smoke days since June 2024; no lake data for summer 2024).
 9. **Beyond TEON grew** (2026-10-02): TERC's Secchi record since 1967, the UC Berkeley Snow Lab (SNOTEL 428 daily, snowfall since 1879) and NWS airport weather at South Lake Tahoe and Truckee. All context, collapsed, beneath TEON's pins on the map. `docs/beyond-teon.md`.
 10. **69 tests pass.** Run them before every commit. **Next**: wait for TEON; watch the batteries; then reliable hourly downloads, the tree sensors, or Glenbrook 2's wetness (section 7).
-11. **A SQL Server / Azure SQL copy** (2026-10-21, `docs/cloud.md`): `pixi run cloud-inventory`, `cloud-export`, `cloud-load`, `cloud-reconcile`. On SQL Server 2022 in CI (`cloud.yml`), 131 of 131 table-months match (12.1 million rows) and the catchment check agrees with the Python join. Azure SQL Database (free offer) is next, run from WSL. (The suite is now 197 tests.)
+11. **A SQL Server / Azure SQL copy** (2026-10-21, `docs/cloud.md`): `pixi run cloud-inventory`, `cloud-export`, `cloud-load`, `cloud-reconcile`. On SQL Server 2022 in CI (`cloud.yml`), 131 of 131 table-months match (12.1 million rows) and the catchment check agrees with the Python join. Azure SQL Database (free offer, server `secchi-brooks`, West US 3) matched too: 131 of 131, loaded from WSL (PowerShell can't: Smart App Control blocks pandas). (The suite is now 197 tests.)
 
 ---
 

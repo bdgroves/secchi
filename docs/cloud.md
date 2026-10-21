@@ -133,9 +133,12 @@ Smart App Control blocking them, and Microsoft's Linux tools install with
 apt. In the Ubuntu window:
 
 ```bash
-# once: sqlcmd and bcp
-curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
-curl -sSL https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+# once: sqlcmd and bcp. Microsoft's setup package installs the right signing
+# key for your Ubuntu (26.04 needs the 2025 key; the old microsoft.asc fails
+# with NO_PUBKEY EE4D7792F748182B)
+source /etc/os-release
+curl -sSL -O https://packages.microsoft.com/config/$ID/$VERSION_ID/packages-microsoft-prod.deb
+sudo apt install -y ./packages-microsoft-prod.deb && rm packages-microsoft-prod.deb
 sudo apt-get update && sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc
 echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc && source ~/.bashrc
 
@@ -158,6 +161,25 @@ current IP.
 
 Afterwards, check what it cost: the database's **Overview** shows the free
 vCore-seconds used this month.
+
+## Results
+
+| Where | When | Table-months | Rows | Load | Check | Spatial |
+|---|---|---:|---:|---:|---:|---|
+| SQL Server 2022, GitHub Actions | 2026-10-21 | 131 of 131 | 12,106,888 | 49 s | 41 s | 0 differences |
+| Azure SQL Database (free offer, West US 3), from WSL at home | 2026-10-21 | 131 of 131 | 12,108,026 | 277 s | 82 s | 0 differences |
+
+The Azure load is mostly upload time: `obs` (834 MB) took 178 s.
+
+Why WSL and not PowerShell: Windows Smart App Control blocks the pixi
+environment's pandas DLLs ("An Application Control policy has blocked this
+file"). The Windows `bcp` and `sqlcmd` installed with SQL Server are fine;
+it's the Python side that can't load.
+
+The first query on the Azure copy (monthly EXO temperature) surfaced
+Sunnyside at 85-102 °C in May-June 2026: the failed-sonde period already in
+[impossible-readings.md](impossible-readings.md). It moved unchanged, as it
+should.
 
 ## Open questions
 
