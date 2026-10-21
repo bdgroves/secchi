@@ -97,15 +97,28 @@ GO
 # layer). Each has a single integer key, which both need to identify
 # features, and one spatial column.
 MAP_VIEWS = """CREATE OR ALTER VIEW secchi.site_map AS
--- One point per TEON site: where it is, which catchment, what it has recorded.
-SELECT s.site_id, s.site, w.watershed_id, w.watershed,
+-- One point per TEON site: what kind of instrument, where, which catchment,
+-- what it has recorded, and how many camera frames.
+SELECT s.site_id, s.site,
+       CASE WHEN i.instruments LIKE '%ExoSensor%' THEN 'Lake sonde (EXO)'
+            WHEN i.instruments LIKE '%MiniDotSensor%' OR i.instruments LIKE '%HoboSensor%'
+                 THEN 'Nearshore logger (MiniDOT + HOBO)'
+            ELSE 'Forest and stream station' END AS kind,
+       i.instruments, w.watershed_id, w.watershed,
        a.readings, a.variables, a.first_reading, a.last_reading,
+       ISNULL(cam.frames, 0) AS camera_frames,
        s.location
 FROM secchi.site AS s
 LEFT JOIN secchi.site_watershed AS w ON w.site_id = s.site_id
+OUTER APPLY (SELECT STRING_AGG(CAST(t.sensor_type AS varchar(4000)), ', ')
+                    WITHIN GROUP (ORDER BY t.sensor_type) AS instruments
+             FROM (SELECT DISTINCT o.sensor_type_id FROM secchi.obs AS o WHERE o.site_id = s.site_id) AS x
+             JOIN secchi.sensor_type AS t ON t.sensor_type_id = x.sensor_type_id) AS i
 OUTER APPLY (SELECT COUNT_BIG(*) AS readings, COUNT(DISTINCT o.variable_id) AS variables,
                     MIN(o.ts) AS first_reading, MAX(o.ts) AS last_reading
-             FROM secchi.obs AS o WHERE o.site_id = s.site_id) AS a;
+             FROM secchi.obs AS o WHERE o.site_id = s.site_id) AS a
+OUTER APPLY (SELECT COUNT(*) AS frames FROM secchi.assets AS z
+             WHERE z.site = s.site COLLATE DATABASE_DEFAULT) AS cam;
 GO
 CREATE OR ALTER VIEW secchi.lake_temp_month AS
 -- Monthly mean water temperature at each EXO sonde, from obs_clean, so a
@@ -123,6 +136,78 @@ SELECT CAST(s.site_id AS bigint) * 1000000 + m.yr * 100 + m.mo AS fid,
        CAST(ROUND(m.temp_c, 2) AS decimal(6, 2)) AS temp_c, m.readings,
        s.location
 FROM m JOIN secchi.site AS s ON s.site = m.site;
+GO
+CREATE OR ALTER VIEW secchi.usgs_gauge_map AS
+-- One point per USGS gauge with its latest flow, gage height and water
+-- temperature. fid = the USGS site number. Times in UTC.
+WITH g AS (
+    SELECT site_number, MAX(site) AS site, AVG(lat) AS lat, AVG(lng) AS lng,
+           COUNT_BIG(*) AS readings, MIN(ts) AS first_reading, MAX(ts) AS last_reading
+    FROM secchi.usgs GROUP BY site_number)
+SELECT CAST(g.site_number AS bigint) AS fid, g.site_number, g.site,
+       CASE WHEN g.site LIKE 'Lake Tahoe%' THEN 'Lake level'
+            WHEN g.site LIKE 'Truckee River at Tahoe City%' THEN 'Lake outflow'
+            ELSE 'Inflow (creek or river)' END AS kind,
+       p.parameters, g.readings,
+       CONVERT(datetime2(0), SWITCHOFFSET(g.first_reading, '+00:00')) AS first_reading_utc,
+       CONVERT(datetime2(0), SWITCHOFFSET(g.last_reading, '+00:00')) AS last_reading_utc,
+       q.value AS latest_discharge_cfs,
+       CONVERT(datetime2(0), SWITCHOFFSET(q.ts, '+00:00')) AS latest_discharge_utc,
+       h.value AS latest_gage_height_ft,
+       wt.value AS latest_water_temp_c,
+       geography::Point(g.lat, g.lng, 4326) AS location
+FROM g
+OUTER APPLY (SELECT STRING_AGG(CAST(x.variable AS varchar(4000)), ', ') WITHIN GROUP (ORDER BY x.variable) AS parameters
+             FROM (SELECT DISTINCT u.variable FROM secchi.usgs AS u WHERE u.site_number = g.site_number) AS x) AS p
+OUTER APPLY (SELECT TOP (1) u.value, u.ts FROM secchi.usgs AS u
+             WHERE u.site_number = g.site_number AND u.variable = '00060' AND u.value IS NOT NULL
+             ORDER BY u.ts DESC) AS q
+OUTER APPLY (SELECT TOP (1) u.value FROM secchi.usgs AS u
+             WHERE u.site_number = g.site_number AND u.variable = '00065' AND u.value IS NOT NULL
+             ORDER BY u.ts DESC) AS h
+OUTER APPLY (SELECT TOP (1) u.value FROM secchi.usgs AS u
+             WHERE u.site_number = g.site_number AND u.variable = '00010' AND u.value IS NOT NULL
+             ORDER BY u.ts DESC) AS wt;
+GO
+CREATE OR ALTER VIEW secchi.usgs_flow_day AS
+-- Daily mean discharge at each gauge (Pacific standard days), for a time
+-- slider. fid = site number * 100,000 + days since 2000-01-01.
+WITH d AS (
+    SELECT site_number, CONVERT(date, SWITCHOFFSET(ts, '-08:00')) AS day,
+           AVG(value) AS cfs, COUNT_BIG(*) AS readings
+    FROM secchi.usgs
+    WHERE variable = '00060' AND value IS NOT NULL
+    GROUP BY site_number, CONVERT(date, SWITCHOFFSET(ts, '-08:00'))),
+loc AS (SELECT site_number, MAX(site) AS site, AVG(lat) AS lat, AVG(lng) AS lng
+        FROM secchi.usgs GROUP BY site_number)
+SELECT CAST(d.site_number AS bigint) * 100000 + DATEDIFF(day, '2000-01-01', d.day) AS fid,
+       d.site_number, loc.site,
+       CAST(d.day AS datetime2(0)) AS day_start,
+       DATEADD(second, 86399, CAST(d.day AS datetime2(0))) AS day_end,
+       CAST(ROUND(d.cfs, 2) AS decimal(10, 2)) AS mean_cfs, d.readings,
+       geography::Point(loc.lat, loc.lng, 4326) AS location
+FROM d JOIN loc ON loc.site_number = d.site_number;
+GO
+CREATE OR ALTER VIEW secchi.context_station_map AS
+-- Beyond TEON: SNOTEL snow stations and NWS airport weather, with the
+-- latest snow depth.
+WITH s AS (
+    SELECT 'NRCS SNOTEL' AS network, site, AVG(lat) AS lat, AVG(lng) AS lng,
+           MIN(ts) AS first_reading, MAX(ts) AS last_reading, COUNT_BIG(*) AS readings
+    FROM secchi.snotel GROUP BY site
+    UNION ALL
+    SELECT 'NWS airport (ASOS)', site, AVG(lat), AVG(lng), MIN(ts), MAX(ts), COUNT_BIG(*)
+    FROM secchi.asos GROUP BY site),
+obs AS (SELECT site, variable, value, unit, ts FROM secchi.snotel
+        UNION ALL SELECT site, variable, value, unit, ts FROM secchi.asos)
+SELECT CAST(ROW_NUMBER() OVER (ORDER BY s.network, s.site) AS int) AS fid,
+       s.network, s.site, s.readings, s.first_reading, s.last_reading,
+       sd.value AS latest_snow_depth, sd.unit AS snow_depth_unit, sd.ts AS snow_depth_date,
+       geography::Point(s.lat, s.lng, 4326) AS location
+FROM s
+OUTER APPLY (SELECT TOP (1) o.value, o.unit, o.ts FROM obs AS o
+             WHERE o.site = s.site AND o.variable = 'SNWD' AND o.value IS NOT NULL
+             ORDER BY o.ts DESC) AS sd;
 GO
 """
 
