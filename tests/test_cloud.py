@@ -101,3 +101,30 @@ def test_wkt():
     assert geojson_wkt(poly) == "POLYGON ((0 0, 1 0, 1 1, 0 0))"
     multi = {"type": "MultiPolygon", "coordinates": [poly["coordinates"]]}
     assert geojson_wkt(multi) == "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)))"
+
+
+def test_tables_have_as_many_columns_as_their_files():
+    """bcp maps file fields to table columns one for one; a table with an
+    extra column makes it read past the end of the line."""
+    import re
+
+    from secchi.cloud.__main__ import SQL_DIR
+
+    schema = (SQL_DIR / "01_schema.sql").read_text()
+    width = {}
+    for name, body in re.findall(r"CREATE TABLE secchi\.(\w+) \((.*?)\n\);", schema, re.S):
+        body = re.sub(r"--[^\n]*", "", body)
+        width[name] = len([c for c in re.split(r",(?![^(]*\))", body) if c.strip()])
+    con = _con()
+    for name in ("site", "sensor_type", "variable"):
+        assert name in width
+    assert width["site"] == 4 and width["sensor_type"] == 2 and width["variable"] == 2
+    by = {t.name: t for t in TABLES}
+    expect = {"obs": 6, "usgs": 14, "snotel": 9, "asos": 9, "smoke": 8, "assets": 9,
+              "terc": 7, "cssl_climo": 4, "watershed_stage": 4}
+    for name, n in expect.items():
+        assert width[name] == n, (name, width[name])
+    for name in ("snotel", "asos", "smoke", "assets", "terc", "cssl_climo"):
+        cols = re.search(r"SELECT(.*?)FROM", by[name].export_sql, re.S).group(1)
+        assert len(re.split(r",(?![^(]*\))", cols)) == expect[name], name
+    con.close()

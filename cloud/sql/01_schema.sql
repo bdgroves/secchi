@@ -21,8 +21,9 @@ CREATE TABLE secchi.site (
     site_id   smallint     NOT NULL PRIMARY KEY,
     site      varchar(60)  NOT NULL UNIQUE,
     lat       float        NOT NULL,
-    lng       float        NOT NULL,
-    location  geography    NULL          -- filled by 02_after_load.sql
+    lng       float        NOT NULL
+    -- location geography is added by 02_after_load.sql: bcp needs the
+    -- table's columns to match the file's, one for one
 );
 CREATE TABLE secchi.sensor_type (
     sensor_type_id smallint    NOT NULL PRIMARY KEY,

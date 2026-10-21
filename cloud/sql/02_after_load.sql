@@ -17,6 +17,8 @@ CREATE CLUSTERED INDEX cx_terc   ON secchi.terc (date_time_local, station);
 
 -- Station points: geography, so distances come out in metres on the
 -- ellipsoid.
+ALTER TABLE secchi.site ADD location geography NULL;
+GO
 UPDATE secchi.site SET location = geography::Point(lat, lng, 4326);
 
 -- Catchments: geometry in SRID 4326. Planar maths on degrees is fine for
