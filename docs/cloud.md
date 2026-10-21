@@ -103,7 +103,91 @@ it is exact, and it catches any change of 0.001 or more.
 2022 container, all four steps, the reconcile report as the job summary.
 Runs when this code changes, Mondays, and by hand.
 
-**Azure SQL Database**, from your PC: below.
+**Azure SQL Database**, from your PC: below. And every other morning from
+GitHub Actions (`.github/workflows/cloud-azure.yml`): see "Keeping Azure
+current" below.
+
+## Keeping a copy current: `cloud-sync`
+
+`pixi run cloud-sync` is the command a schedule runs. It:
+
+1. fingerprints the store and asks the database for its fingerprints;
+2. reloads **only the table-months that differ**: delete that month, bulk
+   copy that month. Because the reconcile decides the work, revised history
+   (TEON and USGS both revise old readings) is caught as well as new days.
+   More than 24 differing table-months, or a changed catchment file, means
+   a full reload instead. An empty database gets a full load;
+3. keeps the lookup ids stable: a new site or variable gets the next id on
+   the server, and existing ids never move;
+4. refreshes the quality views and runs the full reconcile;
+5. checks the quality flags (below);
+6. writes a row to `secchi.run_log`: what it reloaded, rows, months
+   matched, flags matched, seconds, the commit, and (from the workflow) the
+   free compute left this month.
+
+CI tests it the way the Handoff tested its port: after a full load it
+deletes a month of TEON readings and changes one USGS value, and the sync
+must find and reload exactly those two table-months and match again.
+
+## Quality views
+
+`secchi.obs_flagged` and `secchi.obs_clean` are generated
+(`secchi.cloud.quality`) from the same rules the export and the watcher use
+(`IMPOSSIBLE`, `OPTICAL_CHANNELS`), not rewritten by hand. The raw table is
+never changed; `obs_clean` leaves out readings flagged `impossible_range`,
+`channel_scramble` or `ph_zero`, and keeps the notes (`exo_sat_sea_level`,
+the negative optical readings). Every sync checks that SQL Server flags
+exactly as many readings as DuckDB, flag by flag: on 2026-10-21, 11,481
+impossible readings, 54,150 scrambled-channel readings, 173,392 sea-level
+saturation notes, 125,010 negative turbidity, 83,811 negative chlorophyll,
+32,597 negative phycocyanin and 46,841 dead pH channels, the same in both.
+Not ported yet: `repeated_hour` and the duplicate flags.
+
+```sql
+-- in SSMS, on the secchi database
+SELECT site, YEAR(ts) AS yr, MONTH(ts) AS mo, ROUND(AVG(value), 2) AS temp_c
+FROM secchi.obs_clean
+WHERE sensor_type = 'ExoSensor' AND variable = 'Temp'
+GROUP BY site, YEAR(ts), MONTH(ts) ORDER BY site, yr, mo;
+```
+
+## Keeping Azure current (GitHub Actions)
+
+`cloud-azure.yml`, every other morning at 6:52 AM Pacific, and by hand:
+
+- **Signs in without a stored Azure password.** GitHub issues the run a
+  short-lived OpenID Connect token; Microsoft Entra trusts tokens from this
+  repo's `main` branch only (app registration `secchi-github-actions`, two
+  federated credentials, one per GitHub subject format). The app's only
+  role is SQL Server Contributor on `secchi-brooks`.
+- **Opens the firewall for its own address only**, for the length of the
+  job, and closes it in an always-run step.
+- **Logs in to the database as `secchi_loader`**, a user that exists only in
+  the `secchi` database (db_owner there, nothing on the server). Its
+  password is a GitHub encrypted secret: the one stored credential.
+- **Records the free compute left** after each run (Azure Monitor metric
+  `free_amount_remaining`) in `secchi.run_log`.
+- **Opens a GitHub issue** if a run fails.
+
+Settings, in the repo (Settings → Secrets and variables → Actions): variables
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+`SECCHI_SQL_SERVER`; secrets `SECCHI_SQL_USER`, `SECCHI_SQL_PASSWORD`.
+
+### What it costs
+
+A serverless database bills its minimum every second it's awake, and stays
+awake for the auto-pause delay after the last connection. On the free offer
+that delay is **fixed at 60 minutes**: changing it fails with *"Only default
+value for auto pause delay is allowed for Free Limit database with auto
+pause exhaustion behavior."* Measured on 2026-10-21, the database burns
+about 25 vCore-seconds a minute awake, so a run plus its idle hour costs
+about 1,800 of the 100,000 free a month. Nightly would be about 55,000;
+every other day, about 27,000, which leaves room for working in SSMS. With
+"auto-pause until next month" set, running out stops the database instead
+of billing.
+
+Disconnect SSMS from Azure when done: an open connection keeps the database
+awake.
 
 ## Azure SQL Database, step by step
 
@@ -191,13 +275,13 @@ Sunnyside at 85-102 °C in May-June 2026: the failed-sonde period already in
 [impossible-readings.md](impossible-readings.md). It moved unchanged, as it
 should.
 
+Automated runs (cloud-azure.yml), 2026-10-21: three by hand, all
+`sync: none` and 131 of 131; about 230 seconds each, most of it the flag
+check; free compute left after the third, 95,619 vCore-seconds.
+
 ## Open questions
 
-- How many vCore-seconds does one full load use? Measure on the first run.
-- A nightly reconcile against Azure from GitHub Actions needs the runner
-  allowed through the firewall. Options: a GitHub-hosted runner with a
-  service principal that adds and removes its own IP rule, or a
-  self-hosted runner in WSL.
-- Next steps on the SQL side: incremental loads (only new days) instead of
-  full reloads, and reading `secchi.obs` from ArcGIS Pro or QGIS as a query
-  layer.
+- Reading `secchi.obs_clean` and the catchments from QGIS or ArcGIS Pro.
+- Port `repeated_hour` and the duplicate flags.
+- The flag check is most of a run's time on 2 vCores; it could run weekly
+  while the reconcile runs every time.

@@ -1,6 +1,6 @@
 name: cloud-azure
 
-# Every morning: keep the Azure SQL Database copy current, and prove it
+# Every other morning: keep the Azure SQL Database copy current, and prove it
 # (docs/cloud.md, "Nightly sync to Azure").
 #
 #   1. Sign in to Azure with GitHub's OpenID Connect token. No Azure
@@ -21,7 +21,7 @@ name: cloud-azure
 
 on:
   schedule:
-    - cron: "52 13 * * *"      # 6:52 AM PDT, after the hourly fetch has landed
+    - cron: "52 13 */2 * *"    # every other day, 6:52 AM PDT, after the hourly fetch (cost, see below)
   workflow_dispatch: {}
 
 permissions:
@@ -83,21 +83,16 @@ jobs:
 
       # Cost: a serverless database bills its minimum every second it's
       # awake, and stays awake for the auto-pause delay after the last
-      # connection (60 minutes by default). Most of a nightly run's cost was
-      # that idle hour, so the delay is held at the minimum, 15, as code.
-      - name: Keep the auto-pause delay at 15 minutes
+      # connection. On the free offer the delay is fixed at 60 minutes:
+      # Azure refuses a change with "Only default value for auto pause delay
+      # is allowed for Free Limit database with auto pause exhaustion
+      # behavior" (tried 2026-10-21). So the idle hour is the biggest cost of
+      # a run (about 1,800 vCore-seconds in all), and the lever is how often
+      # it runs: every other day, about 27,000 of the 100,000 free a month.
+      - name: Note the auto-pause delay
         continue-on-error: true
         run: |
-          now=$(az sql db show -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi --query autoPauseDelay -o tsv 2>&1)
-          echo "::notice title=auto-pause delay::was ${now} minutes"
-          if [ "$now" != "15" ]; then
-            if out=$(az sql db update -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi \
-                       --auto-pause-delay 15 --query autoPauseDelay -o tsv 2>&1); then
-              echo "::notice title=auto-pause delay::now ${out} minutes"
-            else
-              echo "::warning title=auto-pause delay not changed::$(echo "$out" | tail -n 3 | tr '\n' ' ')"
-            fi
-          fi
+          echo "auto-pause delay: $(az sql db show -g "$RESOURCE_GROUP" -s "$SERVER_NAME" -n secchi --query autoPauseDelay -o tsv) minutes"
 
       - name: Wake the database
         env:
