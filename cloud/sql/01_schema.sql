@@ -88,7 +88,8 @@ CREATE TABLE secchi.assets (
     kind varchar(20) NULL, ref varchar(400) NULL, total_available bigint NULL
 );
 CREATE TABLE secchi.terc (
-    station varchar(10) NOT NULL, date_time_local datetime2(0) NOT NULL,
+    station varchar(10) COLLATE Latin1_General_100_CI_AS_SC_UTF8 NOT NULL,  -- same collation as the note,
+    date_time_local datetime2(0) NOT NULL,                                  -- so the key can join them
     secchi_m float NULL, disappear_m float NULL, reappear_m float NULL,
     viewing_condition int NULL,
     lake_condition varchar(1000) COLLATE Latin1_General_100_CI_AS_SC_UTF8 NULL  -- one note has non-ASCII
