@@ -84,7 +84,8 @@ def test_compare_allows_rounding_in_the_sum_but_says_so():
 def test_tsql_shapes():
     by = {t.name: t for t in TABLES}
     assert "GROUP BY" not in fingerprint_tsql(by["terc"])        # one row, no grouping
-    assert "UTF8" in fingerprint_tsql(by["terc"])                # the note is UTF-8
+    assert "BIN2_UTF8" in fingerprint_tsql(by["terc"])           # the note is UTF-8
+    assert "BIN2" in fingerprint_tsql(by["obs"])                 # keys are case-sensitive
     assert "GROUP BY CONVERT(char(7), ts, 120)" in fingerprint_tsql(by["obs"])
 
 

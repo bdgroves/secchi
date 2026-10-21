@@ -223,8 +223,11 @@ def fingerprint_tsql(t: Table) -> str:
     ts = f"CAST({t.ts_tsql} AS datetime2(6))" if t.ts_tsql else "CAST(NULL AS datetime2(6))"
     v = t.value_tsql or "CAST(NULL AS float)"
     part = "CONVERT(char(7), ts, 120)" if t.monthly else "'all'"
-    # A UTF-8 collation makes HASHBYTES see the same bytes DuckDB's md5 does.
-    collate = "COLLATE Latin1_General_100_CI_AS_SC_UTF8" if t.utf8 else ""
+    # Binary collations: DISTINCT must treat "Temperature" and "temperature"
+    # as two keys, as DuckDB does. The UTF-8 one also makes HASHBYTES see
+    # the same bytes DuckDB's md5 does.
+    collate = ("COLLATE Latin1_General_100_BIN2_UTF8" if t.utf8
+               else "COLLATE Latin1_General_100_BIN2")
     return f"""
 SELECT '{t.name}' AS tbl, {part} AS part,
        COUNT_BIG(*) AS n_rows,

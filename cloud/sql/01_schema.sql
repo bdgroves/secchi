@@ -17,9 +17,13 @@ GO
 
 -- Lookups for obs. 12 million rows repeat 18 site names and 55 variable
 -- names; storing a small number instead is most of the saving.
+-- The names are case-sensitive (BIN2): TEON has "Temperature" (MiniDOT)
+-- and "temperature" (HOBO), and "Specific_Conductivity" and
+-- "specific_conductivity". SQL Server's default collation would call each
+-- pair the same name and refuse the second.
 CREATE TABLE secchi.site (
     site_id   smallint     NOT NULL PRIMARY KEY,
-    site      varchar(60)  NOT NULL UNIQUE,
+    site      varchar(60)  COLLATE Latin1_General_100_BIN2 NOT NULL UNIQUE,
     lat       float        NOT NULL,
     lng       float        NOT NULL
     -- location geography is added by 02_after_load.sql: bcp needs the
@@ -27,11 +31,11 @@ CREATE TABLE secchi.site (
 );
 CREATE TABLE secchi.sensor_type (
     sensor_type_id smallint    NOT NULL PRIMARY KEY,
-    sensor_type    varchar(60) NOT NULL UNIQUE
+    sensor_type    varchar(60) COLLATE Latin1_General_100_BIN2 NOT NULL UNIQUE
 );
 CREATE TABLE secchi.variable (
     variable_id smallint    NOT NULL PRIMARY KEY,
-    variable    varchar(60) NOT NULL UNIQUE
+    variable    varchar(60) COLLATE Latin1_General_100_BIN2 NOT NULL UNIQUE
 );
 
 -- The big one. Loaded as a heap, then given a clustered columnstore index

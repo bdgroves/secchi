@@ -73,6 +73,12 @@ and none is expected.
   secchi (worth checking whether it's in TERC's file or in our download).
   It moves as it is: that column uses a UTF-8 collation, and the note is part
   of the row key, so the reconcile proves it arrived byte for byte.
+- **Two pairs of names differ only by capital letters.** MiniDOT reports
+  `Temperature` and HOBO reports `temperature`; the stream stations report
+  `Specific_Conductivity` and the EXO sondes `specific_conductivity`. SQL
+  Server's default collation ignores case, so the first load stopped with a
+  duplicate-key error on the variable lookup. The lookup names and the
+  fingerprint keys now use a binary (case-sensitive) collation.
 - **The catchment file is in metres, not degrees.** No CRS is declared in
   it; secchi detects Web Mercator by checking where the inverted
   coordinates land.
