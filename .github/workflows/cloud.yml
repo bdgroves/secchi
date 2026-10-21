@@ -1,0 +1,106 @@
+name: cloud
+
+# The store, copied into SQL Server 2022 and checked (docs/cloud.md).
+#
+# Starts a throwaway SQL Server 2022 container, runs the same four commands
+# you'd run against Azure SQL Database (inventory, export, load, reconcile),
+# and fails if any table-month, or any site's catchment, comes out different.
+# Commits nothing: the reconcile report is the job summary and an artifact.
+#
+# Runs when the cloud code changes, weekly on Mondays as a standing check
+# that the store still moves cleanly, and by hand from the Actions tab.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/secchi/cloud/**"
+      - "cloud/sql/**"
+      - ".github/workflows/cloud.yml"
+  schedule:
+    - cron: "17 14 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud
+  cancel-in-progress: true
+
+jobs:
+  sqlserver:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          manifest-path: pyproject.toml
+          cache: true
+
+      - name: Start SQL Server 2022
+        run: |
+          PW="Sx-$(openssl rand -hex 12)-9a"
+          echo "::add-mask::$PW"
+          echo "SECCHI_SQL_PASSWORD=$PW" >> "$GITHUB_ENV"
+          docker run -d --name mssql -p 1433:1433 -e ACCEPT_EULA=Y \
+            -e "MSSQL_SA_PASSWORD=$PW" mcr.microsoft.com/mssql/server:2022-latest > /dev/null
+
+      - name: Install sqlcmd and bcp (mssql-tools18)
+        run: |
+          if ! command -v bcp > /dev/null; then
+            curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+            curl -sSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+            sudo apt-get update -qq
+            sudo ACCEPT_EULA=Y apt-get install -y -qq mssql-tools18 unixodbc > /dev/null
+            echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Create the database
+        env:
+          SQLCMDPASSWORD: ${{ env.SECCHI_SQL_PASSWORD }}
+        run: |
+          export PATH="/opt/mssql-tools18/bin:$PATH"
+          for i in $(seq 1 60); do
+            sqlcmd -C -S localhost -U sa -Q "SELECT 1" > /dev/null 2>&1 && break
+            sleep 2
+          done
+          sqlcmd -C -S localhost -U sa -b -Q "CREATE DATABASE secchi"
+
+      - name: Inventory and export
+        run: |
+          pixi run cloud-inventory
+          pixi run cloud-export
+
+      - name: Load and reconcile
+        env:
+          SECCHI_SQL_SERVER: localhost
+          SECCHI_SQL_DATABASE: secchi
+          SECCHI_SQL_USER: sa
+          SECCHI_SQL_TRUST_CERT: "1"
+        run: |
+          pixi run cloud-load
+          pixi run cloud-reconcile
+
+      - name: Report
+        if: always()
+        run: |
+          if [ -f cloud/out/reconcile.md ]; then cat cloud/out/reconcile.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-reports
+          path: |
+            docs/cloud/inventory.md
+            cloud/out/reconcile.md
+            cloud/out/reconcile.json
+            cloud/out/fingerprints.json
+            cloud/out/bcp/manifest.json
+            cloud/out/*.err
+          if-no-files-found: ignore

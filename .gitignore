@@ -110,3 +110,7 @@ data/scratch/
 exports/
 data/processed/*.premigration
 *.tmp
+
+# SQL Server copy (docs/cloud.md): bcp files, fingerprints and reports are
+# rebuilt from the store on demand. docs/cloud/inventory.md IS committed.
+cloud/out/
