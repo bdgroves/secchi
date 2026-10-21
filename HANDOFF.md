@@ -339,7 +339,7 @@ web/assets/        built by `transform`, not committed
    dendrometer band is on: that's what the east/west tree comparison needs.
 4. **Smoke, as the seasons accumulate**: rerun `smoke-lake` after each summer;
    the oxygen lead needs more episodes.
-5. **Housekeeping**: `pixi lock` once locally (silences a CI warning); close
+5. **Housekeeping**: ~~`pixi lock`~~ done Oct 20 (lock file upgraded to format v7, same packages, 188 tests pass); close
    old watcher issues; delete the `probe/extras` branch on GitHub (this
    workspace can't); PurpleAir needs an API key if wanted.
 6. **TEON vs Secchi** again after summer 2027, when the overlap has two
