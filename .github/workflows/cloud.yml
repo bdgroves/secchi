@@ -99,6 +99,12 @@ jobs:
             fi
           done
 
+      - name: Headline
+        if: success()
+        run: |
+          msg=$(tail -n 3 cloud/out/load.log; grep -A2 "^reconcile:" cloud/out/reconcile.log)
+          echo "::notice title=matched::$(echo "$msg" | awk '{printf "%s%%0A", $0}')"
+
       - name: Report
         if: always()
         run: |
