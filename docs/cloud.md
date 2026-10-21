@@ -170,6 +170,61 @@ Checked against DuckDB on 2026-10-21: 2,738 camera frames, the latest flows
 (Trout Creek 12.5 cfs, Truckee River outflow 78.7 cfs) and 322 gauge-days
 are the same in both.
 
+## C# and .NET (`cloud/dotnet`)
+
+The same move, done a second way in C#, as the [SIERRA-FLOW
+handoff](https://brooksgroves.com/blog/sierra-flow-handoff-post.html) did
+for COBOL: two implementations side by side, and they must agree exactly.
+
+| Project | What's in it | Needs |
+|---|---|---|
+| `Secchi.Cloud.Core` | `Layouts.cs` (every table, column for column), `BcpFile.cs` (reads the export files, parsing each field to its SQL type), `Fingerprint.cs` (the month fingerprint, computed in C#), `StoreCompare.cs` (compare with `fingerprints.json`) | .NET 8 SDK only; no packages, builds offline |
+| `Secchi.Cloud.Cli` (`secchi-cloud`) | `files`, `load`, `check` | adds `Microsoft.Data.SqlClient` |
+
+```bash
+dotnet build -c Release cloud/dotnet/Secchi.Cloud.Cli
+CLI=cloud/dotnet/Secchi.Cloud.Cli/bin/Release/net8.0/secchi-cloud.dll
+dotnet $CLI files                     # are the export files a faithful copy of the store?
+pixi run cloud-load --loader dotnet   # schema, SqlBulkCopy instead of bcp, indexes, views
+dotnet $CLI check                     # read every row back from SQL Server, fingerprint in C#
+```
+
+**The check is a third, independent fingerprint.** The reconcile asks SQL
+Server to compute fingerprints in T-SQL. `check` doesn't: it reads every
+row back with a `SqlDataReader` and does the arithmetic in C#. It computes
+each key's MD5, the distinct-key count (case-sensitive, a `HashSet` per
+month), the exact min and max, and the sum of floor(value × 1000) as a
+`BigInteger`. DuckDB, SQL Server and .NET each work it out their own way,
+and all three must agree. It reads one month per query, so only one
+month's keys are in memory at a time.
+
+**The loader is `SqlBulkCopy`**, .NET's built-in bulk loader:
+
+1. Before copying a row, it checks the live table's columns against
+   `Layouts.cs`, and stops if they differ.
+2. It reads each export file in batches of 100,000 rows into a `DataTable`
+   and sends each batch.
+3. Afterwards it counts what the server holds, rather than trusting what it
+   sent.
+
+Every field is parsed to its real type on the way in (a `Guid`, a `double`,
+a `DateTimeOffset`), so a value that doesn't fit stops the load, naming the
+file, line and column. `bcp` doesn't do that check.
+
+**Tested, 2026-10-21:**
+
+- **Locally.** `files` matched the store exactly on the first run: 131 of
+  131 table-months, 12,109,790 rows, 37 seconds.
+- **It catches changes.** Changing one USGS reading by 0.001 in a copy of
+  the file made exactly that month fail (`v_sum ...330 vs ...331`).
+- **In CI, every run.** `cloud.yml` runs `files` and `check`, then reloads
+  everything with `SqlBulkCopy`, reconciles, and checks again. It reports
+  bcp's and SqlBulkCopy's times side by side.
+
+`tests/test_cloud_dotnet.py` keeps `Layouts.cs` in step with
+`01_schema.sql`, and builds the core library when the .NET SDK is
+installed.
+
 ## Keeping Azure current (GitHub Actions)
 
 `cloud-azure.yml`, every other morning at 6:52 AM Pacific, and by hand:

@@ -8,7 +8,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Off: Microsoft.Data.SqlClient refuses to connect in invariant mode
+         ("Globalization Invariant Mode is not supported"); it maps SQL
+         Server collations to code pages through the culture data. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <AssemblyName>secchi-cloud</AssemblyName>
     <RootNamespace>Secchi.Cloud.Cli</RootNamespace>
   </PropertyGroup>
