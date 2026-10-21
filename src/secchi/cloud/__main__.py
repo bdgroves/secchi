@@ -426,14 +426,15 @@ def _f(s):
 
 
 def compare(store: list[dict], server: list[dict]) -> list[dict]:
-    """One result per table-month. Everything must be equal, the 4-place
-    sums included.
+    """One result per table-month. Everything must be equal.
 
-    The sums once had an allowance of 0.0001 per row for rounding. The
-    sync's sabotage test (cloud.yml) showed what that cost: in a month of
-    60,000 USGS readings it added up to 6, and a reading changed by 1
-    passed. Every real run had matched to the last digit, so the allowance
-    went (2026-10-21)."""
+    History (2026-10-21): the value check was first a sum of values rounded
+    to 4 places, with an allowance of 0.0001 per row for rounding. The
+    sync's sabotage test (cloud.yml) showed the allowance added up to 6 over
+    a month of USGS readings, so a reading changed by 1 passed. Removing it
+    showed the 4-place sums had never matched exactly: the two engines round
+    binary floats to decimals differently in rare cases. The check is now a
+    sum of floor(value x 1000), which both compute identically."""
     s_map = {(r["tbl"], r["part"]): r for r in store}
     d_map = {(r["tbl"], r["part"]): r for r in server}
     results = []

@@ -10,8 +10,12 @@ DuckDB and once in T-SQL:
            variable changes the total.
 ``ts``     the row's time, as a naive datetime (USGS: UTC). It picks the
            month the row is counted in, and its min and max are compared.
-``value``  the main number. Min and max must match exactly; the sum (each
-           value rounded to 4 places) must match too.
+``value``  the main number. Min and max must match exactly, and so must
+           the sum of floor(value x 1000). (Not a sum of values rounded to 4
+           places: DuckDB and SQL Server round a binary float to a decimal
+           differently in rare edge cases, and over 400,000 readings a month
+           the sums drifted by thousandths. Multiplying is bit-identical in
+           both, and floor has no edge cases, so this sum is exact.)
 
 The two versions of each expression must produce the same text for the
 same row. ``tests/test_cloud.py`` runs the DuckDB side; the CI workflow
@@ -208,7 +212,7 @@ SELECT '{t.name}' AS tbl, {part} AS part,
        strftime(min(ts), '%Y-%m-%d %H:%M:%S.%f') AS ts_min,
        strftime(max(ts), '%Y-%m-%d %H:%M:%S.%f') AS ts_max,
        min(v) AS v_min, max(v) AS v_max,
-       CAST(sum(CASE WHEN abs(v) < 1e12 THEN CAST(v AS DECIMAL(38, 4)) END) AS VARCHAR) AS v_sum,
+       CAST(sum(CASE WHEN abs(v) < 1e12 THEN CAST(floor(v * 1000) AS DECIMAL(38, 0)) END) AS VARCHAR) AS v_sum,
        count(*) - count(v) AS v_null
 FROM (SELECT {t.key_duck} AS k, {ts} AS ts, {v} AS v FROM {t.view})
 GROUP BY ALL ORDER BY part"""
@@ -237,7 +241,7 @@ SELECT '{t.name}' AS tbl, {part} AS part,
        CONVERT(varchar(26), MAX(ts), 121) AS ts_max,
        CONVERT(varchar(30), MIN(v), 3) AS v_min,
        CONVERT(varchar(30), MAX(v), 3) AS v_max,
-       CAST(SUM(CASE WHEN ABS(v) < 1e12 THEN CAST(v AS decimal(38, 4)) END) AS varchar(60)) AS v_sum,
+       CAST(SUM(CASE WHEN ABS(v) < 1e12 THEN CAST(FLOOR(v * 1000) AS decimal(38, 0)) END) AS varchar(60)) AS v_sum,
        COUNT_BIG(*) - COUNT_BIG(v) AS v_null
 FROM (SELECT CAST({t.key_tsql} AS varchar(2000)) {collate} AS k, {ts} AS ts, {v} AS v
       FROM {t.from_tsql}) AS x

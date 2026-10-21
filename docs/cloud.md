@@ -41,16 +41,24 @@ For every table and every month, both sides compute:
 - the earliest and latest time;
 - the smallest and largest value, compared exactly (floats travel as text
   with full precision, and SQL Server prints them with 17 digits);
-- the sum of values rounded to 4 places (values above 10^12 left out:
+- the sum of floor(value × 1000), which catches any change of 0.001 or more (values above 10^12 left out:
   TEON has a few impossible readings around 10^26, and those are
   checked by the min and max instead);
 - the number of missing values.
 
-Everything must be equal, to the last digit. (The sums first had an
-allowance of 0.0001 per row for rounding. The sync's sabotage test showed
-that over a month of 60,000 USGS readings the allowance added up to 6, so a
-reading changed by 1 passed. Every real run had matched exactly, so the
-allowance went.)
+Everything must be equal, to the last digit.
+
+**A correction (2026-10-21).** The first version summed values rounded to 4
+places and allowed 0.0001 per row for rounding. The sync's sabotage test
+changed one USGS reading by 1 and the check let it through: over a month of
+60,000 readings the allowance added up to 6. Removing the allowance showed
+something worse: the 4-place sums had never matched exactly, off by a few
+thousandths in 21 TEON months, because DuckDB and SQL Server round a binary
+float to a decimal differently in rare edge cases. The first "131 of 131"
+results were real for rows, keys, times and min/max, but the value sums were
+passing on the allowance. The check is now the sum of floor(value × 1000):
+multiplying is bit-identical in both engines and floor has no edge cases, so
+it is exact, and it catches any change of 0.001 or more.
 
 ## How the tables are laid out
 
