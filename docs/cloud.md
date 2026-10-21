@@ -298,9 +298,15 @@ Automated runs (cloud-azure.yml), 2026-10-21: three by hand, all
 `sync: none` and 131 of 131; about 230 seconds each, most of it the flag
 check; free compute left after the third, 95,619 vCore-seconds.
 
+## Runbook and AI use
+
+[cloud/runbook.md](cloud/runbook.md) writes this method up for a team moving
+many databases, step by step. [ai-use.md](ai-use.md) says how AI was used to
+build it, and the standard it follows.
+
 ## Open questions
 
-- Reading `secchi.obs_clean` and the catchments from QGIS or ArcGIS Pro.
+- Reading the views from ArcGIS Pro (QGIS reads them; see "Map views").
 - Port `repeated_hour` and the duplicate flags.
 - The flag check is most of a run's time on 2 vCores; it could run weekly
   while the reconcile runs every time.
