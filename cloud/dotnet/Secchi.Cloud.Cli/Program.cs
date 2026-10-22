@@ -8,8 +8,9 @@
 //                         compare with the store
 //
 // The connection comes from the same environment variables the Python side
-// uses (SECCHI_SQL_SERVER, _DATABASE, _USER, _PASSWORD, _TRUST_CERT). The
-// password is never printed.
+// uses (SECCHI_SQL_SERVER, _DATABASE, _USER, _PASSWORD, _TRUST_CERT), or
+// SECCHI_SQL_WINDOWS_AUTH=1 to sign in as the Windows user. The password is
+// never printed.
 
 using System.Data;
 using System.Diagnostics;
@@ -257,12 +258,19 @@ static SqlConnection Open()
     {
         DataSource = Need("SECCHI_SQL_SERVER"),
         InitialCatalog = Need("SECCHI_SQL_DATABASE"),
-        UserID = Need("SECCHI_SQL_USER"),
-        Password = Need("SECCHI_SQL_PASSWORD"),
         Encrypt = SqlConnectionEncryptOption.Mandatory,
         TrustServerCertificate = Environment.GetEnvironmentVariable("SECCHI_SQL_TRUST_CERT") == "1",
         ConnectTimeout = 60,              // a paused Azure database takes a minute to wake
     };
+    // SECCHI_SQL_WINDOWS_AUTH=1: sign in as the Windows user, as SSMS does on
+    // a local server. No user name or password needed. Otherwise a SQL login.
+    if (Environment.GetEnvironmentVariable("SECCHI_SQL_WINDOWS_AUTH") == "1")
+        cs.IntegratedSecurity = true;
+    else
+    {
+        cs.UserID = Need("SECCHI_SQL_USER");
+        cs.Password = Need("SECCHI_SQL_PASSWORD");
+    }
     var conn = new SqlConnection(cs.ConnectionString);
     conn.Open();
     return conn;
