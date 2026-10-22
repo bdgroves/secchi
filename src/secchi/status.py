@@ -119,7 +119,7 @@ def report() -> int:
         if g:
             n, newest = duckdb.sql(
                 f"SELECT count(*), max(timestamp) FROM read_parquet('{g}', "
-                f"hive_partitioning = true, union_by_name = true)").fetchone()
+                f"hive_partitioning = true, union_by_name = true)").fetchall()[0]
             print(f"    observations stored        {n:,}, newest reading {newest:%Y-%m-%d %H:%M}")
         from secchi.store import undated_summary
         und = undated_summary(PROCESSED_DIR / "observations")

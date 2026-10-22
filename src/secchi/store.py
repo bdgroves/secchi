@@ -576,7 +576,7 @@ def undated_summary(root: Path) -> dict:
     key = ", ".join(k for k in ("site", "uuid") if k in names) or "uuid"
     und = "[" + ", ".join(f"'{f.as_posix()}'" for f in files) + "]"
     every = (root / "**" / PARTITION_GLOB).as_posix()
-    rows = duckdb.sql(f"SELECT count(*) FROM read_parquet({und})").fetchone()[0]
+    rows = duckdb.sql(f"SELECT count(*) FROM read_parquet({und})").fetchall()[0][0]
     only = duckdb.sql(f"""
         WITH u AS (SELECT DISTINCT {key} FROM read_parquet({und})),
              d AS (SELECT DISTINCT {key} FROM read_parquet('{every}',
@@ -584,7 +584,7 @@ def undated_summary(root: Path) -> dict:
                    WHERE CAST(year AS INTEGER) > 0)
         SELECT count(*) FROM u WHERE NOT EXISTS
             (SELECT 1 FROM d WHERE {" AND ".join(f"d.{k} = u.{k}" for k in key.split(", "))})
-        """).fetchone()[0]
+        """).fetchall()[0][0]
     return {"undated": int(rows), "only_undated": int(only)}
 
 

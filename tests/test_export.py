@@ -196,7 +196,7 @@ def test_hidden_site_is_absent_from_every_output_file(bundle):
     for p in list(out.glob("*.parquet")) + list(out.glob("*.csv.gz")):
         reader = (f"read_parquet('{p.as_posix()}')" if p.suffix == ".parquet"
                   else f"read_csv('{p.as_posix()}', all_varchar = true)")
-        n = con.execute(f"SELECT count(*) FROM {reader} WHERE site = 'Hidden Lake'").fetchone()[0]
+        n = con.execute(f"SELECT count(*) FROM {reader} WHERE site = 'Hidden Lake'").fetchall()[0][0]
         assert n == 0, f"{p.name} contains a hidden site"
 
 
@@ -217,7 +217,7 @@ def test_every_visible_row_lands_in_exactly_one_dataset(bundle):
     out, processed = bundle
     src = duckdb.sql(
         f"SELECT count(*) FROM read_parquet('{(processed / 'observations').as_posix()}/**/part*.parquet', "
-        f"hive_partitioning = true) WHERE site <> 'Hidden Lake'").fetchone()[0]
+        f"hive_partitioning = true) WHERE site <> 'Hidden Lake'").fetchall()[0][0]
     assert len(_all_teon(out)) == src
     # The sensor type nobody planned for went to `forest`.
     forest = pd.read_parquet(out / "forest.parquet")
@@ -243,10 +243,10 @@ def test_manifest_row_counts_match_the_files_on_disk(bundle):
         pq = [f for f in d["files"] if f["format"] == "parquet"]
         csv = [f for f in d["files"] if f["format"] == "csv.gz"]
         assert len(pq) == 1
-        on_disk = con.execute(f"SELECT count(*) FROM read_parquet('{(out / pq[0]['name']).as_posix()}')").fetchone()[0]
+        on_disk = con.execute(f"SELECT count(*) FROM read_parquet('{(out / pq[0]['name']).as_posix()}')").fetchall()[0][0]
         assert on_disk == pq[0]["rows"] == d["rows"]
         csv_rows = sum(con.execute(
-            f"SELECT count(*) FROM read_csv('{(out / f['name']).as_posix()}', all_varchar = true)").fetchone()[0]
+            f"SELECT count(*) FROM read_csv('{(out / f['name']).as_posix()}', all_varchar = true)").fetchall()[0][0]
             for f in csv)
         assert csv_rows == d["rows"]
 

@@ -351,5 +351,5 @@ def flag_counts_duck(con) -> dict[str, int]:
     _prepare_observations(con, _glob("observations"), set())
     cols = ", ".join(f"sum(CASE WHEN contains(quality_flag, '{f}') THEN 1 ELSE 0 END)"
                      for f in PORTED)
-    row = con.sql(f"SELECT {cols} FROM obs_flagged").fetchone()
+    row = con.sql(f"SELECT {cols} FROM obs_flagged").fetchall()[0]
     return {f: int(v or 0) for f, v in zip(PORTED, row, strict=True)}
