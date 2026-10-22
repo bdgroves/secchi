@@ -321,7 +321,10 @@ DROP TABLE #q;
 GO
 -- Every station with plain latitude and longitude, for a map visual.
 DROP TABLE IF EXISTS secchi.dash_station;
-SELECT 'TEON' AS network, kind, site AS station, CAST(NULL AS varchar(20)) AS site_number,
+-- TEON names are case-sensitive (BIN2) and the others use the default
+-- collation; UNION ALL needs one, so say which.
+SELECT 'TEON' AS network, kind, site COLLATE DATABASE_DEFAULT AS station,
+       CAST(NULL AS varchar(20)) AS site_number,
        location.Lat AS lat, location.Long AS lng
 INTO secchi.dash_station
 FROM secchi.site_map
