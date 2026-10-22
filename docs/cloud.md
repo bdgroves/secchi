@@ -377,6 +377,15 @@ Automated runs (cloud-azure.yml), 2026-10-21: three by hand, all
 `sync: none` and 131 of 131; about 230 seconds each, most of it the flag
 check; free compute left after the third, 95,619 vCore-seconds.
 
+## Power BI
+
+Six small summary tables (`secchi.dash_*`), rebuilt after every load and
+sync, feed a Power BI Desktop report: daily lake readings, daily gauge
+flows, daily snow, data quality by month, and every station. CI checks that
+the quality table counts every TEON reading exactly once (11,955,645, with
+101,052 unusable, the same as DuckDB). How to connect and build it:
+[cloud/powerbi.md](cloud/powerbi.md).
+
 ## Runbook and AI use
 
 [cloud/runbook.md](cloud/runbook.md) writes this method up for a team moving
