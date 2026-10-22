@@ -90,7 +90,8 @@ SELECT record_uuid, site, sensor_type, ts, variable, value, quality_flag
 FROM secchi.obs_flagged
 WHERE {blocking};
 GO
-{MAP_VIEWS}"""
+{MAP_VIEWS}
+{dash_sql()}"""
 
 
 # Views for a GIS client (QGIS's MS SQL provider, an ArcGIS Pro query
@@ -208,6 +209,126 @@ FROM s
 OUTER APPLY (SELECT TOP (1) o.value, o.unit, o.ts FROM obs AS o
              WHERE o.site = s.site AND o.variable = 'SNWD' AND o.value IS NOT NULL
              ORDER BY o.ts DESC) AS sd;
+GO
+"""
+
+
+# Dashboard tables (Power BI, docs/cloud/powerbi.md): small summaries,
+# rebuilt after every load and sync, so a report imports a few thousand rows
+# instead of reading 12 million. The pipeline's "gold" layer. Tables, not
+# views, so a report refresh costs seconds of Azure compute, not minutes.
+LAKE_VARIABLES = {           # EXO variable: (label, unit), from docs/data-dictionary.md
+    "Temp": ("Water temperature", "°C"),
+    "Turbidity": ("Turbidity", "FNU"),
+    "Chl_a": ("Chlorophyll-a", "µg/L"),
+    "Do_mgL": ("Dissolved oxygen", "mg/L"),
+    "specific_conductivity": ("Specific conductivity", "µS/cm"),
+    "phycocyanin": ("Phycocyanin", "µg/L"),
+}
+
+
+def _nchar(text: str) -> str:
+    """A T-SQL Unicode literal built from ASCII only. sqlcmd reads a script
+    in the machine's code page unless told otherwise, so a typed ° or µ can
+    arrive garbled; NCHAR(176) can't."""
+    parts, run = [], ""
+    for ch in text:
+        if ord(ch) < 128:
+            run += ch
+        else:
+            if run:
+                parts.append(f"N'{run}'")
+                run = ""
+            parts.append(f"NCHAR({ord(ch)})")
+    if run:
+        parts.append(f"N'{run}'")
+    return " + ".join(parts)
+
+
+def dash_sql() -> str:
+    lake_vars = ", ".join(f"'{v}'" for v in LAKE_VARIABLES)
+    labels = "\n".join(f"                WHEN '{v}' THEN {_nchar(lab)}"
+                        for v, (lab, _) in LAKE_VARIABLES.items())
+    units = "\n".join(f"                WHEN '{v}' THEN {_nchar(u)}"
+                       for v, (_, u) in LAKE_VARIABLES.items())
+    blocking = ", ".join(f"'{f}'" for f in BLOCKING)
+    unusable = " OR ".join(f"CHARINDEX('{f}', ISNULL(quality_flag, '')) > 0" for f in BLOCKING)
+    return f"""-- Dashboard tables: rebuilt on every load and sync.
+DROP TABLE IF EXISTS secchi.dash_lake_day;
+SELECT site, CAST(ts AS date) AS day, variable,
+       CASE variable
+{labels}
+       END AS variable_label,
+       CASE variable
+{units}
+       END AS unit,
+       ROUND(AVG(value), 4) AS mean_value,
+       ROUND(MIN(value), 4) AS min_value,
+       ROUND(MAX(value), 4) AS max_value,
+       COUNT_BIG(*) AS readings
+INTO secchi.dash_lake_day
+FROM secchi.obs_clean
+WHERE sensor_type = 'ExoSensor' AND variable IN ({lake_vars}) AND value IS NOT NULL
+GROUP BY site, CAST(ts AS date), variable;
+GO
+DROP TABLE IF EXISTS secchi.dash_gauge_day;
+SELECT u.site_number, MAX(u.site) AS site, MAX(g.kind) AS kind,
+       CONVERT(date, SWITCHOFFSET(u.ts, '-08:00')) AS day,   -- Pacific standard days
+       ROUND(AVG(CASE WHEN u.variable = '00060' THEN u.value END), 3) AS flow_cfs,
+       ROUND(AVG(CASE WHEN u.variable = '00065' THEN u.value END), 3) AS gage_height_ft,
+       ROUND(AVG(CASE WHEN u.variable = '00010' THEN u.value END), 3) AS water_temp_c,
+       ROUND(AVG(CASE WHEN u.variable = '63680' THEN u.value END), 3) AS turbidity_fnu
+INTO secchi.dash_gauge_day
+FROM secchi.usgs AS u
+LEFT JOIN secchi.usgs_gauge_map AS g ON g.site_number = u.site_number
+WHERE u.value IS NOT NULL
+GROUP BY u.site_number, CONVERT(date, SWITCHOFFSET(u.ts, '-08:00'));
+GO
+DROP TABLE IF EXISTS secchi.dash_snow_day;
+SELECT site, CAST(ts AS date) AS day,
+       MAX(CASE WHEN variable = 'SNWD' THEN value END) AS snow_depth_cm,
+       MAX(CASE WHEN variable = 'WTEQ' THEN value END) AS snow_water_mm,
+       MAX(CASE WHEN variable = 'PRCP' THEN value END) AS precip_mm,
+       MAX(CASE WHEN variable = 'TAVG' THEN value END) AS air_temp_c
+INTO secchi.dash_snow_day
+FROM secchi.snotel
+GROUP BY site, CAST(ts AS date);
+GO
+-- Data quality: one scan of obs_flagged, then two summaries from it.
+DROP TABLE IF EXISTS secchi.dash_quality_month, secchi.dash_flags_month;
+SELECT DATEFROMPARTS(YEAR(ts), MONTH(ts), 1) AS month, site, sensor_type, quality_flag,
+       COUNT_BIG(*) AS readings
+INTO #q
+FROM secchi.obs_flagged
+GROUP BY DATEFROMPARTS(YEAR(ts), MONTH(ts), 1), site, sensor_type, quality_flag;
+-- One row per site and month: how many readings, how many flagged at all,
+-- how many unusable (a blocking flag, left out of obs_clean).
+SELECT month, site, sensor_type,
+       SUM(readings) AS readings,
+       SUM(CASE WHEN quality_flag IS NOT NULL THEN readings ELSE 0 END) AS flagged,
+       SUM(CASE WHEN {unusable} THEN readings ELSE 0 END) AS unusable
+INTO secchi.dash_quality_month
+FROM #q GROUP BY month, site, sensor_type;
+-- One row per site, month and flag (a reading with two flags counts in both).
+SELECT q.month, q.site, q.sensor_type, f.value AS flag,
+       CAST(CASE WHEN f.value IN ({blocking}) THEN 1 ELSE 0 END AS bit) AS unusable,
+       SUM(q.readings) AS readings
+INTO secchi.dash_flags_month
+FROM #q AS q CROSS APPLY STRING_SPLIT(q.quality_flag, ';') AS f
+WHERE q.quality_flag IS NOT NULL
+GROUP BY q.month, q.site, q.sensor_type, f.value;
+DROP TABLE #q;
+GO
+-- Every station with plain latitude and longitude, for a map visual.
+DROP TABLE IF EXISTS secchi.dash_station;
+SELECT 'TEON' AS network, kind, site AS station, CAST(NULL AS varchar(20)) AS site_number,
+       location.Lat AS lat, location.Long AS lng
+INTO secchi.dash_station
+FROM secchi.site_map
+UNION ALL
+SELECT 'USGS', kind, site, site_number, location.Lat, location.Long FROM secchi.usgs_gauge_map
+UNION ALL
+SELECT network, network, site, NULL, location.Lat, location.Long FROM secchi.context_station_map;
 GO
 """
 
