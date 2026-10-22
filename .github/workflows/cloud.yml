@@ -128,8 +128,8 @@ jobs:
                 SELECT 'quality unusable', SUM(unusable) FROM secchi.dash_quality_month UNION ALL
                 SELECT 'obs rows', COUNT_BIG(*) FROM secchi.obs" -W -s " | " -h -1 | tee cloud/out/dash.txt
           echo "::notice title=dash tables::$(awk '{printf "%s%%0A", $0}' cloud/out/dash.txt)"
-          got=$(awk -F'|' '/^quality readings/ {gsub(/ /, "", $2); print $2}' cloud/out/dash.txt)
-          want=$(awk -F'|' '/^obs rows/ {gsub(/ /, "", $2); print $2}' cloud/out/dash.txt)
+          got=$(awk '/^quality readings/ {print $NF}' cloud/out/dash.txt)
+          want=$(awk '/^obs rows/ {print $NF}' cloud/out/dash.txt)
           if [ -z "$got" ] || [ "$got" != "$want" ]; then
             echo "::error title=dash tables::quality readings '$got' vs obs rows '$want'"; exit 1
           fi
