@@ -127,7 +127,12 @@ jobs:
                 SELECT 'quality readings', SUM(readings) FROM secchi.dash_quality_month UNION ALL
                 SELECT 'quality unusable', SUM(unusable) FROM secchi.dash_quality_month UNION ALL
                 SELECT 'obs rows', COUNT_BIG(*) FROM secchi.obs" -W -s " | " -h -1 | tee cloud/out/dash.txt
-          [ "$(grep '^quality readings' cloud/out/dash.txt | cut -d'|' -f2 | tr -d ' ')" = "$(grep '^obs rows' cloud/out/dash.txt | cut -d'|' -f2 | tr -d ' ')" ]
+          echo "::notice title=dash tables::$(awk '{printf "%s%%0A", $0}' cloud/out/dash.txt)"
+          got=$(awk -F'|' '/^quality readings/ {gsub(/ /, "", $2); print $2}' cloud/out/dash.txt)
+          want=$(awk -F'|' '/^obs rows/ {gsub(/ /, "", $2); print $2}' cloud/out/dash.txt)
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "::error title=dash tables::quality readings '$got' vs obs rows '$want'"; exit 1
+          fi
 
       # The C# half (cloud/dotnet). A third, independent fingerprint: C#
       # reads the rows and does the arithmetic itself, so DuckDB, SQL Server
