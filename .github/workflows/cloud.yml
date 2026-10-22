@@ -115,6 +115,19 @@ jobs:
           grep -q "reloaded usgs 2026-09" cloud/out/sync2.log
           grep -q "^sync: MATCH" cloud/out/sync2.log
           q -Q "SET NOCOUNT ON; SELECT run_id, kind, rows_loaded, months_matched, months_checked, flags_matched, result, seconds FROM secchi.run_log ORDER BY run_id" -W -s " | " | tee cloud/out/run_log.txt
+          # The dashboard tables (docs/cloud/powerbi.md): sizes, and one sum that
+          # must hold: every TEON reading is counted once in the quality table.
+          q -Q "SET NOCOUNT ON;
+                SELECT 'dash_lake_day', COUNT(*) FROM secchi.dash_lake_day UNION ALL
+                SELECT 'dash_gauge_day', COUNT(*) FROM secchi.dash_gauge_day UNION ALL
+                SELECT 'dash_snow_day', COUNT(*) FROM secchi.dash_snow_day UNION ALL
+                SELECT 'dash_quality_month', COUNT(*) FROM secchi.dash_quality_month UNION ALL
+                SELECT 'dash_flags_month', COUNT(*) FROM secchi.dash_flags_month UNION ALL
+                SELECT 'dash_station', COUNT(*) FROM secchi.dash_station UNION ALL
+                SELECT 'quality readings', SUM(readings) FROM secchi.dash_quality_month UNION ALL
+                SELECT 'quality unusable', SUM(unusable) FROM secchi.dash_quality_month UNION ALL
+                SELECT 'obs rows', COUNT_BIG(*) FROM secchi.obs" -W -s " | " -h -1 | tee cloud/out/dash.txt
+          [ "$(grep '^quality readings' cloud/out/dash.txt | cut -d'|' -f2 | tr -d ' ')" = "$(grep '^obs rows' cloud/out/dash.txt | cut -d'|' -f2 | tr -d ' ')" ]
 
       # The C# half (cloud/dotnet). A third, independent fingerprint: C#
       # reads the rows and does the arithmetic itself, so DuckDB, SQL Server
@@ -178,7 +191,7 @@ jobs:
       - name: Headline
         if: success()
         run: |
-          msg=$(tail -n 3 cloud/out/load.log; grep -A2 "^reconcile:" cloud/out/reconcile.log; grep -E "^sync:|reloaded|flags:" cloud/out/sync2.log; cat cloud/out/run_log.txt)
+          msg=$(tail -n 3 cloud/out/load.log; grep -A2 "^reconcile:" cloud/out/reconcile.log; grep -E "^sync:|reloaded|flags:" cloud/out/sync2.log; cat cloud/out/run_log.txt; cat cloud/out/dash.txt)
           echo "::notice title=matched::$(echo "$msg" | awk '{printf "%s%%0A", $0}')"
           race=$(echo "bcp:"; grep -E "^  [a-z_]+ +[0-9,]+ rows|rows copied" cloud/out/load.log;
                  echo "SqlBulkCopy, DataTable batches:"; grep -E "^  (obs|usgs) +[0-9,]+ rows|rows copied" cloud/out/load-dotnet-batches.log;

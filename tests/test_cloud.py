@@ -169,3 +169,15 @@ def test_quality_view_uses_the_projects_rules():
         assert f"n.variable = '{var}' AND (n.value < {lo} OR n.value > {hi})" in sql
     assert set(BLOCKING) <= set(PORTED)
     assert "CREATE OR ALTER VIEW secchi.obs_clean" in sql
+
+
+def test_dashboard_tables_are_generated_in_plain_ascii():
+    from secchi.cloud.quality import _nchar, dash_sql
+
+    sql = dash_sql()
+    for t in ("dash_lake_day", "dash_gauge_day", "dash_snow_day", "dash_quality_month",
+              "dash_flags_month", "dash_station"):
+        assert f"INTO secchi.{t}" in sql
+    assert all(ord(c) < 128 for c in sql)          # sqlcmd may read the file in any code page
+    assert _nchar("°C") == "NCHAR(176) + N'C'"
+    assert _nchar("µg/L") == "NCHAR(181) + N'g/L'"
