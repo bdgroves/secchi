@@ -377,6 +377,10 @@ The README's mistakes table lists 45; these rules came out of them.
   renderer for the transect line, and inline Leaflet with a *function*
   replacement (its code contains `$` sequences).
 - **Honour TEON's visibility flag, and fail closed.**
+- **DuckDB results come out with `.fetchall()`**, never `.fetchone()`: 2.0
+  removed it from relations and leaves `execute()` results open. DuckDB is
+  pinned below 2.0 until an upgrade is tested; on 2.0 an all-null column
+  reads as type `"null"` (seen in `docs/cloud/inventory.md`).
 
 ---
 

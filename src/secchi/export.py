@@ -392,13 +392,13 @@ def _copy(con, select_sql: str, path: Path, options: str) -> None:
 
 
 def _count_parquet(con, path: Path) -> int:
-    return con.execute(f"SELECT count(*) FROM read_parquet('{path.as_posix()}')").fetchone()[0]
+    return con.execute(f"SELECT count(*) FROM read_parquet('{path.as_posix()}')").fetchall()[0][0]
 
 
 def _count_csv(con, path: Path) -> int:
     return con.execute(
         f"SELECT count(*) FROM read_csv('{path.as_posix()}', header = true, "
-        f"all_varchar = true)").fetchone()[0]
+        f"all_varchar = true)").fetchall()[0][0]
 
 
 def _columns(con, path: Path) -> list[dict]:
@@ -418,7 +418,7 @@ def _write_dataset(con, spec: dict, glob: str | None, bundle: Path,
                    disabled: set[str]) -> dict:
     name = spec["name"]
     select = _dataset_select(spec, glob)
-    expected = con.execute(f"SELECT count(*) FROM ({select})").fetchone()[0]
+    expected = con.execute(f"SELECT count(*) FROM ({select})").fetchall()[0][0]
 
     pq = bundle / f"{name}.parquet"
     _copy(con, select, pq, "FORMAT parquet, COMPRESSION zstd")
@@ -431,7 +431,7 @@ def _write_dataset(con, spec: dict, glob: str | None, bundle: Path,
     if disabled and "site" in {c["name"] for c in _columns(con, pq)}:
         leaked = con.execute(
             f"SELECT count(*) FROM read_parquet('{pq.as_posix()}') "
-            f"WHERE {_hidden_predicate(disabled)}").fetchone()[0]
+            f"WHERE {_hidden_predicate(disabled)}").fetchall()[0][0]
         if leaked:
             raise ExportRefused(
                 f"{name}: {leaked:,} rows from a site TEON hides reached the "
@@ -451,14 +451,14 @@ def _write_dataset(con, spec: dict, glob: str | None, bundle: Path,
         n = _count_csv(con, csv)
         expect_y = con.execute(
             f"SELECT count(*) FROM read_parquet('{pq.as_posix()}') "
-            f"WHERE year(timestamp) = {y}").fetchone()[0]
+            f"WHERE year(timestamp) = {y}").fetchall()[0][0]
         if n != expect_y:
             raise ExportRefused(f"{name} {y}: CSV has {n:,} rows, Parquet {expect_y:,}")
         csv_total += n
         files.append(_file_entry(csv, "csv.gz", n, year=y))
     undated = con.execute(
         f"SELECT count(*) FROM read_parquet('{pq.as_posix()}') "
-        f"WHERE timestamp IS NULL").fetchone()[0]
+        f"WHERE timestamp IS NULL").fetchall()[0][0]
     if csv_total + undated != parquet_rows:
         raise ExportRefused(
             f"{name}: CSV files hold {csv_total:,} rows plus {undated:,} undated, "
@@ -466,7 +466,7 @@ def _write_dataset(con, spec: dict, glob: str | None, bundle: Path,
 
     span = con.execute(
         f"SELECT min(timestamp)::VARCHAR, max(timestamp)::VARCHAR, count(DISTINCT site) "
-        f"FROM read_parquet('{pq.as_posix()}')").fetchone()
+        f"FROM read_parquet('{pq.as_posix()}')").fetchall()[0]
     entry = {
         "name": name, "description": spec["description"],
         "source_table": spec["table"], "teon": spec["teon"],
@@ -735,7 +735,7 @@ def build_bundle(*, processed_dir: Path = PROCESSED_DIR,
             entries.append(_write_dataset(con, spec, glob, building, disabled))
 
         if not only:
-            total = con.execute("SELECT count(*) FROM obs_visible").fetchone()[0]
+            total = con.execute("SELECT count(*) FROM obs_visible").fetchall()[0][0]
             got = sum(e["rows"] for e in entries if e["teon"])
             if got != total:
                 raise ExportRefused(
@@ -743,7 +743,7 @@ def build_bundle(*, processed_dir: Path = PROCESSED_DIR,
                     f"store holds {total:,}: a sensor type fell between them")
 
         data_through = con.execute(
-            "SELECT max(timestamp)::VARCHAR FROM obs_visible").fetchone()[0]
+            "SELECT max(timestamp)::VARCHAR FROM obs_visible").fetchall()[0][0]
     finally:
         con.close()
         shutil.rmtree(building / ".duckdb-tmp", ignore_errors=True)

@@ -167,7 +167,7 @@ def check_keys_ascii(con) -> None:
         if t.utf8:
             continue
         n = con.sql(f"SELECT count(*) FROM {t.view} "
-                    f"WHERE NOT regexp_full_match({t.key_duck}, '[\\x20-\\x7e]*')").fetchone()[0]
+                    f"WHERE NOT regexp_full_match({t.key_duck}, '[\\x20-\\x7e]*')").fetchall()[0][0]
         if n:
             raise SystemExit(f"{t.name}: {n} keys contain non-ASCII text; "
                              "the fingerprint would not match SQL Server's")
@@ -234,7 +234,7 @@ def inventory(args) -> int:
                              if c[0] not in ("year", "month"))
         lines += [f"**`secchi.{t.name}`**: {t.about}", "", f"Columns in the store: {colnames}.", ""]
 
-    obs_dims = {k: con.sql(f"SELECT count(*) FROM ({v})").fetchone()[0]
+    obs_dims = {k: con.sql(f"SELECT count(*) FROM ({v})").fetchall()[0][0]
                 for k, v in DIMENSIONS.items()}
     lines += [
         "## Lookup tables",
@@ -322,7 +322,7 @@ def write_bcp_file(con, table: str, sql: str, path: Path, utf8: bool) -> int:
                       f"OR \"{c}\" LIKE '%' || chr(13) || '%' "
                       + ("" if utf8 else
                          f"OR NOT regexp_full_match(\"{c}\", '[\\x20-\\x7e]*')")
-                      ).fetchone()[0]
+                      ).fetchall()[0][0]
         if bad:
             raise SystemExit(f"{table}.{c}: {bad} values contain '{SEP}', a line break "
                              "or (in an ASCII-only table) non-ASCII text; bcp's "
@@ -330,7 +330,7 @@ def write_bcp_file(con, table: str, sql: str, path: Path, utf8: bool) -> int:
     con.execute(f"COPY ({sql}) TO '{path.as_posix()}' "
                 f"(FORMAT CSV, DELIMITER '{SEP}', HEADER false, QUOTE '', ESCAPE '', "
                 f"NULLSTR '', TIMESTAMPFORMAT '%Y-%m-%d %H:%M:%S')")
-    return con.sql(f"SELECT count(*) FROM ({sql})").fetchone()[0]
+    return con.sql(f"SELECT count(*) FROM ({sql})").fetchall()[0][0]
 
 
 # ---------------------------------------------------------------------------

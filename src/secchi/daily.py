@@ -191,7 +191,7 @@ def lake_level(con) -> dict:
         SELECT arg_max(value, timestamp),
                (SELECT arg_max(value, timestamp) FROM g
                 WHERE timestamp <= (SELECT max(timestamp) FROM g) - INTERVAL 7 DAY)
-        FROM g""").fetchone()
+        FROM g""").fetchall()[0]
     return {"gage_ft": row[0], "gage_week_ago_ft": row[1]} if row else {}
 
 

@@ -69,7 +69,9 @@ tzdata = "*"
 # nothing imported. Used by `pixi run query`. Storage stays parquet: a
 # .duckdb file would be one binary that git re-stores in full on every
 # write, the exact churn the partitioning was built to avoid.
-python-duckdb = ">=1.0"
+# Below 2.0 until an upgrade is tested on purpose: 2.0 changed how results
+# are fetched (see tests/test_no_fetchone.py). The code runs on both.
+python-duckdb = ">=1.0,<2"
 
 # Everyday commands. `pixi run <name>` from anywhere in the repo.
 [tool.pixi.tasks]
