@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-11-02T15:42:27.113844+00:00",
+  "captured_at": "2026-11-03T00:55:33.554960+00:00",
   "sensor_types": [
     "Air Temperature & Relative Humidity",
     "EXO",
@@ -17,7 +17,9 @@
     "stream",
     "terrestrial"
   ],
-  "disabled_sites": [],
+  "disabled_sites": [
+    "4hcamp"
+  ],
   "usgs_gauges": [
     "10336610",
     "10336645",
@@ -39,8 +41,8 @@
     },
     "terrestrial/Soil Environmental Conditions/Glenbrook 1": {
       "state": "live",
-      "last_update": "2026-11-02T02:30:00",
-      "data_count": 62302,
+      "last_update": "2026-11-02T14:30:00",
+      "data_count": 62350,
       "manual": false
     },
     "terrestrial/Soil Environmental Conditions/Glenbrook 2": {
@@ -51,8 +53,8 @@
     },
     "terrestrial/Soil Environmental Conditions/Glenbrook 4": {
       "state": "live",
-      "last_update": "2026-11-02T02:45:00",
-      "data_count": 75350,
+      "last_update": "2026-11-02T14:45:00",
+      "data_count": 75398,
       "manual": false
     },
     "terrestrial/Soil Environmental Conditions/Glenbrook 5": {
@@ -63,14 +65,14 @@
     },
     "terrestrial/Soil Environmental Conditions/Homewood": {
       "state": "live",
-      "last_update": "2026-11-01T23:15:00",
-      "data_count": 40073,
+      "last_update": "2026-11-02T11:15:00",
+      "data_count": 40121,
       "manual": false
     },
     "terrestrial/Soil Environmental Conditions/UNR Tahoe Campus": {
       "state": "live",
-      "last_update": "2026-11-01T21:15:00",
-      "data_count": 74783,
+      "last_update": "2026-11-02T09:15:00",
+      "data_count": 74831,
       "manual": false
     },
     "terrestrial/Air Temperature & Relative Humidity/Blackwood 2": {
@@ -81,8 +83,8 @@
     },
     "terrestrial/Air Temperature & Relative Humidity/Glenbrook 1": {
       "state": "live",
-      "last_update": "2026-11-02T02:30:00",
-      "data_count": 62302,
+      "last_update": "2026-11-02T14:30:00",
+      "data_count": 62350,
       "manual": false
     },
     "terrestrial/Air Temperature & Relative Humidity/Glenbrook 2": {
@@ -93,8 +95,8 @@
     },
     "terrestrial/Air Temperature & Relative Humidity/Glenbrook 4": {
       "state": "live",
-      "last_update": "2026-11-02T02:45:00",
-      "data_count": 75350,
+      "last_update": "2026-11-02T14:45:00",
+      "data_count": 75398,
       "manual": false
     },
     "terrestrial/Air Temperature & Relative Humidity/Glenbrook 5": {
@@ -105,14 +107,14 @@
     },
     "terrestrial/Air Temperature & Relative Humidity/Homewood": {
       "state": "live",
-      "last_update": "2026-11-01T23:15:00",
-      "data_count": 40073,
+      "last_update": "2026-11-02T11:15:00",
+      "data_count": 40121,
       "manual": false
     },
     "terrestrial/Air Temperature & Relative Humidity/UNR Tahoe Campus": {
       "state": "live",
-      "last_update": "2026-11-01T21:15:00",
-      "data_count": 74783,
+      "last_update": "2026-11-02T09:15:00",
+      "data_count": 74831,
       "manual": false
     },
     "terrestrial/Tree stress and growth/Blackwood 2": {
@@ -129,8 +131,8 @@
     },
     "terrestrial/Tree stress and growth/Glenbrook 4": {
       "state": "live",
-      "last_update": "2026-11-02T02:45:00",
-      "data_count": 75350,
+      "last_update": "2026-11-02T14:45:00",
+      "data_count": 75398,
       "manual": false
     },
     "terrestrial/Tree stress and growth/Glenbrook 5": {
@@ -141,8 +143,8 @@
     },
     "terrestrial/Tree stress and growth/Homewood": {
       "state": "live",
-      "last_update": "2026-11-01T23:15:00",
-      "data_count": 8684,
+      "last_update": "2026-11-02T11:15:00",
+      "data_count": 8732,
       "manual": false
     },
     "terrestrial/Precipitation Gauge/Blackwood 2": {
@@ -159,8 +161,8 @@
     },
     "terrestrial/Field Camera/Glenbrook 4": {
       "state": "live",
-      "last_update": "2026-11-01T23:31:37",
-      "data_count": 900,
+      "last_update": "2026-11-02T23:31:30",
+      "data_count": 904,
       "manual": false
     },
     "terrestrial/Field Camera/Glenbrook 5": {
@@ -171,8 +173,8 @@
     },
     "terrestrial/Field Camera/Homewood": {
       "state": "live",
-      "last_update": "2026-11-02T07:32:34",
-      "data_count": 896,
+      "last_update": "2026-11-02T19:32:45",
+      "data_count": 898,
       "manual": false
     },
     "terrestrial/Field Camera/UNR Tahoe Campus": {
@@ -255,8 +257,8 @@
     },
     "lake/EXO/4H Camp": {
       "state": "live",
-      "last_update": "2026-11-02T03:00:00",
-      "data_count": 56815,
+      "last_update": "2026-11-02T15:00:00",
+      "data_count": 56863,
       "manual": false
     },
     "lake/EXO/Glenbrook": {
@@ -267,8 +269,8 @@
     },
     "lake/EXO/Sunnyside": {
       "state": "live",
-      "last_update": "2026-11-02T02:00:00",
-      "data_count": 42886,
+      "last_update": "2026-11-02T14:00:00",
+      "data_count": 42934,
       "manual": false
     },
     "lake/EXO/Blackwood 3": {
